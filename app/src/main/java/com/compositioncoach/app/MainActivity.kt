@@ -3,12 +3,26 @@ package com.compositioncoach.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.Text
+import androidx.activity.enableEdgeToEdge
+import com.compositioncoach.app.di.AppContainer
+import com.compositioncoach.app.ui.navigation.AppNavGraph
+import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 
-/** STATUS: STUB. Replaced by the :app owner. */
+/**
+ * Single-activity host. All navigation lives in [AppNavGraph]; screen-specific behavior (keeping the
+ * screen on while the camera is showing, camera binding, etc.) lives with the screens themselves.
+ */
 class MainActivity : ComponentActivity() {
+
+    private val container: AppContainer get() = (application as CompositionCoachApp).container
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { Text("Composition Coach") }
+        enableEdgeToEdge()
+        setContent {
+            CompositionCoachTheme {
+                AppNavGraph(container = container)
+            }
+        }
     }
 }
