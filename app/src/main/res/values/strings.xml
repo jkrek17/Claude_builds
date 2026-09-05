@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Composition Coach</string>
+
+    <string name="permission_camera_title">Camera access needed</string>
+    <string name="permission_camera_body">Composition Coach analyzes the live preview on your device to
+        suggest framing, but needs the camera to see it first. Nothing ever leaves your phone.</string>
+    <string name="permission_allow_camera">Allow camera</string>
+    <string name="permission_open_settings">Open settings</string>
 </resources>

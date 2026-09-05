@@ -1,0 +1,55 @@
+package com.compositioncoach.app.ui.camera
+
+import com.compositioncoach.composition.model.Direction
+import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.Recommendation
+
+/** Which color band a displayed score falls into. Mapped to an actual [androidx.compose.ui.graphics.Color] in the theme. */
+enum class ScoreTier { LOW, GOOD, EXCELLENT }
+
+/**
+ * Pure text/formatting logic for the on-screen coaching copy. Kept free of Compose types so it is
+ * unit-testable on the plain JVM (see GuidanceFormatterTest); [ui.camera.ScoreBadge] and
+ * [ui.camera.GuidanceBanner] call into this rather than embedding the rules inline.
+ */
+object GuidanceFormatter {
+
+    /** A short directional glyph for the primary recommendation, shown next to the instruction text. */
+    fun glyphFor(direction: Direction): String = when (direction) {
+        Direction.LEFT -> "←"
+        Direction.RIGHT -> "→"
+        Direction.UP -> "↑"
+        Direction.DOWN -> "↓"
+        Direction.CLOSER -> "＋"
+        Direction.BACK -> "－"
+        Direction.ROTATE_CLOCKWISE -> "↻"
+        Direction.ROTATE_COUNTER_CLOCKWISE -> "↺"
+        Direction.NONE -> ""
+    }
+
+    /** "→ Move slightly right" — the glyph and instruction combined for the primary guidance line. */
+    fun primaryLine(recommendation: Recommendation): String {
+        val glyph = glyphFor(recommendation.direction)
+        return if (glyph.isEmpty()) recommendation.instruction else "$glyph ${recommendation.instruction}"
+    }
+
+    /** A smaller secondary-recommendation line, glyph included but no reason (reason is COACH-only, see [reasonLine]). */
+    fun secondaryLine(recommendation: Recommendation): String = primaryLine(recommendation)
+
+    /** COACH-level shows *why*, as a subtitle under the primary instruction. Null when there is nothing to add. */
+    fun reasonLine(recommendation: Recommendation, level: GuidanceLevel): String? =
+        recommendation.reason.takeIf { level == GuidanceLevel.COACH && !it.isNullOrBlank() }
+
+    fun scoreTier(score: Int): ScoreTier = when {
+        score >= 88 -> ScoreTier.EXCELLENT
+        score >= 70 -> ScoreTier.GOOD
+        else -> ScoreTier.LOW
+    }
+
+    /** "94 — SHOOT" for the badge when framing is strong enough to fire the shutter. */
+    fun shootReadyScoreText(score: Int): String = "$score — SHOOT"
+
+    const val SHOOT_READY_SUBTITLE = "Great framing"
+
+    const val NO_SUBJECT_TEXT = "Looking for a subject…"
+}
