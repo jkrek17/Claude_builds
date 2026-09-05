@@ -26,4 +26,17 @@ class GeometryTest {
     fun `small vector is a no-op`() {
         assertEquals(Direction.NONE, ReframeVector(0.005f, 0.01f).primaryDirection())
     }
+
+    @Test
+    fun `subject too high in frame means raise camera`() {
+        // eyes at y=0.15 should sit on the upper third (0.33): raising the camera shifts content down
+        val v = ReframeVector.toMoveSubject(NormalizedPoint(0.5f, 0.15f), NormalizedPoint(0.5f, 0.33f))
+        assertEquals(Direction.UP, v.primaryDirection())
+    }
+
+    @Test
+    fun `subject too low in frame means lower camera`() {
+        val v = ReframeVector.toMoveSubject(NormalizedPoint(0.5f, 0.6f), NormalizedPoint(0.5f, 0.33f))
+        assertEquals(Direction.DOWN, v.primaryDirection())
+    }
 }

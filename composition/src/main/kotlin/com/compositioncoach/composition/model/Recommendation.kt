@@ -68,8 +68,14 @@ data class ReframeVector(
 
     companion object {
         val ZERO = ReframeVector()
-        /** Vector that moves a subject currently at [from] so that it lands on [to]. */
-        fun toMoveSubject(from: NormalizedPoint, to: NormalizedPoint) = ReframeVector(dx = from.x - to.x, dy = from.y - to.y)
+        /**
+         * Vector that moves a subject currently at [from] so that it lands on [to].
+         *
+         * Horizontal: panning the camera right (dx > 0) shifts content LEFT, so dx = from.x - to.x.
+         * Vertical: raising the camera (dy > 0) shifts content DOWN (larger y), so dy = to.y - from.y.
+         * The asymmetry is because screen y grows downward while "raise" is the positive vertical action.
+         */
+        fun toMoveSubject(from: NormalizedPoint, to: NormalizedPoint) = ReframeVector(dx = from.x - to.x, dy = to.y - from.y)
     }
 }
 
