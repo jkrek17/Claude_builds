@@ -113,17 +113,26 @@ glaring problem visibly caps the score instead of hiding in an average.
 
 ## Smoothing (`CompositionSmoother` / `SmoothingConfig`)
 
-All tuning constants live in one `SmoothingConfig` data class:
+All tuning constants live in one `SmoothingConfig` data class. Everything is expressed in **time**, driven
+by the frame timestamps, so a phone analysing 5 frames/s behaves the same as one managing 10. When
+timestamps do not advance (tests, duplicate stamps) a nominal 100 ms per update is assumed; gaps longer
+than 500 ms (app paused, camera switch) count as 500 ms.
 
 | Constant | Default | Meaning |
 |---|---|---|
-| `scoreAlpha` | 0.25 | EMA factor for the displayed score in steady state |
-| `scoreAlphaOnSubjectChange` | 0.6 | faster EMA factor for the one frame right after the subject count changes |
-| `recommendationConfirmFrames` | 3 | a challenger must rank #1 this many consecutive frames before it can replace the current headline advice |
-| `recommendationMinHoldFrames` | 6 | the current headline advice is protected from replacement until shown this many frames (~0.6s at 10Hz) |
-| `issueGoneFrames` | 3 | if the current recommendation's id vanishes from the ranked list for this many frames, drop it immediately (bypasses the min-hold) |
-| `oppositeDirectionExtraConfirm` | 1 | extra confirm frames required when the challenger's direction is the exact opposite of the current one (LEFT↔RIGHT, UP↔DOWN, CW↔CCW, CLOSER↔BACK) |
+| `scoreTimeConstantMs` | 1500 | EMA time constant for the score (63 % of a step change after 1.5 s) |
+| `scoreTimeConstantOnSubjectChangeMs` | 350 | much faster constant for ~0.6 s after the subject count changes |
+| `displayDeadband` | 2 | the on-screen number does not move until the EMA has drifted ≥ 2 points from it |
+| `displayMinHoldMs` | 700 | minimum time the on-screen number stays put between changes |
+| `displaySnapDelta` | 10 | a change this large is shown immediately (a real reframe) |
+| `recommendationConfirmMs` | 800 | a challenger must be top-ranked continuously this long before replacing the headline |
+| `recommendationMinHoldMs` | 2000 | the headline is protected from replacement until shown this long |
+| `issueGoneMs` | 700 | if the headline's issue has been absent this long it is dropped at once (bypasses the hold) |
+| `oppositeDirectionExtraConfirmMs` | 500 | extra confirmation when the challenger is the opposite action (LEFT↔RIGHT, UP↔DOWN, CW↔CCW, CLOSER↔BACK) |
 | `shootReadyEnterScore` / `shootReadyExitScore` | 88 / 84 | hysteresis band so "shoot ready" doesn't chatter at the boundary |
+| `shootReadyEnterHoldMs` | 400 | the score must stay above the enter threshold this long before SHOOT lights up |
+
+Shoot-ready also requires no applicable metric at `Severity.HIGH` in the latest raw result.
 
 Only the single headline recommendation is smoothed with hysteresis; any secondary recommendations
 (`GuidanceLevel.COACH` can show up to 3) ride along unsmoothed straight from the raw per-frame result,
