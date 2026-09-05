@@ -5,6 +5,8 @@ import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.MetricCategory
 import com.compositioncoach.composition.model.NormalizedPoint
 import com.compositioncoach.composition.model.OverlayGeometry
+import com.compositioncoach.composition.model.SceneClassification
+import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.Priority
 import com.compositioncoach.composition.model.Recommendation
 import com.compositioncoach.composition.model.ReframeVector
@@ -22,7 +24,7 @@ import kotlin.math.tan
  * vision layer's own estimate ([ImageStatistics.estimatedHorizonAngleDegrees]), at lower confidence since
  * that estimate depends on a horizon actually being visible and correctly identified.
  *
- * Thresholds: within [DEAD_ZONE_DEGREES] (~1.5°) is treated as level (no advice — human vestibular sense
+ * Thresholds: within [DEAD_ZONE_DEGREES] (~2.5°) is treated as level (no advice — human vestibular sense
  * is not that precise and micro-corrections would be annoying). Severity ramps from LOW at the dead zone
  * up to HIGH at [HIGH_SEVERITY_DEGREES] (~6°), which reads as an obviously crooked photo.
  *
@@ -43,7 +45,10 @@ class HorizonAnalyzer : CompositionAnalyzer {
                 measuredRoll = reliableOrientation.rollDegrees
                 confidence = 0.95f
             }
-            context.frame.stats?.estimatedHorizonAngleDegrees != null -> {
+            // The visual estimate comes from luminance transitions and is easily fooled by table tops, wood
+            // grain or a shelf when the phone points down (the case where the sensor is unreliable), so only
+            // trust it in scenes where a horizon line is plausible.
+            context.frame.stats?.estimatedHorizonAngleDegrees != null && sceneHasPlausibleHorizon(context.scene) -> {
                 measuredRoll = context.frame.stats.estimatedHorizonAngleDegrees
                 confidence = 0.6f
             }
@@ -93,6 +98,9 @@ class HorizonAnalyzer : CompositionAnalyzer {
         )
     }
 
+    private fun sceneHasPlausibleHorizon(scene: SceneClassification): Boolean =
+        scene.hasHorizon || scene.type == SceneType.LANDSCAPE || scene.type == SceneType.ARCHITECTURE
+
     private fun horizonLine(rollDegrees: Float): OverlayGeometry.Line {
         val halfRise = (tan(Math.toRadians(rollDegrees.toDouble())) * 0.5).toFloat()
         return OverlayGeometry.Line(
@@ -103,7 +111,7 @@ class HorizonAnalyzer : CompositionAnalyzer {
     }
 
     companion object {
-        const val DEAD_ZONE_DEGREES = 1.5f
+        const val DEAD_ZONE_DEGREES = 2.5f
         const val LOW_SEVERITY_DEGREES = 3f
         const val HIGH_SEVERITY_DEGREES = 6f
         const val SCORE_ZERO_AT_DEGREES = 15f

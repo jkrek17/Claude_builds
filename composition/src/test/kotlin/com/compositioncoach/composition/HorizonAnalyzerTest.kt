@@ -5,6 +5,7 @@ import com.compositioncoach.composition.analyzer.HorizonAnalyzer
 import com.compositioncoach.composition.fixtures.SyntheticFrames.frameWith
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.SceneClassification
+import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.Severity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -43,7 +44,22 @@ class HorizonAnalyzerTest {
     }
 
     @Test
-    fun `unreliable orientation falls back to stats horizon estimate`() {
+    fun `unreliable orientation falls back to stats horizon estimate in a landscape`() {
+        val frame = frameWith(
+            rollDegrees = 20f,
+            orientationReliable = false,
+            stats = com.compositioncoach.composition.fixtures.SyntheticFrames.statsWithHorizonAngle(4f),
+        )
+        val landscape = SceneClassification(SceneType.LANDSCAPE, 0.8f, hasHorizon = true)
+        val context = AnalysisContext(frame, landscape, emptyList(), null)
+        val metric = analyzer.analyze(context)!!
+        val rec = requireNotNull(metric.recommendation)
+        assertEquals(Direction.ROTATE_COUNTER_CLOCKWISE, rec.direction)
+    }
+
+    @Test
+    fun `unreliable orientation with a visual line in a general scene gives no advice`() {
+        // Phone pointing down at a table: the sensor is unreliable and the "horizon" is wood grain.
         val frame = frameWith(
             rollDegrees = 20f,
             orientationReliable = false,
@@ -51,7 +67,7 @@ class HorizonAnalyzerTest {
         )
         val context = AnalysisContext(frame, scene, emptyList(), null)
         val metric = analyzer.analyze(context)!!
-        val rec = requireNotNull(metric.recommendation)
-        assertEquals(Direction.ROTATE_COUNTER_CLOCKWISE, rec.direction)
+        assertEquals(false, metric.applicable)
+        assertNull(metric.recommendation)
     }
 }

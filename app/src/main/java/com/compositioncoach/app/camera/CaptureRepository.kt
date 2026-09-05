@@ -37,29 +37,24 @@ class CaptureRepository(private val context: Context) {
         }
     }
 
-    /** API 29+: scoped storage. Insert a pending row, let CameraX write into it, then publish it. */
+    /**
+     * API 29+: scoped storage. CameraX inserts the MediaStore row itself when given the *collection* Uri
+     * plus content values (passing a pre-inserted item Uri makes it try to insert into that item and fail),
+     * and it also manages IS_PENDING around the write. The saved item Uri comes back in the result.
+     */
     private suspend fun captureToMediaStore(imageCapture: ImageCapture, name: String, metadata: ImageCapture.Metadata): Uri {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, name)
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/CompositionCoach")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
         }
-        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            ?: error("MediaStore did not return a Uri for the new image")
-        val outputOptions = ImageCapture.OutputFileOptions.Builder(resolver, uri, ContentValues())
+        val outputOptions = ImageCapture.OutputFileOptions
+            .Builder(resolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
             .setMetadata(metadata)
             .build()
-        try {
-            takePicture(imageCapture, outputOptions)
-        } catch (t: Throwable) {
-            // Don't leave an empty pending row in the gallery database behind a failed capture.
-            runCatching { resolver.delete(uri, null, null) }
-            throw t
-        }
-        resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
-        return uri
+        val result = takePicture(imageCapture, outputOptions)
+        return result.savedUri ?: error("Photo was written but MediaStore returned no Uri")
     }
 
     /**
