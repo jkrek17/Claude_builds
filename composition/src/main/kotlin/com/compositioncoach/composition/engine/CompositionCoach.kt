@@ -10,8 +10,6 @@ import com.compositioncoach.composition.model.SmoothedComposition
  * [CompositionSmoother] (temporal stability). One instance per camera session; call [reset] on camera switch.
  *
  * Thread-safety: [process] is expected to be called from a single analysis thread.
- *
- * STATUS: STUB. The :composition owner replaces the bodies below; the public signatures are the contract.
  */
 class CompositionCoach(
     private val engine: CompositionEngine,
