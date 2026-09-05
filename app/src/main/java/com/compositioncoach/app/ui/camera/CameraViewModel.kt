@@ -136,19 +136,21 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun onSwitchLensRequested() {
-        _uiState.update {
-            it.copy(lensFacing = if (it.lensFacing == LensFacing.BACK) LensFacing.FRONT else LensFacing.BACK)
-        }
+        val next = if (_uiState.value.lensFacing == LensFacing.BACK) LensFacing.FRONT else LensFacing.BACK
+        // Tell the pipeline about the mirror change *before* the rebind so no frame from the new lens is
+        // normalized with the old mirroring; onCameraBindResult corrects it if the device fell back.
+        frameSource?.setFrontCamera(next == LensFacing.FRONT)
+        coach.reset()
+        _uiState.update { it.copy(lensFacing = next) }
     }
 
     /** Called by the screen once a (re)bind attempt finishes; wires the result into pipeline state and resets smoothing. */
     fun onCameraBindResult(result: CameraBindResult) {
         when (result) {
             is CameraBindResult.Success -> {
-                val isFront = _uiState.value.lensFacing == LensFacing.FRONT
-                frameSource?.setFrontCamera(isFront)
+                frameSource?.setFrontCamera(result.lensFacing == LensFacing.FRONT)
                 coach.reset()
-                _uiState.update { it.withCameraBound(it.lensFacing, result.hasFlashUnit) }
+                _uiState.update { it.withCameraBound(result.lensFacing, result.hasFlashUnit) }
             }
             is CameraBindResult.Failure -> {
                 _uiState.update { it.withCameraError(result.throwable.message ?: "Camera unavailable") }

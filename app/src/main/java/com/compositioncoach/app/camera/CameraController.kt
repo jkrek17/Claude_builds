@@ -2,7 +2,10 @@ package com.compositioncoach.app.camera
 
 import android.content.Context
 import android.util.Log
+import android.util.Rational
 import android.util.Size
+import android.view.Surface
+import androidx.core.view.doOnLayout
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
@@ -31,7 +34,8 @@ enum class LensFacing { BACK, FRONT }
 
 /** Result of a [CameraController.bind] attempt, surfaced by the ViewModel as UI state. */
 sealed interface CameraBindResult {
-    data class Success(val camera: Camera, val hasFlashUnit: Boolean) : CameraBindResult
+    /** @param lensFacing the lens actually bound, which can differ from the request on single-camera devices. */
+    data class Success(val camera: Camera, val hasFlashUnit: Boolean, val lensFacing: LensFacing) : CameraBindResult
     data class Failure(val throwable: Throwable) : CameraBindResult
 }
 
@@ -76,6 +80,10 @@ class CameraController(private val context: Context) {
     ): CameraBindResult = try {
         val provider = cameraProvider ?: ProcessCameraProvider.getInstance(context).awaitFuture().also { cameraProvider = it }
         provider.unbindAll()
+        // The screen binds as soon as it enters composition, before the PreviewView has been measured. A
+        // ViewPort built from a 0x0 view would be 1:1 and crop both preview and analysis to a square, so
+        // wait for the first layout pass before deriving the viewport from the view.
+        previewView.awaitLayout()
 
         val desiredSelector = if (lensFacing == LensFacing.FRONT) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
         val fallbackSelector = if (lensFacing == LensFacing.FRONT) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
@@ -112,9 +120,11 @@ class CameraController(private val context: Context) {
         }
 
         // Share one ViewPort so the analysis crop matches exactly what the preview shows on screen.
+        // PreviewView.viewPort is null until the view is attached to a display; after awaitLayout() the
+        // fallback below uses the real measured size, so it only differs in how rotation is sourced.
         val viewPort = previewView.viewPort ?: ViewPort.Builder(
-            android.util.Rational(previewView.width.coerceAtLeast(1), previewView.height.coerceAtLeast(1)),
-            previewView.display?.rotation ?: android.view.Surface.ROTATION_0,
+            Rational(previewView.width.coerceAtLeast(1), previewView.height.coerceAtLeast(1)),
+            previewView.display?.rotation ?: Surface.ROTATION_0,
         ).build()
 
         val useCaseGroup = UseCaseGroup.Builder()
@@ -132,11 +142,11 @@ class CameraController(private val context: Context) {
         camera = boundCamera
         applyFlashMode(flashMode)
 
-        CameraBindResult.Success(boundCamera, boundCamera.cameraInfo.hasFlashUnit()).also {
-            if (boundIsFront != (lensFacing == LensFacing.FRONT)) {
-                Log.w(TAG, "Requested $lensFacing but device only has the other lens; bound to the fallback.")
-            }
+        val boundLens = if (boundIsFront) LensFacing.FRONT else LensFacing.BACK
+        if (boundLens != lensFacing) {
+            Log.w(TAG, "Requested $lensFacing but device only has the other lens; bound to $boundLens.")
         }
+        CameraBindResult.Success(boundCamera, boundCamera.cameraInfo.hasFlashUnit(), boundLens)
     } catch (t: Throwable) {
         Log.e(TAG, "Camera bind failed", t)
         CameraBindResult.Failure(t)
@@ -197,6 +207,14 @@ class CameraController(private val context: Context) {
 
     companion object {
         private const val TAG = "CameraController"
+    }
+}
+
+/** Suspends until the view has completed at least one layout pass (returns immediately if it already has). */
+private suspend fun PreviewView.awaitLayout() {
+    if (width > 0 && height > 0) return
+    suspendCancellableCoroutine { cont ->
+        doOnLayout { if (cont.isActive) cont.resume(Unit) }
     }
 }
 
