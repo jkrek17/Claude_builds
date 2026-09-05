@@ -5,10 +5,10 @@ import android.content.Context
 /**
  * Entry point the app uses to construct the vision pipeline.
  *
- * STATUS: STUB. The :vision owner replaces [create] with the real pipeline; the signature is the contract.
+ * [create] returns a fresh, unstarted [VisionPipeline]; the caller (the app's camera screen) is
+ * responsible for calling [FrameAnalysisSource.start] / [FrameAnalysisSource.stop] from its
+ * lifecycle and binding [FrameAnalysisSource.imageAnalyzer] to a CameraX `ImageAnalysis` use case.
  */
 object VisionPipelineFactory {
-    fun create(context: Context): FrameAnalysisSource {
-        throw NotImplementedError("Vision pipeline not implemented yet")
-    }
+    fun create(context: Context): FrameAnalysisSource = VisionPipeline(context.applicationContext)
 }
