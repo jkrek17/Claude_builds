@@ -36,6 +36,12 @@ APK with GitHub Actions and publishes it as a rolling pre-release.
    (Chrome, Files, …). Allow it once and install.
 4. Open **Composition Coach**, grant the camera permission, point the camera at a person.
 
+**Play Protect warning.** The first install shows "Play Protect hasn't seen an app from this developer
+before". Tap **More details**, then **Install anyway**. If there is no such option, turn off scanning
+temporarily: Play Store → profile picture → Play Protect → gear icon → "Scan apps with Play Protect",
+install, then turn it back on. Builds are signed with the checked-in debug key in `keystore/`, so later
+builds install as updates over earlier ones.
+
 **Alternative: from a specific CI run** (requires being logged in to GitHub, and the GitHub mobile app
 does not show artifacts, so use a desktop browser)
 

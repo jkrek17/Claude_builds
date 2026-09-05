@@ -21,6 +21,17 @@ android {
     // bundled ML Kit/TFLite native libraries roughly halves the APK. Add them back to run on an emulator.
     defaultConfig.ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")
 
+    signingConfigs {
+        // A fixed, checked-in debug key so every CI build is signed identically and installs update
+        // over each other instead of failing with a signature mismatch. Debug-only: never ship with it.
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
