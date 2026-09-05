@@ -47,9 +47,11 @@ class CompositionEngine(
         return runCatching { evaluateInternal(frame, level) }.getOrElse { CompositionResult.empty(frame.timestampNanos) }
     }
 
-    private fun evaluateInternal(frame: FrameAnalysis, level: GuidanceLevel): CompositionResult {
+    private fun evaluateInternal(rawFrame: FrameAnalysis, level: GuidanceLevel): CompositionResult {
         val startNanos = System.nanoTime()
 
+        // Background faces (someone at the next table) must not hijack the scene type or the subject.
+        val frame = SubjectFilter.dropIncidentalFaces(rawFrame)
         val scene = sceneClassifier(frame)
         val resolution = subjectResolver(frame)
         val context = AnalysisContext(frame, scene, resolution.subjects, resolution.primary, level)
