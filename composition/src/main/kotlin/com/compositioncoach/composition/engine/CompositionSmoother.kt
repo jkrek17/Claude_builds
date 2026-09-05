@@ -3,6 +3,7 @@ package com.compositioncoach.composition.engine
 import com.compositioncoach.composition.model.CompositionResult
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.Recommendation
+import com.compositioncoach.composition.model.Severity
 import com.compositioncoach.composition.model.SmoothedComposition
 
 /**
@@ -65,7 +66,7 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
     fun update(result: CompositionResult): SmoothedComposition {
         val score = smoothScore(result)
         updateHeadlineRecommendation(result)
-        updateShootReady(score)
+        updateShootReady(score, result)
 
         val headline = current
         val rest = result.recommendations.filter { it.id != headline?.id }
@@ -162,8 +163,15 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
         }
     }
 
-    private fun updateShootReady(score: Float) {
+    /**
+     * Shoot-ready needs a high smoothed score AND no high-severity issue in the latest raw result: a great
+     * score with a pole growing out of someone's head is not "shoot". Exiting uses the lower threshold so
+     * the badge does not chatter at the boundary.
+     */
+    private fun updateShootReady(score: Float, result: CompositionResult) {
+        val hasMajorIssue = result.metrics.any { it.applicable && it.severity == Severity.HIGH }
         shootReady = when {
+            hasMajorIssue -> false
             !shootReady && score >= config.shootReadyEnterScore -> true
             shootReady && score < config.shootReadyExitScore -> false
             else -> shootReady
