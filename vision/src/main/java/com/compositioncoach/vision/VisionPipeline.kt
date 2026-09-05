@@ -79,6 +79,9 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
     private var faceDetector: FaceDetector? = null
     private var poseDetector: PoseDetector? = null
 
+    /** Scratch copy of the Y plane; only touched from [dispatcher]. */
+    private var lumaScratch = ByteArray(0)
+
     private val poseFrameCounter = AtomicInteger(0)
     @Volatile private var lastBodies: List<DetectedBody> = emptyList()
 
@@ -213,8 +216,11 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
         val stats = runCatching {
             val plane = imageProxy.planes[0]
             val buffer = plane.buffer.duplicate()
-            val bytes = ByteArray(buffer.remaining())
-            buffer.get(bytes)
+            // Reuse one scratch array across frames (processing is confined to the single pipeline thread)
+            // so the ~300 KB Y plane copy does not churn the GC at 10 Hz.
+            val needed = buffer.remaining()
+            val bytes = lumaScratch.takeIf { it.size >= needed } ?: ByteArray(needed).also { lumaScratch = it }
+            buffer.get(bytes, 0, needed)
             ImageStatisticsComputer.compute(
                 luma = bytes,
                 width = imageProxy.width,

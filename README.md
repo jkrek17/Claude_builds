@@ -224,6 +224,23 @@ Reports land in `<module>/build/reports/tests/`.
 
 ---
 
+## Status and verification
+
+What has been verified in this environment:
+
+- All three modules compile together and the debug APK assembles.
+- 88 JVM unit tests pass: composition engine (45), vision math and statistics (21), app state and mapping (22).
+
+What has **not** been verified yet, because no physical device was available where this was built:
+
+- Live camera behaviour on a real phone: preview alignment of the overlays, ML Kit model download, capture
+  and gallery save. The code paths are complete, not mocked, but they need a real-device run.
+- The sign of the device-orientation roll. It is derived from first principles and cross-checked in the
+  KDoc of `OrientationSensor`, but tilt the phone and confirm the level indicator and the
+  "rotate clockwise / counter-clockwise" advice move the right way. Developer mode shows the raw angle.
+- Threshold tuning. Headroom, edge and background thresholds are sensible starting points; expect to
+  adjust them after a few real sessions using the developer overlay.
+
 ## Roadmap and future enhancements
 
 Implemented in this MVP: phases 1–5 of the plan at an initial, heuristic level (functional camera,

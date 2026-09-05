@@ -25,40 +25,64 @@ import kotlin.coroutines.resumeWithException
  */
 class CaptureRepository(private val context: Context) {
 
-    /** Takes a photo with [imageCapture] and returns the MediaStore [Uri] it was saved to. */
+    /** Takes a photo with [imageCapture] and returns the [Uri] it was saved to (a MediaStore content Uri). */
     suspend fun capture(imageCapture: ImageCapture, isFrontCamera: Boolean): Uri {
         val name = "CC_${TIMESTAMP_FORMAT.format(System.currentTimeMillis())}.jpg"
-        val resolver = context.contentResolver
+        // Front-camera JPEGs are flipped so the saved photo matches the mirrored preview the user framed with.
+        val metadata = ImageCapture.Metadata().apply { isReversedHorizontal = isFrontCamera }
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            captureToMediaStore(imageCapture, name, metadata)
+        } else {
+            captureToLegacyPicturesDir(imageCapture, name, metadata)
+        }
+    }
 
+    /** API 29+: scoped storage. Insert a pending row, let CameraX write into it, then publish it. */
+    private suspend fun captureToMediaStore(imageCapture: ImageCapture, name: String, metadata: ImageCapture.Metadata): Uri {
+        val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, name)
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/CompositionCoach")
-                put(MediaStore.Images.Media.IS_PENDING, 1)
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/CompositionCoach")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: error("MediaStore did not return a Uri for the new image")
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(resolver, uri, ContentValues())
+            .setMetadata(metadata)
+            .build()
+        try {
+            takePicture(imageCapture, outputOptions)
+        } catch (t: Throwable) {
+            // Don't leave an empty pending row in the gallery database behind a failed capture.
+            runCatching { resolver.delete(uri, null, null) }
+            throw t
+        }
+        resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+        return uri
+    }
+
+    /**
+     * API 26-28: write straight into the public Pictures/CompositionCoach directory (requires
+     * WRITE_EXTERNAL_STORAGE, requested by the screen before the first capture), then hand the file to the
+     * media scanner so it appears in the gallery and we get a content Uri back for review/delete.
+     */
+    private suspend fun captureToLegacyPicturesDir(imageCapture: ImageCapture, name: String, metadata: ImageCapture.Metadata): Uri {
+        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "CompositionCoach")
+        if (!dir.exists() && !dir.mkdirs()) error("Could not create ${dir.absolutePath}")
+        val file = File(dir, name)
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(file).setMetadata(metadata).build()
+        takePicture(imageCapture, outputOptions)
+        val scannedUri = suspendCancellableCoroutine<Uri?> { cont ->
+            MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), arrayOf("image/jpeg")) { _, uri ->
+                if (cont.isActive) cont.resume(uri)
             }
         }
+        return scannedUri ?: Uri.fromFile(file)
+    }
 
-        val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        val uri = resolver.insert(collection, values)
-            ?: error("MediaStore did not return a Uri for the new image")
-
-        val outputOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ImageCapture.OutputFileOptions.Builder(resolver, uri, ContentValues()).apply {
-                setMetadata(ImageCapture.Metadata().apply { isReversedHorizontal = isFrontCamera })
-            }.build()
-        } else {
-            // API 26-28: MediaStore.Images.Media.EXTERNAL_CONTENT_URI writes only work via a file path;
-            // write into the legacy public Pictures/CompositionCoach directory and scan it in afterwards.
-            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "CompositionCoach")
-            dir.mkdirs()
-            val file = File(dir, name)
-            ImageCapture.OutputFileOptions.Builder(file).apply {
-                setMetadata(ImageCapture.Metadata().apply { isReversedHorizontal = isFrontCamera })
-            }.build()
-        }
-
-        val result = suspendCancellableCoroutine<ImageCapture.OutputFileResults> { cont ->
+    private suspend fun takePicture(imageCapture: ImageCapture, outputOptions: ImageCapture.OutputFileOptions): ImageCapture.OutputFileResults =
+        suspendCancellableCoroutine { cont ->
             imageCapture.takePicture(
                 outputOptions,
                 ImmediateExecutor,
@@ -74,25 +98,16 @@ class CaptureRepository(private val context: Context) {
             )
         }
 
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
-            uri
-        } else {
-            val savedUri = result.savedUri ?: uri
-            val path = pathFromLegacyUri(savedUri)
-            if (path != null) {
-                MediaScannerConnection.scanFile(context, arrayOf(path), arrayOf("image/jpeg"), null)
+    /** Deletes a photo the user chose to retake. Handles both content Uris and the legacy file Uri fallback. */
+    suspend fun delete(uri: Uri) {
+        runCatching {
+            if (uri.scheme == "file") {
+                uri.path?.let { File(it).delete() }
+            } else {
+                context.contentResolver.delete(uri, null, null)
             }
-            savedUri
         }
     }
-
-    /** Deletes a photo the user chose to retake. */
-    suspend fun delete(uri: Uri) {
-        runCatching { context.contentResolver.delete(uri, null, null) }
-    }
-
-    private fun pathFromLegacyUri(uri: Uri): String? = uri.path
 
     companion object {
         private val TIMESTAMP_FORMAT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
