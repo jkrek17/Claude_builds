@@ -17,6 +17,10 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    // Phones are arm64 (or 32-bit ARM on older devices). Dropping the x86/x86_64 emulator ABIs from the
+    // bundled ML Kit/TFLite native libraries roughly halves the APK. Add them back to run on an emulator.
+    defaultConfig.ndk.abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+
     buildTypes {
         release {
             isMinifyEnabled = false

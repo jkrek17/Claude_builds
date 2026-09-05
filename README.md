@@ -26,14 +26,23 @@ No cloud calls, no camera frames leave the phone.
 ## Try it on your phone
 
 You do not need Android Studio to install and test the app. Every push to GitHub builds a debug
-APK with GitHub Actions.
+APK with GitHub Actions and publishes it as a rolling pre-release.
 
-1. Open the repository on GitHub and click the **Actions** tab.
-2. Open the most recent green **Android CI** run.
-3. Scroll to **Artifacts** and download `composition-coach-debug-apk` (a `.zip` containing `app-debug.apk`).
-4. Copy `app-debug.apk` to your phone (email it to yourself, AirDrop-equivalent, USB, Google Drive, …) and tap it.
-5. Android will ask you to allow installs from this source (Chrome, Files, Gmail, …). Allow it once and install.
-6. Open **Composition Coach**, grant the camera permission, point the camera at a person.
+**Easiest: from the Releases page, directly on your phone**
+
+1. On your phone, open https://github.com/jkrek17/Claude_builds/releases/tag/debug-latest
+2. Under **Assets**, tap `CompositionCoach-debug.apk` (about 80 MB).
+3. When the download finishes, open it. Android will ask you to allow installs from this source
+   (Chrome, Files, …). Allow it once and install.
+4. Open **Composition Coach**, grant the camera permission, point the camera at a person.
+
+**Alternative: from a specific CI run** (requires being logged in to GitHub, and the GitHub mobile app
+does not show artifacts, so use a desktop browser)
+
+1. Open the repository's **Actions** tab and click the most recent green **Android CI** run.
+2. On the run's summary page, scroll to the very bottom to the **Artifacts** section and download
+   `composition-coach-debug-apk`. It is a `.zip`; unzip it to get `app-debug.apk`.
+3. Copy the APK to your phone and install it as above.
 
 Requirements: Android 8.0 (API 26) or newer, Google Play Services (for ML Kit face detection; the
 face model downloads automatically on first launch, so be online the first time).
@@ -263,4 +272,4 @@ Not yet implemented / next steps:
 - **Depth** from multi-camera / ToF where available for separation.
 - **Per-user tuning** of weights and an in-app "why" explainer in Coach mode.
 - **Landscape orientation** UI (the MVP is portrait-locked).
-- **Release signing, ABI splits and R8** to shrink the APK (the debug build bundles all ABIs).
+- **Release signing and R8** to shrink the APK further (the debug build ships unminified code for arm64 and 32-bit ARM).
