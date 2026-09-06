@@ -151,7 +151,10 @@ class CompositionEngine(
             val bestDirection = best.vector.primaryDirection()
             if (bestDirection != Direction.NONE) {
                 val matchIndex = result.indexOfFirst { it.direction == bestDirection }
-                if (matchIndex > 0) {
+                // Never let a simulated gain jump ahead of a high-severity warning (a cut-off face, a pole
+                // through the head): those must be fixed first regardless of what the pan search predicts.
+                val headlineIsCritical = result.firstOrNull()?.severity == Severity.HIGH
+                if (matchIndex > 0 && !headlineIsCritical) {
                     val mutable = result.toMutableList()
                     val promoted = mutable.removeAt(matchIndex)
                     mutable.add(0, promoted)
