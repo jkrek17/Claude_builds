@@ -37,7 +37,7 @@ Both are signed with the same checked-in debug key until the release secrets in
 [docs/RELEASE.md](docs/RELEASE.md) are configured, so they install as updates over each other. Once a real
 upload key is configured, `release-latest` changes signature: uninstall once, then updates work again.
 
-**Install (on the phone, signed in to GitHub because the repo is private)**
+**Install (on the phone; no GitHub account needed)**
 
 1. Open the `release-latest` link above.
 2. Under **Assets**, tap `CompositionCoach-release-arm64.apk` (use `-arm32` only on an old 32-bit phone).
@@ -46,6 +46,8 @@ upload key is configured, `release-latest` changes signature: uninstall once, th
    off scanning temporarily: Play Store → profile picture → Play Protect → gear icon → "Scan apps with
    Play Protect", install, then turn it back on.
 5. Open **Composition Coach**, grant camera access, point the camera at a subject.
+
+Testers: [docs/TESTERS.md](docs/TESTERS.md) has these steps in plain language plus what feedback helps most.
 
 **Alternative: from a specific CI run** (desktop browser, logged in; the GitHub mobile app hides artifacts):
 Actions tab → latest green **Android CI** run → scroll to **Artifacts** at the bottom →
