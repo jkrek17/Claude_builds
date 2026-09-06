@@ -150,4 +150,13 @@ class FrameCoordinateMapper(
         val p1 = rotatedFullPointToNormalized(right, bottom)
         return NormalizedRect(minOf(p0.x, p1.x), minOf(p0.y, p1.y), maxOf(p0.x, p1.x), maxOf(p0.y, p1.y))
     }
+
+    /**
+     * Inverse of [rotatedFullPointToNormalized]: normalized (upright, crop-relative, mirrored) space
+     * back to ML Kit's rotated-full pixel space (the space `Face.boundingBox` and a selfie-segmentation
+     * raw-size mask are both reported in). Used by [MaskDownsampler] to backward-sample a segmentation
+     * mask — which has its own resolution, independent of [rotatedFullWidth]/[rotatedFullHeight] —
+     * without ever converting through sensor space.
+     */
+    fun normalizedPointToRotatedFull(nx: Float, ny: Float): Pair<Float, Float> = normalizedToRotatedFull(nx, ny)
 }

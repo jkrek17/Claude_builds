@@ -8,21 +8,31 @@ import com.compositioncoach.composition.model.BodyLandmark
 import com.compositioncoach.composition.model.BodyLandmarkType
 import com.compositioncoach.composition.model.DetectedBody
 import com.compositioncoach.composition.model.DetectedFace
+import com.compositioncoach.composition.model.DetectedObject
 import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.GazeDirection
 import com.compositioncoach.composition.model.ImageStatistics
 import com.compositioncoach.composition.model.NormalizedRect
+import com.compositioncoach.composition.model.SubjectMask
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.face.FaceLandmark
+import com.google.mlkit.vision.objects.ObjectDetection
+import com.google.mlkit.vision.objects.ObjectDetector
+import com.google.mlkit.vision.objects.ObjectDetectorOptionsBase
+import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseDetector
 import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
+import com.google.mlkit.vision.segmentation.Segmentation
+import com.google.mlkit.vision.segmentation.SegmentationMask
+import com.google.mlkit.vision.segmentation.Segmenter
+import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -32,6 +42,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.nio.ByteOrder
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
@@ -62,11 +73,26 @@ import kotlin.math.abs
  * Detector failures (ML Kit task failure, a malformed plane, etc.) are caught per-detector; a frame
  * that fails detection entirely still emits an [ImageStatistics]-only (or, in the worst case, a bare)
  * [FrameAnalysis] rather than dropping the frame or crashing the camera pipeline.
+ *
+ * ## Object detection and segmentation
+ * Two more ML Kit detectors run alongside face/pose, both toggleable via [VisionFeatureToggles]
+ * (implemented by this class in addition to [FrameAnalysisSource]):
+ *  - The **object detector** (`STREAM_MODE`, multiple objects, classification on) runs every accepted
+ *    frame, concurrently with the face detector on the same [InputImage]. Raw results are filtered and
+ *    mapped by [ObjectMapper] (frame-covering and face-overlapping boxes dropped, top 3 by area kept).
+ *  - **Selfie segmentation** (`STREAM_MODE`, raw-size mask) runs on a cadence managed by
+ *    [SegmentationCadence]: every 3rd accepted frame by default, only when the *previous* frame had a
+ *    face or body (it's a person segmenter — pointing it at a still life wastes a frame's worth of
+ *    inference), and backed off to every 6th frame under sustained latency (the "thermal/perf ladder";
+ *    see [SegmentationCadence]'s KDoc). The previous mask is reused unchanged on off-cadence frames;
+ *    [MaskDownsampler] converts a fresh raw mask to a 32x32 [SubjectMask] using the same
+ *    [FrameCoordinateMapper] built for this frame's faces/objects.
  */
-class VisionPipeline(private val context: Context) : FrameAnalysisSource {
+class VisionPipeline(private val context: Context) : FrameAnalysisSource, VisionFeatureToggles {
 
     private val sampler = AdaptiveSampler()
     private val orientationSensor = OrientationSensor(context)
+    private val segmentationCadence = SegmentationCadence()
 
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "vision-pipeline") }
     private val dispatcher = executor.asCoroutineDispatcher()
@@ -74,16 +100,29 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
 
     @Volatile private var isFrontCamera = false
     @Volatile private var poseDetectionEnabled = true
+    @Volatile private var objectDetectionEnabled = true
+    @Volatile private var segmentationEnabled = true
 
     private val detectorLock = Any()
     private var faceDetector: FaceDetector? = null
     private var poseDetector: PoseDetector? = null
+    private var objectDetector: ObjectDetector? = null
+    private var segmenter: Segmenter? = null
 
     /** Scratch copy of the Y plane; only touched from [dispatcher]. */
     private var lumaScratch = ByteArray(0)
 
+    /** Scratch copy of a raw segmentation mask's float confidences; only touched from [dispatcher]. */
+    private var maskFloatScratch = FloatArray(0)
+
     private val poseFrameCounter = AtomicInteger(0)
     @Volatile private var lastBodies: List<DetectedBody> = emptyList()
+
+    /** Whether the previous frame reported any face or body — gates [SegmentationCadence]. */
+    @Volatile private var hadSubjectLastFrame = false
+
+    /** Reused when segmentation doesn't run this frame; a fresh [SubjectMask] on frames that do. */
+    @Volatile private var lastSubjectMask: SubjectMask? = null
 
     private val _frames = MutableSharedFlow<FrameAnalysis>(
         replay = 1,
@@ -108,6 +147,21 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
             .build()
     }
 
+    private val objectDetectorOptions: ObjectDetectorOptions by lazy {
+        ObjectDetectorOptions.Builder()
+            .setDetectorMode(ObjectDetectorOptionsBase.STREAM_MODE)
+            .enableMultipleObjects()
+            .enableClassification()
+            .build()
+    }
+
+    private val segmenterOptions: SelfieSegmenterOptions by lazy {
+        SelfieSegmenterOptions.Builder()
+            .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
+            .enableRawSizeMask()
+            .build()
+    }
+
     override val imageAnalyzer = ImageAnalysis.Analyzer { imageProxy -> onFrame(imageProxy) }
 
     private fun onFrame(imageProxy: ImageProxy) {
@@ -123,6 +177,8 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
         var statsMs = 0L
         var faceMs = 0L
         var poseMs = 0L
+        var objectMs = 0L
+        var segmentationMs = 0L
         try {
             val rotation = imageProxy.imageInfo.rotationDegrees
             val crop: Rect = imageProxy.cropRect
@@ -142,11 +198,22 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
 
             var faces: List<DetectedFace> = emptyList()
             var bodies: List<DetectedBody> = lastBodies
+            var objects: List<DetectedObject> = emptyList()
+            var subjectMask: SubjectMask? = lastSubjectMask
+
+            // Captured before this frame's own faces/bodies are known: SegmentationCadence gates on
+            // whether a subject was present *last* frame (this frame's answer isn't available until
+            // face/pose detection below finishes, which is exactly the work being gated).
+            val wasSubjectPresent = hadSubjectLastFrame
 
             val mediaImage = imageProxy.image
             if (mediaImage != null) {
                 val input = InputImage.fromMediaImage(mediaImage, rotation)
                 val doPose = poseDetectionEnabled && (poseFrameCounter.getAndIncrement() % 2 == 0)
+                val doObjects = objectDetectionEnabled
+                // Short-circuits (cadence bookkeeping only advances while segmentation is enabled) so
+                // toggling it off and back on doesn't skew the interval/mask-age tracked in between.
+                val doSegmentation = segmentationEnabled && segmentationCadence.onAcceptedFrame(wasSubjectPresent)
 
                 coroutineScope {
                     val faceDeferred = async {
@@ -163,6 +230,22 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
                             result
                         }
                     } else null
+                    val objectDeferred = if (doObjects) {
+                        async {
+                            val start = System.nanoTime()
+                            val result = runCatching { getObjectDetector().process(input).await() }.getOrDefault(emptyList())
+                            objectMs = (System.nanoTime() - start) / 1_000_000
+                            result
+                        }
+                    } else null
+                    val segmentationDeferred = if (doSegmentation) {
+                        async {
+                            val start = System.nanoTime()
+                            val result = runCatching { getSegmenter().process(input).await() }.getOrNull()
+                            segmentationMs = (System.nanoTime() - start) / 1_000_000
+                            result
+                        }
+                    } else null
 
                     faces = faceDeferred.await().mapIndexed { index, face -> mapFace(index, face, mapper) }
                     if (poseDeferred != null) {
@@ -170,11 +253,27 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
                         bodies = pose?.let { mapPose(it, mapper) }?.let { listOf(it) } ?: emptyList()
                         lastBodies = bodies
                     }
+                    if (objectDeferred != null) {
+                        val rawObjects = objectDeferred.await().map { mapRawObject(it, mapper) }
+                        objects = ObjectMapper.map(rawObjects, faces.map { it.bounds })
+                    }
+                    if (segmentationDeferred != null) {
+                        // A null result means either the detector genuinely failed (caught above) or
+                        // process() legitimately returned nothing; either way keep the previous mask
+                        // (already the default for `subjectMask`) rather than reporting a hole.
+                        segmentationDeferred.await()?.let { mask ->
+                            subjectMask = buildSubjectMask(mask, mapper)
+                            lastSubjectMask = subjectMask
+                        }
+                    }
                 }
+
+                hadSubjectLastFrame = faces.isNotEmpty() || bodies.isNotEmpty()
             }
 
             val totalMs = (System.nanoTime() - totalStart) / 1_000_000
             sampler.onFrameProcessed(totalMs)
+            segmentationCadence.recordLatency(totalMs)
 
             _frames.tryEmit(
                 FrameAnalysis(
@@ -184,10 +283,22 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
                     faces = faces,
                     bodies = bodies,
                     stats = stats,
+                    objects = objects,
+                    subjectMask = subjectMask,
                     orientation = orientationSensor.current,
                     isFrontCamera = front,
                     analysisLatencyMs = totalMs,
-                    detectorTimings = mapOf("faces" to faceMs, "pose" to poseMs, "stats" to statsMs, "total" to totalMs),
+                    detectorTimings = mapOf(
+                        "faces" to faceMs,
+                        "pose" to poseMs,
+                        "objects" to objectMs,
+                        "segmentation" to segmentationMs,
+                        "stats" to statsMs,
+                        "total" to totalMs,
+                        // Not a wall-time: accepted frames since the reported subjectMask was last
+                        // refreshed (0 = refreshed this frame). See SegmentationCadence's KDoc.
+                        "mask_age" to segmentationCadence.maskAgeFrames.toLong(),
+                    ),
                 ),
             )
         } catch (t: Throwable) {
@@ -326,12 +437,73 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
         )
     }
 
+    /**
+     * Maps an ML Kit object-detection result (rotated-full pixel space, per [ObjectDetector]'s
+     * contract — same space as [Face.getBoundingBox]) to a [RawDetectedObject] in normalized,
+     * frame-clamped coordinates. Filtering/categorization happens separately in [ObjectMapper] so it
+     * stays unit-testable without a real ML Kit `DetectedObject`.
+     */
+    private fun mapRawObject(obj: com.google.mlkit.vision.objects.DetectedObject, mapper: FrameCoordinateMapper): RawDetectedObject {
+        val box = obj.boundingBox
+        val bounds = mapper
+            .rotatedFullRectToNormalized(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat())
+            .clampToFrame()
+        val topLabel = obj.labels.maxByOrNull { it.confidence }
+        return RawDetectedObject(
+            bounds = bounds,
+            trackingId = obj.trackingId,
+            labelText = topLabel?.text,
+            labelConfidence = topLabel?.confidence,
+        )
+    }
+
+    /**
+     * Converts an ML Kit raw-size [SegmentationMask] (a direct `ByteBuffer` of per-pixel float
+     * confidences, row-major, in rotated-full pixel space) into a 32x32 [SubjectMask] via
+     * [MaskDownsampler]. The `ByteBuffer` -> `FloatArray` copy reuses [maskFloatScratch] (this
+     * happens only on the frames [SegmentationCadence] actually runs the segmenter, i.e. every 3rd-6th
+     * accepted frame, not every frame) but the *output* grid is always a fresh array: the returned
+     * [SubjectMask] is a stable value that [lastSubjectMask] and downstream callers may hold across
+     * several subsequent frames (while segmentation is off-cadence), so it must never alias a buffer
+     * this class goes on to mutate for a later frame.
+     */
+    private fun buildSubjectMask(mask: SegmentationMask, mapper: FrameCoordinateMapper): SubjectMask {
+        val width = mask.width
+        val height = mask.height
+        val needed = width * height
+        val floats = maskFloatScratch.takeIf { it.size >= needed } ?: FloatArray(needed).also { maskFloatScratch = it }
+        val buffer = mask.buffer
+        buffer.rewind()
+        // ML Kit's segmentation buffers are populated by native code in the platform's native byte
+        // order; this matches the reference integration pattern (read via a float view, no manual
+        // per-byte assembly).
+        buffer.order(ByteOrder.nativeOrder()).asFloatBuffer().get(floats, 0, needed)
+        val grid = MaskDownsampler.downsample(
+            source = floats,
+            sourceWidth = width,
+            sourceHeight = height,
+            mapper = mapper,
+            gridWidth = SUBJECT_MASK_GRID_SIZE,
+            gridHeight = SUBJECT_MASK_GRID_SIZE,
+            out = FloatArray(SUBJECT_MASK_GRID_SIZE * SUBJECT_MASK_GRID_SIZE),
+        )
+        return SubjectMask(SUBJECT_MASK_GRID_SIZE, SUBJECT_MASK_GRID_SIZE, grid)
+    }
+
     private fun getFaceDetector(): FaceDetector = synchronized(detectorLock) {
         faceDetector ?: FaceDetection.getClient(faceDetectorOptions).also { faceDetector = it }
     }
 
     private fun getPoseDetector(): PoseDetector = synchronized(detectorLock) {
         poseDetector ?: PoseDetection.getClient(poseDetectorOptions).also { poseDetector = it }
+    }
+
+    private fun getObjectDetector(): ObjectDetector = synchronized(detectorLock) {
+        objectDetector ?: ObjectDetection.getClient(objectDetectorOptions).also { objectDetector = it }
+    }
+
+    private fun getSegmenter(): Segmenter = synchronized(detectorLock) {
+        segmenter ?: Segmentation.getClient(segmenterOptions).also { segmenter = it }
     }
 
     // --- FrameAnalysisSource -----------------------------------------------------------------
@@ -348,10 +520,23 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
         poseDetectionEnabled = enabled
     }
 
+    // --- VisionFeatureToggles ----------------------------------------------------------------
+
+    override fun setObjectDetectionEnabled(enabled: Boolean) {
+        objectDetectionEnabled = enabled
+    }
+
+    override fun setSegmentationEnabled(enabled: Boolean) {
+        segmentationEnabled = enabled
+        if (!enabled) lastSubjectMask = null
+    }
+
     override fun start() {
         synchronized(detectorLock) {
             if (faceDetector == null) faceDetector = FaceDetection.getClient(faceDetectorOptions)
             if (poseDetector == null) poseDetector = PoseDetection.getClient(poseDetectorOptions)
+            if (objectDetector == null) objectDetector = ObjectDetection.getClient(objectDetectorOptions)
+            if (segmenter == null) segmenter = Segmentation.getClient(segmenterOptions)
         }
         orientationSensor.start()
     }
@@ -363,11 +548,16 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource {
             faceDetector = null
             poseDetector?.close()
             poseDetector = null
+            objectDetector?.close()
+            objectDetector = null
+            segmenter?.close()
+            segmenter = null
         }
     }
 
     companion object {
         private const val GAZE_CENTER_THRESHOLD_DEGREES = 12f
+        private const val SUBJECT_MASK_GRID_SIZE = MaskDownsampler.DEFAULT_GRID_SIZE
 
         private val POSE_LANDMARK_MAP: Map<Int, BodyLandmarkType> = mapOf(
             PoseLandmark.NOSE to BodyLandmarkType.NOSE,
