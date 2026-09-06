@@ -1,6 +1,7 @@
 package com.compositioncoach.app.ui.settings
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,11 +10,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -22,102 +25,145 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.compositioncoach.app.settings.description
 import com.compositioncoach.app.settings.label
 import com.compositioncoach.app.ui.theme.OnSurface
-import com.compositioncoach.app.ui.theme.Surface
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.SceneIntent
 
-private const val SEGMENTED_ROW_MAX_OPTIONS = 4
+/** Every settings row is this tall, with a 48dp minimum touch target inside it (`docs/APP_UX.md`). */
+val SETTINGS_ROW_HEIGHT = 56.dp
 
-/** A titled, one-line-summarized group card — the container every settings section lives in. */
+/** The screen's single horizontal gutter, so labels, controls and the footer all line up. */
+val SETTINGS_GUTTER = 20.dp
+
+/**
+ * A settings row: a label (plus an optional one-line subtitle, used only where the label isn't
+ * self-explanatory) on the left, and [control] on the right. 56dp tall, so the whole screen reads as one
+ * even rhythm rather than as a stack of differently-sized cards.
+ */
 @Composable
-fun SettingsCard(title: String, summary: String, content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier
+fun SettingsRow(
+    label: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    enabled: Boolean = true,
+    control: @Composable () -> Unit,
+) {
+    Row(
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Surface)
-            .padding(16.dp),
+            .heightIn(min = SETTINGS_ROW_HEIGHT)
+            .padding(horizontal = SETTINGS_GUTTER),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = OnSurface)
-        Text(
-            summary,
-            style = MaterialTheme.typography.bodySmall,
-            color = OnSurface.copy(alpha = 0.6f),
-            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp),
-        )
-        content()
+        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) OnSurface else OnSurface.copy(alpha = 0.4f),
+            )
+            if (subtitle != null) {
+                Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = OnSurface.copy(alpha = 0.6f))
+            }
+        }
+        control()
     }
 }
 
-/** [SingleChoiceSegmentedButtonRow] when the options fit on one row without crowding, chips otherwise. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SceneIntentSelector(selected: SceneIntent, onChange: (SceneIntent) -> Unit) {
-    val options = SceneIntent.entries
-    if (options.size <= SEGMENTED_ROW_MAX_OPTIONS) {
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            options.forEachIndexed { index, intent ->
-                SegmentedButton(
-                    selected = selected == intent,
-                    onClick = { onChange(intent) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                    label = { Text(intent.label) },
-                )
-            }
-        }
-    } else {
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            options.forEach { intent ->
-                FilterChip(selected = selected == intent, onClick = { onChange(intent) }, label = { Text(intent.label) })
-            }
-        }
-    }
-}
-
-/** A settings switch row; [subtitle], when given, is a smaller descriptive line under [label]. At least
- * 48dp tall so the switch's tap target always meets the minimum, even for a one-line row. */
+/** A [SettingsRow] whose control is a switch; the whole row toggles it. */
 @Composable
 fun SwitchRow(
     label: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
     subtitle: String? = null,
     enabled: Boolean = true,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    SettingsRow(
+        label = label,
+        subtitle = subtitle,
+        enabled = enabled,
+        modifier = modifier.clickable(enabled = enabled, role = Role.Switch) { onCheckedChange(!checked) },
     ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            if (subtitle != null) {
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = OnSurface.copy(alpha = 0.6f))
-            }
-        }
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 
+/** A section label above a control that needs the full width (the two segmented pickers). */
 @Composable
-fun GuidanceLevelRow(level: GuidanceLevel, selected: Boolean, onClick: () -> Unit) {
+fun SettingsSectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyLarge,
+        color = OnSurface,
+        modifier = modifier.padding(start = SETTINGS_GUTTER, end = SETTINGS_GUTTER, top = 12.dp, bottom = 6.dp),
+    )
+}
+
+/**
+ * Shooting mode, as chips — the same DataStore value the camera's mode strip writes, kept here for
+ * discoverability. Six modes don't fit a segmented row on a phone, so they scroll horizontally as chips.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SceneIntentSelector(selected: SceneIntent, onChange: (SceneIntent) -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = SETTINGS_GUTTER),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Column(modifier = Modifier.padding(start = 4.dp)) {
-            Text(level.label(), style = MaterialTheme.typography.bodyLarge)
-            Text(level.description(), style = MaterialTheme.typography.bodySmall, color = OnSurface.copy(alpha = 0.6f))
+        SceneIntent.entries.forEach { intent ->
+            FilterChip(
+                selected = selected == intent,
+                onClick = { onChange(intent) },
+                label = { Text(intent.label) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            )
         }
+    }
+}
+
+/** Guidance level, as the three-way segmented control the spec asks for. */
+@Composable
+fun GuidanceLevelSelector(selected: GuidanceLevel, onChange: (GuidanceLevel) -> Unit, modifier: Modifier = Modifier) {
+    val options = GuidanceLevel.entries
+    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth().padding(horizontal = SETTINGS_GUTTER)) {
+        options.forEachIndexed { index, level ->
+            SegmentedButton(
+                selected = selected == level,
+                onClick = { onChange(level) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                label = { Text(level.label()) },
+            )
+        }
+    }
+}
+
+/** The "More" disclosure header: a 56dp row that expands the advanced settings below it. */
+@Composable
+fun MoreHeader(expanded: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    SettingsRow(
+        label = "More",
+        modifier = modifier.clickable(role = Role.Button, onClick = onToggle),
+    ) {
+        Icon(
+            imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+            contentDescription = if (expanded) "Collapse more settings" else "Expand more settings",
+            tint = OnSurface,
+        )
+    }
+}
+
+/** Wraps the collapsed "More" content so every caller animates it the same way. */
+@Composable
+fun MoreContent(expanded: Boolean, content: @Composable () -> Unit) {
+    AnimatedVisibility(visible = expanded) {
+        Column(Modifier.fillMaxWidth()) { content() }
     }
 }

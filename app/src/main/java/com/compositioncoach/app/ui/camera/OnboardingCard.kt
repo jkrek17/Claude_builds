@@ -23,9 +23,9 @@ import com.compositioncoach.app.ui.theme.OnScrim
 import com.compositioncoach.app.ui.theme.Scrim
 
 /**
- * A single dismissible card shown once, on first launch after the camera permission is granted:
- * "Point at a subject. Follow the arrow. Shoot when it turns green." Dismissing it (or shooting at all —
- * see [CameraViewModel.onOnboardingDismissed]) persists `onboarding_seen` so it never shows again.
+ * The whole of first-run onboarding: one dismissible card over the first camera session reading
+ * "Point · Follow the cue · Shoot when green", with a "Got it" button. Dismissing it persists
+ * `onboarding_seen` (see [CameraViewModel.onOnboardingDismissed]) so it is never shown again.
  */
 @Composable
 fun OnboardingCard(onDismiss: () -> Unit, modifier: Modifier = Modifier) {

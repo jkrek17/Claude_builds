@@ -3,13 +3,25 @@
     <string name="app_name">Composition Coach</string>
 
     <string name="permission_camera_title">Camera access needed</string>
-    <string name="permission_camera_body">Composition Coach needs the camera to see your framing and
-        coach it — nothing ever leaves your phone.</string>
+    <string name="permission_camera_body">Composition Coach needs the camera to coach your framing.
+        Nothing leaves your phone.</string>
     <string name="permission_allow_camera">Allow camera</string>
     <string name="permission_open_settings">Open settings</string>
 
-    <string name="shooting_mode_description">Tell the coach what you\'re shooting. Auto detects it from the scene.</string>
+    <string name="settings_shooting_mode">Shooting mode</string>
+    <string name="settings_guidance">Guidance</string>
+    <string name="settings_show_score">Show score</string>
+    <string name="settings_grid">Grid</string>
+    <string name="settings_composition_guidance">Composition guidance</string>
+    <string name="settings_composition_guidance_subtitle">Turn the coach off entirely and shoot plain</string>
+    <string name="settings_battery_saver">Battery saver</string>
+    <string name="settings_battery_saver_subtitle">Slower analysis, subject mask off</string>
+    <string name="settings_detect_objects">Detect objects</string>
+    <string name="settings_subject_mask">Subject mask</string>
+    <string name="settings_body_detection">Body detection</string>
+    <string name="settings_developer_mode">Developer mode</string>
+    <string name="settings_privacy_footer">All analysis runs on your device.</string>
 
-    <string name="onboarding_message">Point at a subject. Follow the arrow. Shoot when it turns green.</string>
+    <string name="onboarding_message">Point · Follow the cue · Shoot when green</string>
     <string name="onboarding_dismiss">Got it</string>
 </resources>

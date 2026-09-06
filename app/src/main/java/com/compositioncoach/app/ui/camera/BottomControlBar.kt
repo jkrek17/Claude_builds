@@ -1,9 +1,11 @@
 package com.compositioncoach.app.ui.camera
 
 import android.net.Uri
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -15,13 +17,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.outlined.Cameraswitch
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -35,7 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -49,52 +52,107 @@ import com.compositioncoach.app.ui.theme.OnScrim
 import com.compositioncoach.app.ui.theme.Scrim
 import kotlinx.coroutines.delay
 
+/** How long the quiet-state check mark stays beside the shutter. */
+private const val QUIET_CHECK_MS = 1_000L
+
 /**
  * Bottom transparent control row, Pixel-style: a gallery thumbnail (opens the last photo), the shutter
- * (flash/mode/settings live in [CameraTopBar] instead), and the lens switch.
+ * with its readiness arc, and the lens switch. Flash and settings live in [CameraTopBar]; the mode strip
+ * sits directly above this row.
  *
  * [deviceRotationDegrees] rotates the thumbnail, shutter and lens-switch icon in place (each wrapped in
- * its own [RotatedChrome]) so they stay upright to the person holding the phone — see [CameraTopBar]'s
- * matching KDoc.
+ * its own [RotatedChrome]) so they stay upright to the person holding the phone, while the row itself
+ * never moves.
  */
 @Composable
 fun BottomControlBar(
     isCapturing: Boolean,
     isShootReady: Boolean,
+    score: Int,
     lastPhotoUri: Uri?,
     onShutterClick: () -> Unit,
     onSwitchLensClick: () -> Unit,
     onOpenGallery: () -> Unit,
     deviceRotationDegrees: Int = 0,
+    awaitingSubject: Boolean = false,
+    showQuietCheck: Boolean = false,
+    animationsEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 24.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
-            GalleryThumbnail(photoUri = lastPhotoUri, onClick = onOpenGallery)
-        }
-
-        RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
-            ShutterButton(isCapturing = isCapturing, isShootReady = isShootReady, onClick = onShutterClick)
-        }
-
-        Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
-                IconButton(onClick = onSwitchLensClick, enabled = !isCapturing) {
-                    Icon(imageVector = Icons.Filled.Cameraswitch, contentDescription = "Switch camera", tint = OnScrim)
+                GalleryThumbnail(photoUri = lastPhotoUri, onClick = onOpenGallery)
+            }
+
+            RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
+                ShutterButton(
+                    isCapturing = isCapturing,
+                    isShootReady = isShootReady,
+                    score = score,
+                    awaitingSubject = awaitingSubject,
+                    animationsEnabled = animationsEnabled,
+                    onClick = onShutterClick,
+                )
+            }
+
+            Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
+                    IconButton(onClick = onSwitchLensClick, enabled = !isCapturing) {
+                        Icon(imageVector = Icons.Outlined.Cameraswitch, contentDescription = "Switch camera", tint = OnScrim)
+                    }
                 }
             }
         }
+
+        QuietStateCheck(
+            visible = showQuietCheck,
+            animationsEnabled = animationsEnabled,
+            modifier = Modifier.align(Alignment.Center).offset(x = 62.dp),
+        )
     }
 }
 
 /**
- * A 44dp rounded-square thumbnail of [photoUri], the last photo captured this session — tapping opens it.
- * Shows a plain gallery-icon placeholder when there is no photo yet (fresh install, or the hook that would
- * supply it isn't wired — see [CameraScreen]/`app/README.md` for the exact source of [photoUri]).
+ * The quiet state's acknowledgement: a 20dp check mark beside the shutter for a second when advice clears
+ * and the framing is already good — "hold this framing", said without words. It carries a content
+ * description so TalkBack users get the same acknowledgement.
+ */
+@Composable
+private fun QuietStateCheck(visible: Boolean, animationsEnabled: Boolean, modifier: Modifier = Modifier) {
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            shown = true
+            delay(QUIET_CHECK_MS)
+            shown = false
+        } else {
+            shown = false
+        }
+    }
+    val fadeMs = motionDuration(Motion.CROSSFADE_MS, animationsEnabled)
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(fadeMs)),
+        exit = fadeOut(tween(fadeMs)),
+        modifier = modifier,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Check,
+            contentDescription = "Framing looks good, hold it",
+            tint = Accent.Ready,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+/**
+ * A 44dp rounded-square thumbnail of [photoUri], the last photo captured — tapping opens it. Shows a plain
+ * gallery-icon placeholder when there is no photo yet.
  */
 @Composable
 private fun GalleryThumbnail(photoUri: Uri?, onClick: () -> Unit) {
@@ -117,79 +175,7 @@ private fun GalleryThumbnail(photoUri: Uri?, onClick: () -> Unit) {
                 modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)),
             )
         } else {
-            Icon(imageVector = Icons.Filled.PhotoLibrary, contentDescription = null, tint = OnScrim.copy(alpha = 0.6f))
-        }
-    }
-}
-
-private const val CAPTURE_FLASH_MS = 60L
-
-/**
- * A 72dp shutter with a press-scale animation (90% while held) and a brief white flash overlay the instant
- * a capture starts — the two together are what make the shutter feel like it actually fired, the way a
- * dedicated camera's does. The ring animates to [Accent.Ready] with a soft outer glow once [isShootReady],
- * and back to white the instant framing drops out of it. Disabled (dimmed, no ripple) while capturing.
- * Wrapped in [RotatedChrome] by [BottomControlBar] like every other control in this row — imperceptible
- * on this plain circular ring, but kept consistent in case a future iteration adds a directional glyph.
- */
-@Composable
-private fun ShutterButton(isCapturing: Boolean, isShootReady: Boolean, onClick: () -> Unit) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(targetValue = if (pressed) 0.9f else 1f, animationSpec = tween(Motion.PRESS_MS), label = "shutterScale")
-    val ringColor by animateColorAsState(if (isShootReady) Accent.Ready else OnScrim, animationSpec = tween(250), label = "shutterRing")
-    val glowAlpha by animateFloatAsState(if (isShootReady) 1f else 0f, animationSpec = tween(250), label = "shutterGlow")
-
-    var showFlash by remember { mutableStateOf(false) }
-    LaunchedEffect(isCapturing) {
-        if (isCapturing) {
-            showFlash = true
-            delay(CAPTURE_FLASH_MS)
-            showFlash = false
-        }
-    }
-    val flashAlpha by animateFloatAsState(
-        targetValue = if (showFlash) 1f else 0f,
-        animationSpec = tween(CAPTURE_FLASH_MS.toInt() / 2),
-        label = "captureFlash",
-    )
-
-    Box(modifier = Modifier.size(96.dp).scale(scale), contentAlignment = Alignment.Center) {
-        // Soft outer glow: a few widening, thinning rings rather than a real blur (cheap, and identical
-        // on every API level — Modifier.blur needs API 31+ to actually blur).
-        if (glowAlpha > 0f) {
-            Canvas(modifier = Modifier.size(96.dp)) {
-                val steps = 3
-                for (i in steps downTo 1) {
-                    drawCircle(
-                        color = ringColor.copy(alpha = glowAlpha * 0.12f * i / steps),
-                        radius = size.minDimension / 2f - (4 - i).dp.toPx(),
-                    )
-                }
-            }
-        }
-        Canvas(modifier = Modifier.size(72.dp)) {
-            drawCircle(
-                color = ringColor,
-                radius = size.minDimension / 2f - 4.dp.toPx(),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4.dp.toPx()),
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(58.dp)
-                .clip(CircleShape)
-                .background(OnScrim.copy(alpha = if (isCapturing) 0.5f else 0.95f))
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    enabled = !isCapturing,
-                    onClick = onClick,
-                )
-                .semantics { contentDescription = if (isShootReady) "Shutter, ready to shoot" else "Shutter" },
-        )
-        if (flashAlpha > 0f) {
-            Box(modifier = Modifier.size(58.dp).clip(CircleShape).background(OnScrim.copy(alpha = flashAlpha)))
+            Icon(imageVector = Icons.Outlined.PhotoLibrary, contentDescription = null, tint = OnScrim.copy(alpha = 0.6f))
         }
     }
 }
@@ -201,10 +187,12 @@ private fun BottomControlBarPreview() {
         BottomControlBar(
             isCapturing = false,
             isShootReady = false,
+            score = 64,
             lastPhotoUri = null,
             onShutterClick = {},
             onSwitchLensClick = {},
             onOpenGallery = {},
+            animationsEnabled = false,
         )
     }
 }
@@ -216,10 +204,30 @@ private fun BottomControlBarReadyPreview() {
         BottomControlBar(
             isCapturing = false,
             isShootReady = true,
+            score = 93,
             lastPhotoUri = null,
             onShutterClick = {},
             onSwitchLensClick = {},
             onOpenGallery = {},
+            animationsEnabled = false,
+        )
+    }
+}
+
+@Preview(name = "Bottom bar, quiet check", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun BottomControlBarQuietPreview() {
+    CompositionCoachTheme {
+        BottomControlBar(
+            isCapturing = false,
+            isShootReady = false,
+            score = 76,
+            lastPhotoUri = null,
+            onShutterClick = {},
+            onSwitchLensClick = {},
+            onOpenGallery = {},
+            showQuietCheck = true,
+            animationsEnabled = false,
         )
     }
 }

@@ -320,6 +320,19 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
      */
     suspend fun loadThumbnail(uri: Uri, sizePx: Int): Bitmap? = container.captureRepository.loadThumbnail(uri, sizePx)
 
+    // --- Shooting mode -------------------------------------------------------------------------------------
+
+    /**
+     * The mode strip above the shutter writes the *same* DataStore value Settings > Shooting mode does, so
+     * the two controls can never disagree: this is a pass-through to `SettingsRepository.setSceneIntent`,
+     * and the change comes back to the UI through the settings flow this view model already collects
+     * (which is also what resets the smoother on a mode change — see `init`).
+     */
+    fun onSceneIntentSelected(intent: SceneIntent) {
+        if (_uiState.value.settings.sceneIntent == intent) return
+        viewModelScope.launch { container.settingsRepository.setSceneIntent(intent) }
+    }
+
     // --- Onboarding ----------------------------------------------------------------------------------------
 
     fun onOnboardingDismissed() {

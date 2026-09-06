@@ -17,61 +17,115 @@ CameraPermissionGate
 ```
 
 * **camera** — `CameraScreen` + `CameraViewModel`. Pixel-style **4:3 layout**: the `PreviewView` and
-  *every* overlay that does normalized-to-pixel geometry math (`ThirdsGridOverlay`, `CompositionOverlay`,
-  `DebugGeometryOverlay`, `FocusRingOverlay`, `CameraTopBar`, `ScoreBadge`, `GuidanceBanner`,
-  `EmptySceneHint`, `OnboardingCard`, `DebugOverlay`) live inside one shared `Modifier.aspectRatio(3f/4f)`
-  `Box`, full width, anchored below the status bar — that shared box, plus `PreviewView` staying
-  `FILL_CENTER`, is what keeps `OverlayMapper`'s plain normalized-to-pixel multiply correct (see its class
-  doc, and "Device rotation (Pixel style)" below for the rotation step that now precedes that multiply);
-  the rest of the screen is plain black, holding `ZoomChip` and `BottomControlBar`.
-  `CompositionOverlay` draws the target ring / horizon level / directional arrow — the arrow anchors to
-  `DetectedSubject.anchorPoint` (already the box centre for an `OBJECT`-kind primary subject), points the
-  way the *camera* should move (`Direction.RIGHT` → arrow points right, matching `ReframeVector`'s "dx>0 =
-  pan right" convention), pulses a gentle 4dp/900ms translation, and is hidden together with the target
-  ring whenever there's nothing to correct (`Direction.NONE` or shoot-ready); the horizon's level indicator
-  snaps to `Accent.Ready` green and fades out 1.5s after becoming level; rotation advice shows a curved
-  arrow around the level indicator instead — plus a fading, restrained 1dp/45%-white rounded outline of the
-  headline recommendation's `region`, when it has one and framing isn't shoot-ready yet.
-  `DebugGeometryOverlay` + `DebugOverlay` (debug mode only — see "Debug mode guide" below). `ScoreBadge`
-  and `GuidanceBanner` (both fade to 30% for ~1s right after a capture, see
-  `CameraUiState.postCaptureFadeActive` below); the badge uses tabular-figure numerals and a distinct
-  shoot-ready state ("SHOOT" in `Accent.Ready`, the number smaller beneath); the banner shows a
-  `DirectionIcon` (a real Material arrow, not a text glyph) instead of `GuidanceFormatter.glyphFor`'s
-  Unicode character, reserves a fixed height for its headline so a longer instruction never resizes it, is
-  capped to at most 3 lines total (headline, COACH-only reason, one secondary line — see "Device rotation
-  (Pixel style)" below), and never exceeds 85% of the screen's width in portrait (60% of the preview's
-  height in landscape). `EmptySceneHint` ("Point at a subject") shows under the badge
-  before any scene is classified, and lingers 3s after one appears before fading out. `CameraTopBar` is now
-  a translucent strip over the *top* of the preview carrying flash, the "DEBUG" chip, the shooting-mode chip
-  (tap opens Settings), and the settings gear — flash moved here from the bottom bar, Pixel-style.
-  `BottomControlBar` (in the black area below the preview) is gallery thumbnail — shutter — lens switch: the
-  72dp shutter has a 90%-scale press animation, a brief white capture flash, and its ring animates to
-  `Accent.Ready` with a soft glow once shoot-ready; the 44dp gallery thumbnail shows the last captured photo
-  (see "Gallery thumbnail" below) and opens it with `ACTION_VIEW`. `ZoomChip` (pinch-zoom ratio, e.g.
-  "1.0×", fades out 1.2s after the last pinch delta) sits above the shutter row. `FocusRingOverlay`
-  (tap-to-focus ring, fades in over 150ms / out after 800ms), `OnboardingCard` (a single dismissible card
-  shown once on first launch, see "Onboarding" below), and `CameraErrorOverlay` for camera init failures
-  (shown for any `CameraBindResult.Failure`, including an `IllegalStateException` from CameraX binding —
-  `Retry` clears the error and re-triggers the bind `DisposableEffect`). Volume-down also fires the shutter
+  *every* overlay that does normalized-to-pixel geometry math (`ThirdsGridOverlay`, `CoachingLayer`,
+  `DebugGeometryOverlay`, `FocusRingOverlay`, `CameraTopBar`, `OnboardingCard`, `DebugOverlay`) live inside
+  one shared `Modifier.aspectRatio(3f/4f)` `Box`, full width, anchored below the status bar — that shared
+  box, plus `PreviewView` staying `FILL_CENTER`, is what keeps `OverlayMapper`'s plain normalized-to-pixel
+  multiply correct (see its class doc, and "Device rotation (Pixel style)" below for the rotation step that
+  precedes that multiply). `CameraScreen` itself holds no coaching logic: it owns camera plumbing, the
+  gestures, and the four zones `docs/APP_UX.md` specifies — top strip, preview, mode strip, bottom bar —
+  with everything below the preview in `CameraBottomZone` and everything over it in `CoachingLayer` (see
+  "Coaching layer" below).
+  `CameraTopBar` is a translucent strip over the top of the preview carrying flash (left) and the settings
+  gear (right), and nothing else but the "DEBUG" chip in developer mode — the shooting-mode chip that used
+  to live here is gone, since the mode strip above the shutter is the control for it now.
+  `CameraBottomZone` stacks, upward from the bottom edge: the shoot-ready "SHOOT" chip, `ModeStrip`
+  (`Auto · Portrait · Group · Landscape · Architecture · Object`, tap or horizontal swipe, selected mode
+  centred, white and slightly larger, light haptic tick on change — writes the *same* DataStore value as
+  Settings > Shooting mode, via `CameraViewModel.onSceneIntentSelected`), and `BottomControlBar` (gallery
+  thumbnail — shutter — lens switch). `ShutterButton` is a 72dp shutter whose outer ring is the readiness
+  arc (`ReadinessArc`/`drawReadinessArc`), with a 90%-scale press animation and a brief white capture flash;
+  a 20dp check mark blinks beside it for a second in the quiet state. `ZoomChip` (pinch-zoom ratio, fades
+  1.2s after the last pinch delta) and the "Analysis unavailable" chip sit at the top of that black area.
+  `FocusRingOverlay` (tap-to-focus ring), `OnboardingCard` (one dismissible card on first launch, see
+  "Onboarding"), and `CameraErrorOverlay` for camera init failures (`Retry` clears the error and
+  re-triggers the bind `DisposableEffect`) complete the screen. Volume-down also fires the shutter
   (`MainActivity.onKeyDown` → `AppContainer.volumeDownEvents`, a `SharedFlow` the screen collects).
 * **privacy** — `PrivacyScreen`. A plain scrolling Compose screen showing `PrivacyPolicyText` (same
   wording as `docs/PRIVACY_POLICY.md`) — no network fetch, since the app has none.
-* **review** — `ReviewScreen`. Full-bleed captured photo (Coil), letterboxed to the same 4:3 as the live
-  preview, with a bottom card: the score (large, tabular figures), the scene/mode chips, a "Subject: object"
-  line when `CompositionResult.primarySubject.kind` is `OBJECT`, and up to two strengths (`Accent.Ready`
-  dot) and two improvements (`Accent.Warn` dot) in plain sentences — `ReviewFormatter.trim` always caps
-  each list at `TRIMMED_COUNT`, independently of the other list's length. Three actions: **Retake**
-  (outlined, deletes the photo via `CaptureRepository` first), **Share** (icon, `ACTION_SEND` with the
-  photo's `Uri`), **Keep** (filled, pops back to camera). The system back gesture behaves exactly like
-  **Keep** (`BackHandler`) — a captured photo is never silently discarded by backing out of this screen.
-* **settings** — `SettingsScreen` + `SettingsViewModel`, backed by `SettingsRepository` (DataStore),
-  grouped into titled, one-line-summarized `SettingsCard`s (`SettingsComponents.kt`): **Shooting mode**
-  (a `SingleChoiceSegmentedButtonRow` when `SceneIntent` has few enough entries to fit one row without
-  crowding, chips otherwise — `SceneIntentSelector`), **Guidance** (the guidance master switch, show-score,
-  and the `GuidanceLevel` picker), **Overlays** (the rule-of-thirds grid), **Detection** ("Detect objects",
-  "Subject mask", pose detection — controls `VisionFeatureToggles`, see below), **Performance** (battery
-  saver, debug mode), and **About** (app name, `BuildConfig.VERSION_NAME`/`VERSION_CODE`, the "all analysis
-  runs on your device" line, and a button into `PrivacyScreen`). Every switch row is at least 48dp tall.
+* **review** — `ReviewScreen` + `ReviewCard`. The captured photo (Coil) letterboxed on black at its own
+  aspect ratio, with a card beneath: the shutter's readiness arc reused as a 56dp score ring with the
+  number inside (the *same* `drawReadinessArc` the shutter uses, so the two rings can never drift apart),
+  the mode chip beside it ("Auto · Portrait" when the mode was Auto, else the mode's own label), a
+  "Subject: object" line when `CompositionResult.primarySubject.kind` is `OBJECT`, and up to two strengths
+  (`Accent.Ready` dot) and two improvements (`Accent.Warn` dot) as plain sentences — `ReviewFormatter.trim`
+  caps each list at `TRIMMED_COUNT` independently of the other. This is the one screen where sentences
+  belong; the live camera says everything in three words. Three actions: **Retake** (outlined, deletes the
+  photo via `CaptureRepository` first), **Share** (icon, `ACTION_SEND`), **Keep** (filled, pops back). The
+  system back gesture and the top-left arrow both behave exactly like **Keep** (`BackHandler`) — a captured
+  photo is never silently discarded by backing out of this screen.
+* **settings** — `SettingsScreen` + `SettingsViewModel`, backed by `SettingsRepository` (DataStore). One
+  screen, four primary controls, everything else behind a collapsible **More** (progressive disclosure per
+  `docs/APP_UX.md`): **Shooting mode** (`SceneIntentSelector` chips), **Guidance** (Minimal · Balanced ·
+  Coach, `GuidanceLevelSelector`), **Show score**, **Grid**. "More" holds Composition guidance, Battery
+  saver, Detect objects, Subject mask, Body detection and Developer mode. The footer states "All analysis
+  runs on your device." with a Privacy link and the version. Every row is `SETTINGS_ROW_HEIGHT` (56dp) with
+  48dp touch targets (`SettingsComponents.kt`).
+  Two rows in "More" are **not** in the spec's table — "Composition guidance" (`guidanceEnabled`) and "Body
+  detection" (`poseDetectionEnabled`). Both are persisted settings with real behaviour behind them, and a
+  persisted toggle with no UI is a trap (someone who turned coaching off would have no way back), so they
+  are disclosed rather than dropped. No settings key was removed or changed meaning.
+
+## Coaching layer (`CoachingLayer`, `docs/COACHING_UI.md`)
+
+Spatial first, minimal text: the photographer is shown *where to move*, and words are only ever a label on
+the cue. `GuidanceFormatter` decides **what** each piece says; `CoachingLayer` decides **where** it goes;
+no composable re-derives either.
+
+* **Readiness arc** — `ReadinessArc` (pure: sweep and colour) + `drawReadinessArc` (the shared drawing).
+  Sweeps clockwise from 8 o'clock (150° in Compose's from-3-o'clock, clockwise-positive angles), closing
+  the circle at 100. White below 70, `Accent.Warn` to 87, `Accent.Ready` at 88+; shoot-ready always paints
+  the full green ring with a soft outer glow, whatever the number says. Dims to 30% while
+  `awaitingSubject`, since the score behind it is a held, stale value.
+* **Primary cue** — exactly one, chosen by `GuidanceFormatter.cueFor`:
+
+  | Headline | Cue |
+  |---|---|
+  | LEFT / RIGHT / UP / DOWN | `EdgeChevron` — 64dp, on the *physical* edge that direction points at, breathing 0.55↔0.8 alpha over 1.2s |
+  | CLOSER / BACK | `CornerBrackets` — four 18dp brackets easing 8dp inward / outward over 1.4s |
+  | ROTATE_* (or a directionless HORIZON) | `BubbleLevel` — fixed ticks plus a 48dp line rotated by the smoothed roll, snapping green when level and fading 1.5s later |
+  | anything else | chip only |
+
+  Which *screen* edge a chevron anchors on comes from `CueEdge.forDirection`, which rotates the
+  direction's own unit vector through `OverlayMapper.rotateVectorToDisplay` — the same call every piece of
+  overlay geometry goes through — rather than a hand-written table that could drift from the truth table.
+  At `ROTATION_90` (right edge up) physical right is the screen's **bottom**, so that is where the "move
+  right" chevron goes; `CueEdgeTest` pins all sixteen cases. A `Raise` cue puts the chevron on the
+  physical-top edge, where the score chip already lives: the *chrome stack* slides along that edge to make
+  room (`CueEdge.alignmentShiftedAlongEdge`) rather than the chevron being pushed off the edge it exists to
+  point out of — except at the screen's own top edge, where the top bar has already pushed the stack 60dp
+  clear.
+* **Cue chip** — the only live text: 1-3 words on the standard scrim, 200ms crossfade, capped at 55% of
+  the preview's short side. Attached to the chevron when there is one (12dp inside it), otherwise stacked
+  under the score chip at the physical top. It is a **polite live region** and announces a spoken sentence
+  ("Move slightly right") rather than its abbreviated words. Wording is `GuidanceFormatter.chipText`'s
+  table, verbatim from the spec, with a three-word trim of the recommendation's title as the fallback for
+  any category the table doesn't name.
+* **Score chip** — `ScoreChip`, one 32sp tabular numeral in a compact chip at the physical top, tinted by
+  tier and nothing else (no pulse, no bump). Hidden by Settings > Show score. Announces "Composition
+  score 82".
+* **Secondary advice** — `SecondaryAdviceRow`, up to two 28dp icon chips, never sentences. Tapping one at
+  Coach level replaces the cue chip with that recommendation's one-line explanation for 3s. Icons
+  (Material Symbols, outlined): horizon → horizontal rule, headroom → vertical align top, edge tension →
+  crop, background → layers, separation → contrast, balance → balance, symmetry → flip; and, for the
+  categories the spec's table doesn't name, placement → centre focus, cropping → crop free, looking room →
+  visibility, negative space → width, leading lines → timeline, scene-specific → landscape.
+* **Frame marks** — `CoachingOverlay` draws only the target ring (18dp, 1.5dp stroke, 70% white, at
+  `displayTarget`) and the region highlight (1dp, 45% white, rounded, from `displayRegion`). The old
+  subject-anchored directional arrow is **gone**: the chevron carries direction now, and nothing sits over
+  the centre of the frame except the ring.
+* **Quiet states** — no advice and a score ≥ 70: the chip clears and a check mark blinks beside the shutter
+  for a second. No scene yet: "Point at a subject", lingering 3s after a subject appears. Awaiting a
+  subject: the find-subject recommendation's title ("Looking for a face") with the arc dimmed.
+* **Guidance levels** — Minimal shows a cue only for `severity >= MEDIUM` and no secondary icons (and,
+  since the chip is a *label on* a cue, suppressing the cue suppresses its chip); Balanced shows the cue,
+  the chip and one icon; Coach shows two, tappable.
+* **Reduced motion** — `rememberAnimationsEnabled()` reads `Settings.Global.ANIMATOR_DURATION_SCALE` once
+  and is threaded down as a plain parameter (so previews and tests can pin it). At scale 0 the breathe and
+  the bracket ease stop and every transition becomes an instant cut, via `motionDuration(...)`.
+* **Feedback** — a light haptic tick on a mode change and on the shutter press; the single medium tick on
+  entering shoot-ready still comes from `CameraViewModel`'s `ShootReadyHapticTick` event (fired once per
+  entry, not per frame). No sounds.
 
 ## State flow
 
@@ -85,7 +139,7 @@ SmoothedComposition  ── sampled to ~10 Hz (kotlinx.coroutines sample())
         ▼
 CameraUiState (StateFlow)  ── pure `withX(...)` reducer functions, see CameraUiState.kt
         ▼
-CameraScreen (collectAsStateWithLifecycle) ── ScoreBadge / GuidanceBanner / overlays redraw
+CameraScreen (collectAsStateWithLifecycle) ── CoachingLayer / shutter arc / overlays redraw
 ```
 
 * **Shooting mode (`SceneIntent`)** tells the engine what the photographer says they're shooting;
@@ -98,15 +152,12 @@ CameraScreen (collectAsStateWithLifecycle) ── ScoreBadge / GuidanceBanner / 
 * **`awaitingSubject` UI state**: when `SmoothedComposition.awaitingSubject` is true (declared intent
   needs a subject — e.g. PORTRAIT — that isn't in frame yet), `displayScore` is the last meaningful
   score the engine held, not a live one, so the UI must not present it as current:
-  * `ScoreBadge(awaitingSubject = true)` renders that held number at `GuidanceFormatter.badgeAlpha`
-    (40%) with no tier colour (plain white), and shoot-ready styling ("— SHOOT", the pulse, the green
-    tier) never shows regardless of `isShootReady`.
-  * `GuidanceBanner(awaitingSubject = true)` ignores the normal primary/reason/secondary layout and
-    instead shows the single find-subject recommendation's `title` as a small line
-    (`GuidanceFormatter.awaitingSubjectTitleLine`, e.g. "Looking for a face") with its `instruction` as
-    the headline (`awaitingSubjectHeadline`, e.g. "Move closer to your subject") — no directional
-    glyph, since that recommendation carries no direction.
-  * Both are pure `GuidanceFormatter` helpers, unit-tested on the JVM without needing the real engine
+  * The readiness arc and `ScoreChip` dim to `GuidanceFormatter.AWAITING_SUBJECT_ARC_ALPHA` (30%), and
+    shoot-ready styling (the full green ring, the "SHOOT" chip) never shows regardless of `isShootReady`
+    — `GuidanceFormatter.effectiveShootReady` is the single gate for that.
+  * `CoachingLayer` shows no spatial cue at all and puts the find-subject recommendation's `title`
+    (`GuidanceFormatter.awaitingSubjectChipText`, e.g. "Looking for a face") in the cue chip instead.
+  * All of it is pure `GuidanceFormatter` logic, unit-tested on the JVM without needing the real engine
     to ever actually return `awaitingSubject = true` (see Known limitations below).
 
 * `CameraViewModel` never touches a `Context` beyond what `AppContainer` (built from
@@ -244,12 +295,14 @@ equal where physical up appears.
    frame".
 2. **Overlays rotate the *coordinates*, not the canvas.** `OverlayMapper.rotatePointToDisplay` /
    `rotateRectToDisplay` / `rotateVectorToDisplay` apply exactly the clockwise-by-`theta` rotation above
-   before the existing plain normalized-to-pixel multiply. `CompositionOverlay` (target ring, level
-   indicator, directional arrow, rotate glyph, region highlight) and `DebugGeometryOverlay` (object boxes,
-   subject boxes/landmarks, mask heat) both go through it.
-3. **Chrome counter-rotates in place by `+theta`.** Flash, the shooting-mode chip and the settings gear
-   (`CameraTopBar`), the gallery thumbnail, shutter and lens switch (`BottomControlBar`), plus the score
-   badge + guidance banner stack, each wrap in `RotatedChrome`, whose angle comes from
+   before the existing plain normalized-to-pixel multiply. `CoachingOverlay` (target ring, region
+   highlight), `CueEdge.forDirection` (which screen edge an edge chevron anchors on), `HorizonRoll`
+   (the bubble level's angle) and `DebugGeometryOverlay` (object boxes, subject boxes/landmarks, mask
+   heat) all go through it — none of them re-derives the rotation convention.
+3. **Chrome counter-rotates in place by `+theta`.** Flash and the settings gear (`CameraTopBar`), the
+   gallery thumbnail, shutter and lens switch (`BottomControlBar`), the physical-top stack (score chip,
+   bubble level, cue chip, secondary icons) and a chevron-attached cue chip each wrap in `RotatedChrome`,
+   whose angle comes from
    `OverlayMapper.uprightChromeAngleDegrees`. `rememberControlCounterRotation` tracks an ever-accumulating
    (never-wrapped) target so `animateFloatAsState`'s 250 ms tween always takes the *shorter* turn (270 -> 0
    is a +90 hop, not a -270 spin).
@@ -258,10 +311,10 @@ equal where physical up appears.
    banner rotated 90 degrees still reported its wide-short size and ran across the middle of the preview.
    `RotatedChrome` measures its content with width/height swapped at 90/270 and reports the *swapped* size
    to its parent (`RotatedChromeMath`, unit-tested). `CameraScreen` aligns that stack to whichever screen
-   edge physical up currently appears at (`chromeStackEdgeFor`: top at 0, right at `ROTATION_90`, left at
-   `ROTATION_270`, bottom at 180), so guidance never sits over the frame centre. `GuidanceBanner` is capped
-   at 3 lines and, in landscape, at 60% of the preview's *height* (its long axis once rotated) vs. 85% of
-   the screen's width in portrait.
+   edge physical up currently appears at (`chromeStackEdgeFor`, and its `CueEdge.physicalTop` twin —
+   `CueEdgeTest` pins the two to the same answer: top at 0, right at `ROTATION_90`, left at `ROTATION_270`,
+   bottom at 180), so guidance never sits over the frame centre. The cue chip is one line of 1-3 words
+   capped at 55% of the preview's short side, so a rotated chip can never become a wall of text.
 5. **Capture EXIF follows the physical rotation.** `CameraController.setCaptureRotationDegrees` sets
    `ImageCapture.targetRotation` live (no rebind needed) from `CaptureRotation.surfaceRotationFor`, called
    by `CameraScreen`'s `LaunchedEffect(uiState.deviceRotationDegrees)`. The mapping is the identity on
@@ -378,7 +431,7 @@ the vision pipeline above.
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `guidance_enabled` | bool | `true` | Master switch; off = preview only, coach never runs |
-| `show_score` | bool | `true` | Show/hide `ScoreBadge` |
+| `show_score` | bool | `true` | Show/hide `ScoreChip` (the numeric readout; the arc always shows) |
 | `show_thirds_grid` | bool | `false` | Rule-of-thirds overlay |
 | `guidance_level` | string (`GuidanceLevel` name) | `BALANCED` | MINIMAL / BALANCED / COACH |
 | `pose_detection_enabled` | bool | `true` | Forwarded to `frameSource.setPoseDetectionEnabled` |
@@ -412,8 +465,8 @@ contract `:app` otherwise depends on) every time settings change, same as the ex
 
 ## Onboarding
 
-A single dismissible `OnboardingCard` ("Point at a subject. Follow the arrow. Shoot when it turns
-green." + a "Got it" button) shows at the bottom of the camera screen whenever `onboarding_seen` is
+A single dismissible `OnboardingCard` ("Point · Follow the cue · Shoot when green" + a "Got it"
+button) shows at the bottom of the camera screen whenever `onboarding_seen` is
 false — which in practice means once, right after the camera permission is granted, since
 `CameraScreen` only ever composes past `CameraPermissionGate`. Dismissing it persists `onboarding_seen`
 via `CameraViewModel.onOnboardingDismissed()`; there is no other way to bring it back short of clearing
@@ -433,7 +486,7 @@ Enable **Settings → Debug mode**. Two extra layers appear on the camera screen
   3. every `DetectedSubject`'s box (primary subject in green, others in amber), plus face eye/nose points
      and in-frame pose landmarks.
 
-  This overlay (plus `CompositionOverlay`'s restrained region-highlight outline, see the screen map above)
+  This overlay (plus `CoachingOverlay`'s restrained region-highlight outline, see the screen map above)
   is the *only* place bounding boxes and the mask are drawn; outside debug mode, boxes never appear.
 * `DebugOverlay` — a collapsible, scrollable panel (tap the "DEBUG ▾/▸" header) listing: scene type +
   confidence + the declared shooting mode (`Intent:`), raw vs. smoothed score, engine time, FPS, last
@@ -466,16 +519,24 @@ Enable **Settings → Debug mode**. Two extra layers appear on the camera screen
 
 ## Accessibility
 
-* Every `IconButton`/clickable exposes a `contentDescription` (flash mode, switch camera, settings,
-  back, close). The shooting-mode chip in `CameraTopBar` (a `clickable` `Box`, not an `IconButton`) uses
-  `Modifier.minimumInteractiveComponentSize()` so its tap target is still ≥ 48dp even though the visible
-  pill is smaller.
-* `ScoreBadge` collapses its internal `Text`s into one `clearAndSetSemantics { contentDescription = "Composition score $score" }`
-  (or "…, ready to shoot" / the "looking for a subject" text) so TalkBack reads one clear sentence.
-* `GuidanceBanner` does the same for the instruction text, and additionally sets
-  `liveRegion = LiveRegionMode.Polite` on all three of its render paths (hold-framing hint, awaiting-subject,
-  and the normal primary/reason/secondary layout) so TalkBack announces new advice as it changes, unprompted.
-* Text over the live camera preview relies on the same `Scrim` token (black, 40% alpha) for contrast.
+* Every `IconButton`/clickable exposes a `contentDescription` (flash mode, switch camera, settings, back,
+  gallery, shutter, share, keep, the "More" disclosure, the quiet-state check mark). Small visible targets
+  that aren't `IconButton`s — the secondary advice chips — use
+  `Modifier.minimumInteractiveComponentSize()` so their tap target is still ≥ 48dp; settings rows are 56dp
+  tall with 48dp controls.
+* `ScoreChip` collapses to one `clearAndSetSemantics { contentDescription = "Composition score 82" }` and
+  is a polite live region, so TalkBack reads one clear sentence and hears a meaningful change unprompted.
+* `CueChip` is the coaching layer's live region: `liveRegion = LiveRegionMode.Polite` plus a spoken
+  description ("Move slightly right"), not the abbreviated words on screen ("Slightly right"). It is the
+  *only* element carrying the cue's meaning — chevrons, corner brackets, the bubble level and the target
+  ring / region highlight are all decorative (`clearAndSetSemantics {}`, no semantics at all), exactly as
+  `docs/COACHING_UI.md` requires.
+* Text over the live camera preview relies on the same `Scrim` token (black, 40% alpha) for contrast:
+  white on that scrim over a mid-grey frame clears 4.5:1 comfortably, and the two accents are used for
+  glyphs and rings rather than for body text.
+* Reduced motion is respected: at `Settings.Global.ANIMATOR_DURATION_SCALE == 0` the chevron breathe and
+  bracket ease stop and every transition becomes an instant cut (`rememberAnimationsEnabled` /
+  `motionDuration`).
 
 ## Design tokens (`ui/theme/`)
 
@@ -487,22 +548,23 @@ deliberately exempt — they're meant to look like instrumentation, not the prod
   non-neutral accents anywhere in the app — white/amber/green, nothing else. `Accent.Warn` also backs
   `MaterialTheme.colorScheme.primary`.
 * **`Scrim`** (black, 40% alpha — within the 35-45% range) is the one translucent-panel style used behind
-  the score badge, guidance banner, top bar, onboarding card, and zoom chip; **`ScrimStrong`** (85%) is for
-  full-screen states that must read over any photo (camera error). **`OnScrim`**/**`OnScrimMuted`** are
-  white / 70%-white text over those scrims.
-* Type scale: the score badge's numerals use tabular figures (`fontFeatureSettings = "tnum"`, via
+  the score chip, cue chip, secondary advice chips, top bar, onboarding card, review mode chip and zoom
+  chip; **`ScrimStrong`** (85%) is for full-screen states that must read over any photo (camera error).
+  **`OnScrim`**/**`OnScrimMuted`** are white / 70%-white text over those scrims.
+* Type scale: the score chip is one 32sp numeral with tabular figures (`fontFeatureSettings = "tnum"`, via
   `TextStyle`, not a bare `Text(fontSize=...)` call — Compose's `Text` has no such parameter) so a changing
-  digit count never shifts the badge's width; instruction headlines use `titleMedium`; secondary/reason
-  lines use `bodySmall` at `OnScrimMuted`. See `ui/theme/Type.kt`.
+  digit count never shifts the chip's width; the cue chip uses `titleMedium`; secondary lines use
+  `bodySmall` at `OnScrimMuted`. See `ui/theme/Type.kt`.
+* Icons are Material Symbols **outlined** (`Icons.Outlined.*` from `material-icons-extended`) everywhere in
+  the product surfaces — filled variants are not used.
 * Motion (`ui/theme/Type.kt`'s `Motion` object): state changes ease out over `Motion.STATE_CHANGE_MS`
   (220ms, inside the 180-250ms range), presses take `Motion.PRESS_MS` (120ms), crossfades take
   `Motion.CROSSFADE_MS` (200ms). No bounces/springs anywhere in the redesigned surfaces.
 
 ## Gallery thumbnail (`BottomControlBar`)
 
-`CameraUiState`/`CameraViewModel` do not carry a `lastPhotoUri` field or a `loadThumbnail` helper — that
-hook doesn't exist in this worktree (they're owned by the camera engineer's concurrent work; see the
-top-level task's file-ownership split). `AppNavGraph` wires the thumbnail *optimistically* instead: it
+`AppNavGraph` also wires the thumbnail *optimistically*, as a fallback for `CameraUiState.lastPhotoUri`
+(which is only set by a capture made in the current process): it
 collects `AppContainer.reviewStore.current` and remembers the last **non-null** `photoUri` it ever saw
 (`rememberSaveable`, so it survives process death), since `reviewStore.clear()` (called on Keep/Retake)
 would otherwise blank it the moment the user returns to the camera screen. That value is passed down as
@@ -543,9 +605,16 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
 * **Legacy storage permission (API 26-28):** `CameraScreen` requests `WRITE_EXTERNAL_STORAGE` lazily,
   right before the first capture, only on API ≤ 28. API 29+ never needs it (scoped storage via
   `MediaStore` + `RELATIVE_PATH`).
-* **No instrumentation tests** were added (not required); all tests are plain JUnit4 on the JVM
-  (`OverlayMapperTest`, `GuidanceFormatterTest`, `CameraUiStateTest`, `CoachSettingsTest`,
-  `ZoomChipFormatterTest`, `ReviewFormatterTest`). The `detect_objects`/`subject_mask`/`onboarding_seen`
+* **No instrumentation tests** were added (not required); all tests run on the JVM — plain JUnit4
+  (`OverlayMapperTest`, `RotationTruthTableTest`, `GuidanceFormatterTest`, `ReadinessArcTest`,
+  `CueEdgeTest`, `HorizonRollTest`, `ModeStripLogicTest`, `CameraUiStateTest`, `CoachSettingsTest`,
+  `ZoomChipFormatterTest`, `ReviewFormatterTest`) plus three Robolectric+Compose ones
+  (`AppLaunchTest`, `RotatedChromeRotationTest`, `CoachingLayerSmokeTest`).
+  `CoachingLayerSmokeTest` composes the real coaching layer with a hand-built `SmoothedComposition`
+  carrying a physical-RIGHT headline at rotation 0 and 90, and checks the cue chip actually travels to
+  the right edge and then to the bottom one — it drives `CoachingLayer` rather than `CameraScreen`
+  because the screen's composition comes from a live CameraX/ML Kit pipeline that cannot be faked under
+  Robolectric (`AppLaunchTest` covers that the whole Activity survives launch). The `detect_objects`/`subject_mask`/`onboarding_seen`
   settings are covered the same way the existing keys are — `CoachSettingsTest` exercises the pure
   `CoachSettings`/`effectiveSubjectMaskEnabled` logic on the JVM; `SettingsRepository` itself needs a real
   DataStore-backed `Context` (no Robolectric in this module), so its read/write plumbing is exercised by

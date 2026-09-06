@@ -10,9 +10,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -51,7 +48,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.camera.CameraController
 import com.compositioncoach.app.ui.theme.Background
-import com.compositioncoach.app.ui.theme.OnScrimMuted
 import com.compositioncoach.composition.model.SceneClassification
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -61,16 +57,17 @@ private const val ZOOM_CHIP_LINGER_MS = 1_200L
 private const val POST_CAPTURE_FADE_ALPHA = 0.3f
 
 /**
- * The camera experience: a [PreviewView] and every overlay share one 4:3 area (Pixel-style — the sensor
- * shoots 4:3, so the preview should too), full width and anchored right below the status bar; the rest of
- * the screen is plain black. Top controls sit in a translucent strip over the top of that area; the score
- * badge + guidance banner stack, wrapped in one [RotatedChrome], hugs whichever edge is currently the
- * preview's *physical* top (see [chromeStackEdgeFor]) — top-centre in portrait, right/left/bottom once the
- * phone is rotated, so guidance never sits over the middle of the frame; the shutter row lives in the black
- * area beneath the preview. See [CameraController] for how the preview and the live analysis stream are
- * kept in the same field of view, and [OverlayMapper] for why keeping every overlay in that one 4:3 box is
- * what lets them place things with a plain normalized-to-pixel multiply — a differently-sized overlay box
- * would break that mapping.
+ * The camera experience, in the four zones `docs/APP_UX.md` lays out: a translucent top strip (flash,
+ * settings), the 4:3 preview with the coaching layer over it, the mode strip, and the bottom bar with the
+ * gallery thumbnail, the shutter (carrying the readiness arc) and the lens switch.
+ *
+ * The [PreviewView] and *every* overlay that does normalized-to-pixel geometry share one
+ * `Modifier.aspectRatio(3f/4f)` box anchored below the status bar; keeping them in that one box, with
+ * `PreviewView` staying `FILL_CENTER`, is what lets [OverlayMapper] place things with a plain
+ * normalized-to-pixel multiply (see its class doc). The rest of the screen is plain black.
+ *
+ * All coaching visuals live in [CoachingLayer]; this composable owns camera plumbing, gestures and the
+ * screen's zones, and deliberately holds no coaching logic of its own.
  */
 @Composable
 fun CameraScreen(
@@ -85,6 +82,7 @@ fun CameraScreen(
     val haptic = LocalHapticFeedback.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val animationsEnabled = rememberAnimationsEnabled()
 
     val cameraController = remember { CameraController(context.applicationContext) }
     var retryTrigger by remember { mutableIntStateOf(0) }
@@ -135,7 +133,7 @@ fun CameraScreen(
 
     // ImageCapture.targetRotation is a live CameraX property (no rebind needed, unlike capture mode): keep
     // it following the phone's actual physical rotation so a saved photo's EXIF orientation is correct
-    // regardless of how the phone was held when the shutter fired — see CameraController.setCaptureRotationDegrees.
+    // regardless of how the phone was held when the shutter fired.
     LaunchedEffect(uiState.deviceRotationDegrees) {
         cameraController.setCaptureRotationDegrees(uiState.deviceRotationDegrees)
     }
@@ -144,6 +142,7 @@ fun CameraScreen(
         viewModel.events.collect { event ->
             when (event) {
                 CameraEvent.NavigateToReview -> onNavigateToReview()
+                // The one medium tick in the app, fired once on entering shoot-ready by the view model.
                 CameraEvent.ShootReadyHapticTick -> haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             }
         }
@@ -157,6 +156,8 @@ fun CameraScreen(
         if (granted) viewModel.onShutterClick(cameraController.imageCapture)
     }
     val onShutterClick: () -> Unit = {
+        // A light tick on the shutter press itself; the capture flash and scale carry the rest.
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         val needsLegacyStoragePermission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
         if (needsLegacyStoragePermission) {
@@ -173,25 +174,28 @@ fun CameraScreen(
 
     val postCaptureFadeAlpha by animateFloatAsState(
         targetValue = if (uiState.postCaptureFadeActive) POST_CAPTURE_FADE_ALPHA else 1f,
-        animationSpec = tween(300),
+        animationSpec = tween(motionDuration(300, animationsEnabled)),
         label = "postCaptureFade",
     )
     val hasScene = uiState.composition.scene != SceneClassification.UNKNOWN
+    val shootReady = GuidanceFormatter.effectiveShootReady(
+        uiState.composition.isShootReady,
+        uiState.composition.awaitingSubject,
+    )
+    val headline = GuidanceFormatter.headline(uiState.composition.activeRecommendations, uiState.settings.guidanceLevel)
+    val quietCheck = GuidanceFormatter.showsQuietCheck(
+        hasHeadline = headline != null,
+        displayScore = uiState.composition.displayScore,
+        isShootReady = uiState.composition.isShootReady,
+        hasScene = hasScene,
+    )
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }, containerColor = Background) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
             Column(Modifier.fillMaxSize()) {
-                // The 4:3 preview: PreviewView plus every overlay that does normalized-to-pixel geometry
-                // math live in this exact box, and nothing else does — see the class doc above.
-                // BoxWithConstraints (not a plain Box) so its measured `maxHeight` is available below.
-                BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
-                    val chromeEdge = chromeStackEdgeFor(uiState.deviceRotationDegrees)
-                    // In landscape the rotated stack's banner *width* becomes its vertical extent on
-                    // screen, so cap it at 60% of the preview's height (never reaching frame centre) —
-                    // portrait's equivalent 85%-of-width cap is GuidanceBanner's own default.
-                    val landscapeBannerMaxWidth =
-                        if (RotatedChromeMath.swapsAxes(uiState.deviceRotationDegrees)) maxHeight * 0.6f else null
-
+                // The 4:3 preview: PreviewView plus every overlay that does normalized-to-pixel
+                // geometry maths live in this exact box, and nothing else does — see the class doc.
+                Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
                     AndroidView(
                         factory = { previewView },
                         modifier = Modifier
@@ -220,14 +224,27 @@ fun CameraScreen(
                     focusTapOffset?.let { offset -> key(focusTapId) { FocusRingOverlay(tapOffset = offset) } }
 
                     if (uiState.settings.showThirdsGrid) ThirdsGridOverlay()
-                    CompositionOverlay(uiState.composition, deviceRotationDegrees = uiState.deviceRotationDegrees)
+
+                    CoachingLayer(
+                        composition = uiState.composition,
+                        guidanceLevel = uiState.settings.guidanceLevel,
+                        showScore = uiState.settings.showScore,
+                        hasScene = hasScene,
+                        deviceRotationDegrees = uiState.deviceRotationDegrees,
+                        animationsEnabled = animationsEnabled,
+                        modifier = Modifier.alpha(postCaptureFadeAlpha),
+                    )
+
                     if (uiState.settings.debugMode) {
-                        DebugGeometryOverlay(uiState.composition, uiState.debugFrame, deviceRotationDegrees = uiState.deviceRotationDegrees)
+                        DebugGeometryOverlay(
+                            uiState.composition,
+                            uiState.debugFrame,
+                            deviceRotationDegrees = uiState.deviceRotationDegrees,
+                        )
                     }
 
                     CameraTopBar(
                         showDebugChip = uiState.settings.debugMode,
-                        sceneIntent = uiState.settings.sceneIntent,
                         flashMode = uiState.flashMode,
                         hasFlashUnit = uiState.hasFlashUnit,
                         onFlashClick = { viewModel.onFlashModeChanged(cameraController.cycleFlashMode()) },
@@ -235,41 +252,6 @@ fun CameraScreen(
                         deviceRotationDegrees = uiState.deviceRotationDegrees,
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
-
-                    // Score badge + guidance banner + empty-scene hint, stacked as one unit and wrapped in
-                    // RotatedChrome so the whole stack rotates and re-anchors together in landscape (see
-                    // `chromeStackEdgeFor`'s KDoc) — "Hold this framing" and awaiting-subject both live
-                    // inside GuidanceBanner, so they go through this exact same path.
-                    RotatedChrome(
-                        deviceRotationDegrees = uiState.deviceRotationDegrees,
-                        modifier = Modifier
-                            .align(chromeEdge.toAlignment())
-                            .chromeStackEdgePadding(chromeEdge)
-                            .alpha(postCaptureFadeAlpha),
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            ScoreBadge(
-                                score = uiState.composition.displayScore,
-                                isShootReady = uiState.composition.isShootReady,
-                                hasScene = hasScene,
-                                showScore = uiState.settings.showScore,
-                                awaitingSubject = uiState.composition.awaitingSubject,
-                            )
-                            EmptySceneHint(hasScene = hasScene, awaitingSubject = uiState.composition.awaitingSubject)
-                            GuidanceBanner(
-                                activeRecommendations = uiState.composition.activeRecommendations,
-                                guidanceLevel = uiState.settings.guidanceLevel,
-                                awaitingSubject = uiState.composition.awaitingSubject,
-                                displayScore = uiState.composition.displayScore,
-                                isShootReady = uiState.composition.isShootReady,
-                                hasScene = hasScene,
-                                maxWidthOverride = landscapeBannerMaxWidth,
-                            )
-                        }
-                    }
 
                     if (uiState.settings.debugMode) {
                         DebugOverlay(
@@ -289,36 +271,25 @@ fun CameraScreen(
                     }
                 }
 
-                // The rest of the screen: plain black, holding the zoom readout and the shutter row.
-                Box(Modifier.fillMaxWidth().weight(1f)) {
-                    if (uiState.analysisUnavailable) {
-                        Text(
-                            text = "Analysis unavailable",
-                            color = OnScrimMuted,
-                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-                        )
-                    }
-
-                    ZoomChip(
-                        zoomRatio = zoomRatio,
-                        visible = zoomChipVisible,
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-                    )
-
-                    BottomControlBar(
-                        isCapturing = uiState.isCapturing,
-                        isShootReady = GuidanceFormatter.effectiveShootReady(
-                            uiState.composition.isShootReady,
-                            uiState.composition.awaitingSubject,
-                        ),
-                        lastPhotoUri = uiState.lastPhotoUri ?: lastPhotoUri,
-                        onShutterClick = onShutterClick,
-                        onSwitchLensClick = { viewModel.onSwitchLensRequested() },
-                        onOpenGallery = { openGallery(context, uiState.lastPhotoUri ?: lastPhotoUri) },
-                        deviceRotationDegrees = uiState.deviceRotationDegrees,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
-                }
+                CameraBottomZone(
+                    sceneIntent = uiState.settings.sceneIntent,
+                    onSceneIntentSelected = viewModel::onSceneIntentSelected,
+                    isCapturing = uiState.isCapturing,
+                    isShootReady = shootReady,
+                    score = uiState.composition.displayScore,
+                    awaitingSubject = uiState.composition.awaitingSubject,
+                    showQuietCheck = quietCheck,
+                    analysisUnavailable = uiState.analysisUnavailable,
+                    zoomRatio = zoomRatio,
+                    zoomChipVisible = zoomChipVisible,
+                    lastPhotoUri = uiState.lastPhotoUri ?: lastPhotoUri,
+                    onShutterClick = onShutterClick,
+                    onSwitchLensClick = { viewModel.onSwitchLensRequested() },
+                    onOpenGallery = { openGallery(context, uiState.lastPhotoUri ?: lastPhotoUri) },
+                    deviceRotationDegrees = uiState.deviceRotationDegrees,
+                    animationsEnabled = animationsEnabled,
+                    modifier = Modifier.weight(1f),
+                )
             }
 
             uiState.cameraError?.let { message ->

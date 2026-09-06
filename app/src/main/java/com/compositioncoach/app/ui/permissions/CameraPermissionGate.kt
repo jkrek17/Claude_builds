@@ -13,11 +13,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -36,7 +37,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.tooling.preview.Preview
 import com.compositioncoach.app.R
+import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 
 private fun hasCameraPermission(context: android.content.Context) =
     ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -108,7 +111,7 @@ private fun CameraRationaleScreen(
             verticalArrangement = Arrangement.Center,
         ) {
             Icon(
-                imageVector = Icons.Filled.CameraAlt,
+                imageVector = Icons.Outlined.CameraAlt,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.height(48.dp),
@@ -127,11 +130,30 @@ private fun CameraRationaleScreen(
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
             )
             Spacer(Modifier.height(24.dp))
+            // "Allow camera" is the filled action; the permanently-denied path adds "Open settings"
+            // as a text button beneath it rather than replacing it, so the primary action never moves.
+            Button(onClick = onAllowClick, enabled = !permanentlyDenied) {
+                Text(stringResource(R.string.permission_allow_camera))
+            }
             if (permanentlyDenied) {
-                Button(onClick = onOpenSettingsClick) { Text(stringResource(R.string.permission_open_settings)) }
-            } else {
-                Button(onClick = onAllowClick) { Text(stringResource(R.string.permission_allow_camera)) }
+                TextButton(onClick = onOpenSettingsClick) { Text(stringResource(R.string.permission_open_settings)) }
             }
         }
+    }
+}
+
+@Preview(name = "Permission rationale", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun CameraRationaleScreenPreview() {
+    CompositionCoachTheme {
+        CameraRationaleScreen(permanentlyDenied = false, onAllowClick = {}, onOpenSettingsClick = {})
+    }
+}
+
+@Preview(name = "Permission permanently denied", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun CameraRationaleScreenDeniedPreview() {
+    CompositionCoachTheme {
+        CameraRationaleScreen(permanentlyDenied = true, onAllowClick = {}, onOpenSettingsClick = {})
     }
 }
