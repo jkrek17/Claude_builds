@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.camera.CameraController
@@ -104,9 +106,15 @@ fun CameraScreen(
         viewModel.onScreenStarted()
         onDispose { viewModel.onScreenStopped() }
     }
+    // Sensors and ML Kit detectors follow the Activity lifecycle, not just composition: backgrounding the app
+    // must release them, and coming back must re-arm them and reset the smoother.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
+    LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onScreenPaused() }
 
-    DisposableEffect(lifecycleOwner, uiState.lensFacing, retryTrigger) {
+    // Capture mode is fixed at bind time, so a change to the fast-capture preference rebinds.
+    DisposableEffect(lifecycleOwner, uiState.lensFacing, uiState.preferFastCapture, retryTrigger) {
         val job = scope.launch {
+            cameraController.setPreferFastCapture(uiState.preferFastCapture)
             val result = cameraController.bind(lifecycleOwner, previewView, uiState.lensFacing, viewModel.frameAnalyzer)
             viewModel.onCameraBindResult(result)
         }
@@ -234,6 +242,7 @@ fun CameraScreen(
                         DebugOverlay(
                             composition = uiState.composition,
                             debugStats = uiState.debugStats,
+                            performanceTier = uiState.performanceTier.name,
                             modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
                         )
                     }
@@ -268,10 +277,10 @@ fun CameraScreen(
                             uiState.composition.isShootReady,
                             uiState.composition.awaitingSubject,
                         ),
-                        lastPhotoUri = lastPhotoUri,
+                        lastPhotoUri = uiState.lastPhotoUri ?: lastPhotoUri,
                         onShutterClick = onShutterClick,
                         onSwitchLensClick = { viewModel.onSwitchLensRequested() },
-                        onOpenGallery = { openGallery(context, lastPhotoUri) },
+                        onOpenGallery = { openGallery(context, uiState.lastPhotoUri ?: lastPhotoUri) },
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )
                 }

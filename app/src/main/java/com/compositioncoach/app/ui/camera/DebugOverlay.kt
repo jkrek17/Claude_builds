@@ -40,7 +40,12 @@ import com.compositioncoach.composition.model.SmoothedComposition
  * collapsible so it doesn't have to stay in the way while checking the live preview.
  */
 @Composable
-fun DebugOverlay(composition: SmoothedComposition, debugStats: DebugStats, modifier: Modifier = Modifier) {
+fun DebugOverlay(
+    composition: SmoothedComposition,
+    debugStats: DebugStats,
+    modifier: Modifier = Modifier,
+    performanceTier: String? = null,
+) {
     var collapsed by rememberSaveable { mutableStateOf(false) }
     val raw = composition.raw
 
@@ -58,6 +63,7 @@ fun DebugOverlay(composition: SmoothedComposition, debugStats: DebugStats, modif
 
         Column(modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
             DebugText("Scene: ${raw.scene.type} (${(raw.scene.confidence * 100).toInt()}%)  Intent: ${raw.intent.label}")
+            performanceTier?.let { DebugText("Perf tier: $it") }
             DebugText("Score: raw=${"%.1f".format(raw.rawScore)} smoothed=${composition.displayScore}")
             DebugText("Engine: ${raw.engineTimeMs}ms  FPS: ${"%.1f".format(debugStats.fps)}")
             DebugText("Latency: ${debugStats.lastLatencyMs}ms  Interval: ${debugStats.samplingIntervalMs}ms")
