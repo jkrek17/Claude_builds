@@ -78,7 +78,8 @@ fun CompositionOverlay(composition: SmoothedComposition, deviceRotationDegrees: 
     val primary = composition.primaryRecommendation
     // The region highlight only makes sense while there is still something to fix, so it never shows in
     // shoot-ready state (per the spec: guidance affordances are never drawn once framing is already good).
-    val region = primary?.region.takeIf { !composition.isShootReady }
+    // Smoothed by the engine (time-EMA, holds through detector blinks) so the highlight does not jitter.
+    val region = (composition.displayRegion ?: primary?.region).takeIf { !composition.isShootReady }
     val regionAlpha by animateFloatAsState(
         targetValue = if (region != null) 1f else 0f,
         animationSpec = tween(REGION_FADE_MS),
@@ -91,7 +92,8 @@ fun CompositionOverlay(composition: SmoothedComposition, deviceRotationDegrees: 
 
     val metrics = composition.raw.metrics
     val horizonMetric = metrics.firstOrNull { it.category == MetricCategory.HORIZON && it.applicable }
-    val horizonLine = horizonMetric?.geometry?.filterIsInstance<OverlayGeometry.Line>()?.firstOrNull()
+    val horizonLine = composition.displayHorizon
+        ?: horizonMetric?.geometry?.filterIsInstance<OverlayGeometry.Line>()?.firstOrNull()
     val isLevel = horizonMetric?.severity == Severity.NONE
     val showsRotateGlyph = primary != null &&
         (primary.direction == Direction.ROTATE_CLOCKWISE || primary.direction == Direction.ROTATE_COUNTER_CLOCKWISE)
@@ -129,10 +131,16 @@ fun CompositionOverlay(composition: SmoothedComposition, deviceRotationDegrees: 
 
     Canvas(modifier = modifier.fillMaxSize()) {
         if (showsTargetRing) {
-            metrics.asSequence()
-                .flatMap { it.geometry.asSequence() }
-                .filterIsInstance<OverlayGeometry.TargetPoint>()
-                .forEach { drawTargetRing(it.point, deviceRotationDegrees) }
+            // Prefer the engine's smoothed target (null inside the dead zone); fall back to raw geometry.
+            val smoothedTarget = composition.displayTarget
+            if (smoothedTarget != null) {
+                drawTargetRing(smoothedTarget, deviceRotationDegrees)
+            } else if (composition.displayAnchor == null) {
+                metrics.asSequence()
+                    .flatMap { it.geometry.asSequence() }
+                    .filterIsInstance<OverlayGeometry.TargetPoint>()
+                    .forEach { drawTargetRing(it.point, deviceRotationDegrees) }
+            }
         }
 
         if (showsRotateGlyph) {
@@ -142,7 +150,7 @@ fun CompositionOverlay(composition: SmoothedComposition, deviceRotationDegrees: 
         }
 
         if (showsArrow) {
-            val anchor = composition.primarySubject?.anchorPoint ?: FALLBACK_ANCHOR
+            val anchor = composition.displayAnchor ?: composition.primarySubject?.anchorPoint ?: FALLBACK_ANCHOR
             drawDirectionalArrow(primary!!.direction, anchor, pulse * ARROW_PULSE_DISTANCE.toPx(), deviceRotationDegrees)
         }
 
