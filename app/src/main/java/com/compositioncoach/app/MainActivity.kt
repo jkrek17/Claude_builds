@@ -5,6 +5,12 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.compositioncoach.app.crash.CrashLog
+import com.compositioncoach.app.ui.crash.CrashReportScreen
 import com.compositioncoach.app.di.AppContainer
 import com.compositioncoach.app.ui.navigation.AppNavGraph
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
@@ -20,9 +26,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // If the previous run crashed, show the report first: it must be readable even when the camera
+        // screen itself is what crashes, so it is decided here, before the navigation graph is composed.
+        val crashReport = CrashLog.consume(this)
         setContent {
             CompositionCoachTheme {
-                AppNavGraph(container = container)
+                var showCrashReport by remember { mutableStateOf(crashReport != null) }
+                if (showCrashReport && crashReport != null) {
+                    CrashReportScreen(report = crashReport, onContinue = { showCrashReport = false })
+                } else {
+                    AppNavGraph(container = container)
+                }
             }
         }
     }

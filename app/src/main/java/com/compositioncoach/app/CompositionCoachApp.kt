@@ -1,7 +1,7 @@
 package com.compositioncoach.app
 
 import android.app.Application
-import android.util.Log
+import com.compositioncoach.app.crash.CrashLog
 import com.compositioncoach.app.di.AppContainer
 
 /** Application entry point. Owns the single [AppContainer] used for manual DI across the app. */
@@ -17,21 +17,13 @@ class CompositionCoachApp : Application() {
     }
 
     /**
-     * Logs every uncaught exception before delegating to whatever handler was previously installed
-     * (the platform's default one, unless something else runs before this). This is deliberately not a
-     * silent swallow — the process still terminates exactly as it would without this handler — it only
-     * guarantees the crash is visible in logcat with the full stack trace under a stable, greppable tag
-     * before that happens, which otherwise depends on which component crashed and how far it unwound.
+     * Records every uncaught exception (logcat + a file shown on the next launch by
+     * [com.compositioncoach.app.ui.crash.CrashReportScreen]) and then delegates to the previously installed
+     * handler, so the process still terminates exactly as it would without this. Installed before anything
+     * else so a failure inside [AppContainer] construction is captured too.
      */
     private fun installCrashLogger() {
-        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            Log.e(TAG, "Uncaught exception on thread ${thread.name}", throwable)
-            previousHandler?.uncaughtException(thread, throwable)
-        }
+        CrashLog.install(this, BuildConfig.VERSION_NAME)
     }
 
-    companion object {
-        private const val TAG = "CompositionCoachApp"
-    }
 }

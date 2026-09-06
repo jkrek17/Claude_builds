@@ -18,7 +18,9 @@
       (app/build.gradle.kts) fails the build if either ever reappears.
     -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <!-- ACCESS_NETWORK_STATE is deliberately NOT stripped: ML Kit's bundled telemetry queries
+         ConnectivityManager and throws SecurityException without it. It is a normal permission (no user
+         prompt) and grants no network access by itself; INTERNET above is what actually matters. -->
 
     <application
         android:name=".CompositionCoachApp"

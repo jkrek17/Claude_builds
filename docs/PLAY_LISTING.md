@@ -129,7 +129,7 @@ one-time account-owner action; this repo can only supply the answers.]**
 | `android.permission.CAMERA` | Core feature: live preview analysis and photo capture. |
 | `android.permission.WRITE_EXTERNAL_STORAGE` (maxSdkVersion 28) | Only requested on Android 9 and below, right before the first capture, to save the photo to the public Pictures folder. Android 10+ uses scoped storage (MediaStore) and never requests this. |
 
-No other permission is requested. `INTERNET`/`ACCESS_NETWORK_STATE` are explicitly stripped from the
+No other permission is requested. `INTERNET` is explicitly stripped from the
 merged manifest (see `app/src/main/AndroidManifest.xml`) even though a transitive ML Kit dependency
 would otherwise add them — the app has no legitimate use for them, and a Gradle check
 (`verifyNoInternetPermission`) fails the build if either ever reappears.
