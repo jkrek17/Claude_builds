@@ -2,6 +2,7 @@ package com.compositioncoach.vision
 
 import android.content.Context
 import android.graphics.Rect
+import android.util.Log
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -533,15 +534,37 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         if (!enabled) lastSubjectMask = null
     }
 
+    /**
+     * Eagerly warms all four ML Kit clients so the first frame doesn't pay their construction cost.
+     * This is a *best-effort* warm-up, not a precondition for the pipeline to run: [getFaceDetector] /
+     * [getPoseDetector] / [getObjectDetector] / [getSegmenter] lazily retry construction on the next
+     * frame that needs them, and every per-frame call site already wraps `.process(...)` (which is
+     * where a lazily-constructed client's `getClient()` call would otherwise throw) in `runCatching`.
+     * A device where ML Kit's `MlKitContext` failed to initialize (e.g. its `ContentProvider` got
+     * merged out, or a bundled-model native library is missing for this ABI) must not crash the app on
+     * screen entry just because this warm-up ran first — see [warmUp] for why each client is isolated.
+     */
     override fun start() {
         synchronized(detectorLock) {
-            if (faceDetector == null) faceDetector = FaceDetection.getClient(faceDetectorOptions)
-            if (poseDetector == null) poseDetector = PoseDetection.getClient(poseDetectorOptions)
-            if (objectDetector == null) objectDetector = ObjectDetection.getClient(objectDetectorOptions)
-            if (segmenter == null) segmenter = Segmentation.getClient(segmenterOptions)
+            if (faceDetector == null) faceDetector = warmUp("face") { FaceDetection.getClient(faceDetectorOptions) }
+            if (poseDetector == null) poseDetector = warmUp("pose") { PoseDetection.getClient(poseDetectorOptions) }
+            if (objectDetector == null) objectDetector = warmUp("object") { ObjectDetection.getClient(objectDetectorOptions) }
+            if (segmenter == null) segmenter = warmUp("segmentation") { Segmentation.getClient(segmenterOptions) }
         }
-        orientationSensor.start()
+        runCatching { orientationSensor.start() }
+            .onFailure { Log.e(TAG, "Orientation sensor failed to start; orientation metadata will be stale", it) }
     }
+
+    /**
+     * Runs [construct], logging and swallowing any failure instead of propagating it. Each of the four
+     * detectors is warmed up independently (rather than one try/catch around all of [start]) so one
+     * detector failing (say, the object-detection model's native library missing on a given ABI) does
+     * not also skip constructing the other three — the app should keep whatever ML Kit features it can.
+     */
+    private fun <T> warmUp(label: String, construct: () -> T): T? =
+        runCatching(construct)
+            .onFailure { Log.e(TAG, "Failed to construct the $label ML Kit client; that feature will be unavailable", it) }
+            .getOrNull()
 
     override fun stop() {
         orientationSensor.stop()
@@ -558,6 +581,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
     }
 
     companion object {
+        private const val TAG = "VisionPipeline"
         private const val GAZE_CENTER_THRESHOLD_DEGREES = 12f
         private const val SUBJECT_MASK_GRID_SIZE = MaskDownsampler.DEFAULT_GRID_SIZE
 
