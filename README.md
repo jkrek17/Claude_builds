@@ -25,42 +25,35 @@ No cloud calls, no camera frames leave the phone.
 
 ## Try it on your phone
 
-You do not need Android Studio to install and test the app. Every push to GitHub builds a debug
-APK with GitHub Actions and publishes it as a rolling pre-release, and (once release signing secrets
-are configured — see [docs/RELEASE.md](docs/RELEASE.md)) a signed, R8-shrunk release APK as a second
-rolling pre-release.
+You do not need Android Studio. Every push to GitHub runs the tests, lint and both builds, and publishes
+two rolling pre-releases:
 
-**Easiest: from the Releases page, directly on your phone**
+| Channel | Link | What it is |
+|---|---|---|
+| `release-latest` (recommended) | https://github.com/jkrek17/Claude_builds/releases/tag/release-latest | R8-shrunk release build, per-CPU APKs (arm64 ≈ 55 MB) |
+| `debug-latest` | https://github.com/jkrek17/Claude_builds/releases/tag/debug-latest | Debuggable build with the same features (arm64 ≈ 74 MB) |
 
-1. On your phone, open https://github.com/jkrek17/Claude_builds/releases/tag/debug-latest
-   (or, for a signed release build once one exists, .../releases/tag/release-latest — smaller thanks to
-   R8 shrinking, and what an actual Play Store build would look like).
-2. Under **Assets**, tap `CompositionCoach-debug.apk` (about 80 MB) or `CompositionCoach-release.apk`.
-3. When the download finishes, open it. Android will ask you to allow installs from this source
-   (Chrome, Files, …). Allow it once and install.
-4. Open **Composition Coach**, grant the camera permission, point the camera at a person.
+Both are signed with the same checked-in debug key until the release secrets in
+[docs/RELEASE.md](docs/RELEASE.md) are configured, so they install as updates over each other. Once a real
+upload key is configured, `release-latest` changes signature: uninstall once, then updates work again.
 
-**Play Protect warning.** The first install shows "Play Protect hasn't seen an app from this developer
-before". Tap **More details**, then **Install anyway**. If there is no such option, turn off scanning
-temporarily: Play Store → profile picture → Play Protect → gear icon → "Scan apps with Play Protect",
-install, then turn it back on. Debug builds are signed with the checked-in debug key in `keystore/`, so
-later debug builds install as updates over earlier ones; release builds use a real upload key once one
-is configured (see [docs/RELEASE.md](docs/RELEASE.md)) and won't install over a debug build (different
-signature) — uninstall the debug build first if you've been sideloading that.
+**Install (on the phone, signed in to GitHub because the repo is private)**
 
-**Alternative: from a specific CI run** (requires being logged in to GitHub, and the GitHub mobile app
-does not show artifacts, so use a desktop browser)
+1. Open the `release-latest` link above.
+2. Under **Assets**, tap `CompositionCoach-release-arm64.apk` (use `-arm32` only on an old 32-bit phone).
+3. Open the downloaded file. Allow installs from this source when Android asks.
+4. On the Play Protect prompt, tap **More details**, then **Install anyway**. If that option is missing, turn
+   off scanning temporarily: Play Store → profile picture → Play Protect → gear icon → "Scan apps with
+   Play Protect", install, then turn it back on.
+5. Open **Composition Coach**, grant camera access, point the camera at a subject.
 
-1. Open the repository's **Actions** tab and click the most recent green **Android CI** run.
-2. On the run's summary page, scroll to the very bottom to the **Artifacts** section and download
-   `composition-coach-debug-apk` (or `composition-coach-release-apk` / `composition-coach-release-aab`
-   from the `release` job). It is a `.zip`; unzip it to get the APK/AAB.
-3. Copy the APK to your phone and install it as above.
+**Alternative: from a specific CI run** (desktop browser, logged in; the GitHub mobile app hides artifacts):
+Actions tab → latest green **Android CI** run → scroll to **Artifacts** at the bottom →
+`composition-coach-debug-apk`, `composition-coach-release-apk` or `composition-coach-release-aab` (zipped).
 
-Requirements: Android 8.0 (API 26) or newer, Google Play Services (for ML Kit face detection; the
-face model downloads automatically on first launch, so be online the first time).
-
-If you would rather run from a computer, see [Build from source](#build-from-source).
+Requirements: Android 8.0 (API 26) or newer with Google Play services. The ML Kit face model downloads
+through Play services on first launch, so be online the first time. Object detection, pose and
+segmentation models are bundled.
 
 ### What to try
 
@@ -127,12 +120,15 @@ CameraX ImageAnalysis (≈640×480, keep-only-latest)
         ├─ ImageStatisticsComputer   luminance / edge-density grid, symmetry, horizon estimate
         ├─ ML Kit Face Detection     boxes, eyes, head yaw/roll → gaze direction
         ├─ ML Kit Pose Detection     33 body landmarks (every other frame)
+        ├─ ML Kit Object Detection   prominent objects (plate, glass, product) with coarse category
+        ├─ ML Kit Selfie Segmentation 32×32 subject mask (every 3rd frame, perf ladder backs off)
         └─ OrientationSensor         device roll from the rotation vector
         │   → FrameAnalysis (all geometry normalized 0..1 in the upright, mirrored preview frame)
         ▼
 :composition  CompositionCoach
+        ├─ SceneIntent               Settings > Shooting mode overrides detection and coaches toward it
         ├─ SceneClassifier           portrait / group / landscape / architecture / object / general
-        ├─ SubjectResolver           merges faces + bodies into subjects, picks the primary one
+        ├─ SubjectResolver           faces + bodies + objects → subjects; background faces ignored
         ├─ 13 CompositionAnalyzers   each returns score, confidence, severity, a Recommendation, geometry
         ├─ ScoreAggregator           scene-specific weights → 0..100
         ├─ RecommendationEngine      ranks by severity, confidence, expected gain, ease; max 1–3
@@ -262,40 +258,38 @@ Reports land in `<module>/build/reports/tests/`.
 
 ## Status and verification
 
-What has been verified in this environment:
+Verified automatically on every push (see `.github/workflows/android.yml`):
 
-- All three modules compile together and the debug APK assembles.
-- JVM unit tests pass across all three modules, including `:app`'s build-info, privacy-text, and
-  overlay/state coverage.
-- `./gradlew :app:lintDebug` passes with zero errors (`lint { abortOnError = true }`).
-- `./gradlew :app:assembleRelease :app:bundleRelease` succeed, R8-shrunk, with no `missing_rules.txt`
-  warnings; `apksigner verify` passes on the resulting release APK.
-- `verifyNoInternetPermission` passes: the merged manifest (debug and release) has no
-  `android.permission.INTERNET`.
+- 222 JVM unit tests across the three modules (74 engine incl. a 400-frame fuzz and golden real-world
+  scenarios, 50 vision, 98 app), all passing.
+- Android Lint clean on `:app` and `:vision` with `abortOnError`.
+- Debug and R8-shrunk release APKs per ABI, release AAB, `apksigner verify`, and a build check that the
+  merged manifest carries no INTERNET permission.
 
-What has **not** been verified yet, because no physical device was available where this was built:
+Verified on a physical phone (Pixel, Android 15): preview and overlay alignment, face and object
+detection, capture to the gallery, review screen, shooting modes, Play Protect install flow.
 
-- Live camera behaviour on a real phone: preview alignment of the overlays, ML Kit model download, capture
-  and gallery save. The code paths are complete, not mocked, but they need a real-device run.
-- The sign of the device-orientation roll. It is derived from first principles and cross-checked in the
-  KDoc of `OrientationSensor`, but tilt the phone and confirm the level indicator and the
-  "rotate clockwise / counter-clockwise" advice move the right way. Developer mode shows the raw angle.
-- Threshold tuning. Headroom, edge and background thresholds are sensible starting points; expect to
-  adjust them after a few real sessions using the developer overlay.
+Still to confirm on device after the latest changes: the sign of the level indicator when the phone is
+tilted (derived from first principles, see `OrientationSensor`), segmentation latency on mid-range
+phones (watch `segmentation` in the developer overlay), and threshold tuning after more real sessions.
+
+Play Store steps only the account owner can do are listed in [docs/RELEASE.md](docs/RELEASE.md):
+create the upload key and the four CI secrets, publish the privacy policy at a public URL, fill in the
+data-safety form from [docs/PLAY_LISTING.md](docs/PLAY_LISTING.md), and upload the AAB to an internal
+testing track.
 
 ## Roadmap and future enhancements
 
-Implemented in this MVP: phases 1–5 of the plan at an initial, heuristic level (functional camera,
-live score and directional guidance, portrait coaching including looking room, cropping and
-background collisions, scene classification with dynamic weights, and a geometry-based simulated
-framing optimizer).
+Implemented: phases 1–5 of the original plan (functional camera, live score and directional guidance,
+portrait coaching including looking room, cropping and background collisions, scene classification
+with dynamic weights, a geometry-based simulated framing optimizer), plus shooting modes, prominent-
+object subjects, mask-driven background and separation analysis, time-based smoothing, and a
+Play-Store-ready release pipeline.
 
 Not yet implemented / next steps:
 
-- **Subject segmentation** (ML Kit Selfie Segmentation or a LiteRT model) for far better
-  subject-separation and background-distraction estimates than luminance/edge heuristics.
-- **Generic object detection** so non-human subjects (food, products, pets) get real subject boxes
-  instead of a salient-region guess.
+- **Subject segmentation for objects** (the current mask is a person segmenter; ML Kit Subject
+  Segmentation or a LiteRT model would extend mask-based advice to products and food).
 - **Real leading-line and vanishing-point detection** (Hough transform / LSD) and converging-vertical
   correction advice for architecture.
 - **True framing simulation**: re-run statistics on cropped/shifted frames instead of shifting only
