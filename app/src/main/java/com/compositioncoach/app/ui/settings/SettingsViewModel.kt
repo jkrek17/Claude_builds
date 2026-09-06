@@ -30,6 +30,8 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setBatterySaver(enabled: Boolean) = launch { repository.setBatterySaver(enabled) }
     fun setDebugMode(enabled: Boolean) = launch { repository.setDebugMode(enabled) }
     fun setSceneIntent(intent: SceneIntent) = launch { repository.setSceneIntent(intent) }
+    fun setDetectObjectsEnabled(enabled: Boolean) = launch { repository.setDetectObjectsEnabled(enabled) }
+    fun setSubjectMaskEnabled(enabled: Boolean) = launch { repository.setSubjectMaskEnabled(enabled) }
 
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

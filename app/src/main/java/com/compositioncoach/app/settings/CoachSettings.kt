@@ -14,15 +14,36 @@ data class CoachSettings(
     val debugMode: Boolean = false,
     /** What the photographer told us they're shooting; forwarded to `CompositionCoach.process`/`evaluateOnce`. */
     val sceneIntent: SceneIntent = SceneIntent.AUTO,
+    /** Forwarded to `VisionFeatureToggles.setObjectDetectionEnabled` whenever it changes. */
+    val detectObjectsEnabled: Boolean = true,
+    /** User's own preference for subject-mask segmentation; see [effectiveSubjectMaskEnabled] for what's actually applied. */
+    val subjectMaskEnabled: Boolean = true,
+    /** Whether the first-launch onboarding card has been dismissed. */
+    val onboardingSeen: Boolean = false,
 ) {
     /** Target interval between vision analyses, see [FrameAnalysisSource.setTargetIntervalMs]. */
     val analysisIntervalMs: Long get() = if (batterySaver) BATTERY_SAVER_INTERVAL_MS else DEFAULT_INTERVAL_MS
+
+    /**
+     * The subject-mask toggle actually applied to the vision pipeline: segmentation is the most
+     * expensive detector (`:vision`'s README), so battery saver forces it off regardless of the user's
+     * own [subjectMaskEnabled] preference — see [subjectMaskSubtitle] for the UI-facing explanation.
+     */
+    val effectiveSubjectMaskEnabled: Boolean get() = subjectMaskEnabled && !batterySaver
 
     companion object {
         const val DEFAULT_INTERVAL_MS = 100L
         const val BATTERY_SAVER_INTERVAL_MS = 200L
     }
 }
+
+/** Subtitle for the "Subject mask" row in Settings; explains the battery-saver override when it applies. */
+fun CoachSettings.subjectMaskSubtitle(): String =
+    if (batterySaver) {
+        "Better background and separation advice for people; off while battery saver is on"
+    } else {
+        "Better background and separation advice for people; uses more battery"
+    }
 
 /** One-line descriptions shown next to each [GuidanceLevel] choice in Settings. */
 fun GuidanceLevel.description(): String = when (this) {

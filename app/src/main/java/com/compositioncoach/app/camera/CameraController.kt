@@ -194,15 +194,20 @@ class CameraController(private val context: Context) {
         runCatching { cam.cameraControl.startFocusAndMetering(action) }
     }
 
-    /** Pinch-to-zoom: [delta] is a multiplicative factor applied to the current zoom ratio. */
-    fun applyZoomDelta(delta: Float) {
-        val cam = camera ?: return
+    /**
+     * Pinch-to-zoom: [delta] is a multiplicative factor applied to the current zoom ratio.
+     * @return the zoom ratio actually applied (for the screen's zoom chip), or null if there is no bound
+     *   camera yet (a pinch that starts before the bind `DisposableEffect` finishes).
+     */
+    fun applyZoomDelta(delta: Float): Float? {
+        val cam = camera ?: return null
         val current = cam.cameraInfo.zoomState.value?.zoomRatio ?: 1f
         val range = cam.cameraInfo.zoomState.value
         val min = range?.minZoomRatio ?: 1f
         val max = range?.maxZoomRatio ?: 1f
         val next = (current * delta).coerceIn(min, max)
         runCatching { cam.cameraControl.setZoomRatio(next) }
+        return next
     }
 
     companion object {

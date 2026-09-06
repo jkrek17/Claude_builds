@@ -16,9 +16,11 @@ import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.SmoothedComposition
+import com.compositioncoach.vision.VisionFeatureToggles
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -57,6 +59,9 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     /** Bound to CameraX's `ImageAnalysis` by the screen; null when the vision pipeline is unavailable. */
     val frameAnalyzer: ImageAnalysis.Analyzer? get() = frameSource?.imageAnalyzer
 
+    /** Volume-down key presses, forwarded from [com.compositioncoach.app.MainActivity.onKeyDown]. */
+    val volumeDownEvents: SharedFlow<Unit> get() = container.volumeDownEvents
+
     private val _uiState = MutableStateFlow(CameraUiState(analysisUnavailable = frameSource == null))
     val uiState: StateFlow<CameraUiState> = _uiState.asStateFlow()
 
@@ -88,6 +93,9 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 _uiState.update { it.withSettings(settings) }
                 frameSource?.setPoseDetectionEnabled(settings.poseDetectionEnabled)
                 frameSource?.setTargetIntervalMs(settings.analysisIntervalMs)
+                val toggles = frameSource as? VisionFeatureToggles
+                toggles?.setObjectDetectionEnabled(settings.detectObjectsEnabled)
+                toggles?.setSegmentationEnabled(settings.effectiveSubjectMaskEnabled)
                 // Shooting mode changed: reset the smoother so advice/scoring from the old mode doesn't linger.
                 if (lastSceneIntent != null && lastSceneIntent != settings.sceneIntent) {
                     coach.reset()
@@ -119,7 +127,13 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 } else {
                     SmoothedComposition.EMPTY
                 }
-                FrameUpdate(composition, frame.analysisLatencyMs, settings.analysisIntervalMs, frame.detectorTimings)
+                FrameUpdate(
+                    composition = composition,
+                    latencyMs = frame.analysisLatencyMs,
+                    samplingIntervalMs = settings.analysisIntervalMs,
+                    detectorTimings = frame.detectorTimings,
+                    debugFrame = DebugFrameData(objects = frame.objects, subjectMask = frame.subjectMask),
+                )
             }
             .flowOn(Dispatchers.Default)
             .sample(UI_UPDATE_INTERVAL_MS)
@@ -137,6 +151,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 samplingIntervalMs = update.samplingIntervalMs,
                 engineTimeMs = update.composition.raw.engineTimeMs,
                 detectorTimings = update.detectorTimings,
+                debugFrame = update.debugFrame,
             )
         }
         if (_uiState.value.justEnteredShootReady(previous)) {
@@ -220,11 +235,26 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 }
                 container.reviewStore.put(ReviewEntry(uri, result))
                 _uiState.update { it.withCaptureFinished() }
+                clearPostCaptureFadeAfterDelay()
                 _events.tryEmit(CameraEvent.NavigateToReview)
             } catch (t: Throwable) {
                 _uiState.update { it.withCaptureError("Couldn't save photo: ${t.message ?: "unknown error"}") }
             }
         }
+    }
+
+    /** Ends the score-badge/banner post-capture fade ~1s after it started, see [CameraUiState.postCaptureFadeActive]. */
+    private fun clearPostCaptureFadeAfterDelay() {
+        viewModelScope.launch {
+            delay(POST_CAPTURE_FADE_MS)
+            _uiState.update { it.withPostCaptureFadeEnded() }
+        }
+    }
+
+    // --- Onboarding ----------------------------------------------------------------------------------------
+
+    fun onOnboardingDismissed() {
+        viewModelScope.launch { container.settingsRepository.setOnboardingSeen(true) }
     }
 
     override fun onCleared() {
@@ -236,12 +266,14 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
         val latencyMs: Long,
         val samplingIntervalMs: Long,
         val detectorTimings: Map<String, Long>,
+        val debugFrame: DebugFrameData,
     )
 
     companion object {
         private const val TAG = "CameraViewModel"
         private const val UI_UPDATE_INTERVAL_MS = 100L
         private const val FPS_WINDOW_NANOS = 1_000_000_000L
+        private const val POST_CAPTURE_FADE_MS = 1_000L
 
         fun factory(container: AppContainer): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

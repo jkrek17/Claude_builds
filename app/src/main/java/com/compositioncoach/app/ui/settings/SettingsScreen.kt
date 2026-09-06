@@ -40,6 +40,7 @@ import com.compositioncoach.app.BuildConfig
 import com.compositioncoach.app.R
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.settings.description
+import com.compositioncoach.app.settings.subjectMaskSubtitle
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.app.settings.label
 import com.compositioncoach.composition.model.GuidanceLevel
@@ -61,6 +62,8 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpenPriva
         onBatterySaverChange = viewModel::setBatterySaver,
         onDebugModeChange = viewModel::setDebugMode,
         onSceneIntentChange = viewModel::setSceneIntent,
+        onDetectObjectsChange = viewModel::setDetectObjectsEnabled,
+        onSubjectMaskChange = viewModel::setSubjectMaskEnabled,
     )
 }
 
@@ -78,6 +81,8 @@ private fun SettingsContent(
     onBatterySaverChange: (Boolean) -> Unit,
     onDebugModeChange: (Boolean) -> Unit,
     onSceneIntentChange: (SceneIntent) -> Unit,
+    onDetectObjectsChange: (Boolean) -> Unit,
+    onSubjectMaskChange: (Boolean) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -144,6 +149,31 @@ private fun SettingsContent(
             item { SwitchRow("Battery saver (slower analysis)", settings.batterySaver, onBatterySaverChange) }
             item { SwitchRow("Debug mode", settings.debugMode, onDebugModeChange) }
             item { HorizontalDivider() }
+            item {
+                Text(
+                    "Detection",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
+                )
+            }
+            item {
+                SwitchRow(
+                    label = "Detect objects",
+                    subtitle = "Finds plates, drinks, products and other subjects",
+                    checked = settings.detectObjectsEnabled,
+                    onCheckedChange = onDetectObjectsChange,
+                )
+            }
+            item {
+                SwitchRow(
+                    label = "Subject mask",
+                    subtitle = settings.subjectMaskSubtitle(),
+                    checked = settings.effectiveSubjectMaskEnabled,
+                    enabled = !settings.batterySaver,
+                    onCheckedChange = onSubjectMaskChange,
+                )
+            }
+            item { HorizontalDivider() }
             item { AboutSection(onOpenPrivacyPolicy = onOpenPrivacyPolicy) }
         }
     }
@@ -180,15 +210,27 @@ private fun AboutSection(onOpenPrivacyPolicy: () -> Unit) {
     }
 }
 
+/** A settings switch row; [subtitle], when given, is a smaller descriptive line under [label]. */
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun SwitchRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    subtitle: String? = null,
+    enabled: Boolean = true,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            }
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 
@@ -226,6 +268,8 @@ private fun SettingsScreenPreview() {
             onBatterySaverChange = {},
             onDebugModeChange = {},
             onSceneIntentChange = {},
+            onDetectObjectsChange = {},
+            onSubjectMaskChange = {},
         )
     }
 }
