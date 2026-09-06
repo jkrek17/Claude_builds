@@ -1,13 +1,16 @@
 package com.compositioncoach.app.camera
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.util.Range
 import android.util.Rational
 import android.util.Size
 import android.view.Surface
-import androidx.core.view.doOnLayout
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraUnavailableException
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -21,23 +24,9 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.delay
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-
-enum class FlashMode { OFF, AUTO, ON }
-
-/** Which physical lens is currently bound. */
-enum class LensFacing { BACK, FRONT }
-
-/** Result of a [CameraController.bind] attempt, surfaced by the ViewModel as UI state. */
-sealed interface CameraBindResult {
-    /** @param lensFacing the lens actually bound, which can differ from the request on single-camera devices. */
-    data class Success(val camera: Camera, val hasFlashUnit: Boolean, val lensFacing: LensFacing) : CameraBindResult
-    data class Failure(val throwable: Throwable) : CameraBindResult
-}
 
 /**
  * Owns the CameraX binding lifecycle: [Preview], [ImageCapture] and [ImageAnalysis] are bound together
@@ -46,6 +35,18 @@ sealed interface CameraBindResult {
  * `com.compositioncoach.app.ui.camera.OverlayMapper` for why that lets normalized (0..1) coordinates map onto
  * the preview with a plain multiply.
  *
+ * ## Why capture is cropped to the shared [ViewPort]
+ * [ImageCapture] targets 4:3 at the sensor's highest available resolution ([AspectRatioStrategy]
+ * `RATIO_4_3_FALLBACK_AUTO_STRATEGY` + [ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY]) — the classic
+ * "Pixel-style" full-quality still aspect — while [ImageAnalysis] stays at ~640×480 4:3 for detector
+ * throughput. Both use cases are bound into the same [UseCaseGroup]/[ViewPort] as [Preview], so CameraX
+ * crops all three to *the same field of view* regardless of their different output resolutions: what the
+ * user sees in the (4:3 letterboxed) preview is exactly what ends up in both the saved photo and what
+ * `:vision`'s normalized detector geometry describes, just rendered at three different pixel sizes of the
+ * identical crop. Without a shared `ViewPort`, each use case would default to cropping from the sensor's
+ * *own* native aspect ratio independently, and a wide-sensor device could silently save a photo showing
+ * more (or less) than what the photographer framed in the preview.
+ *
  * One instance is created per camera session (owned by [com.compositioncoach.app.ui.camera.CameraViewModel])
  * and is not itself lifecycle-aware; the caller re-binds in a `DisposableEffect` keyed on the lifecycle owner
  * and lens facing, and calls [unbind] when the composable leaves composition.
@@ -53,6 +54,7 @@ sealed interface CameraBindResult {
 class CameraController(private val context: Context) {
 
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     var imageCapture: ImageCapture? = null
         private set
@@ -64,11 +66,37 @@ class CameraController(private val context: Context) {
     var flashMode: FlashMode = FlashMode.OFF
         private set
 
+    /**
+     * When true, the next (re)bind builds [ImageCapture] with `CAPTURE_MODE_MINIMIZE_LATENCY` instead of
+     * the default `CAPTURE_MODE_MAXIMIZE_QUALITY` — set this from a battery-saver/thermal signal via
+     * [setPreferFastCapture]. CameraX has no API to change an already-bound [ImageCapture]'s capture mode
+     * live (it's fixed at `Builder.build()` time), so a change here only takes effect on the next actual
+     * rebind; callers that want it to apply immediately must include whatever drives this flag in their
+     * rebind `DisposableEffect`'s keys, the same way `lensFacing` already is.
+     */
+    @Volatile private var preferFastCapture: Boolean = false
+
     val hasFlashUnit: Boolean get() = camera?.cameraInfo?.hasFlashUnit() == true
+
+    /**
+     * Sets whether the next bind should trade capture quality for shutter speed — see
+     * [preferFastCapture]'s KDoc for why this isn't applied to an already-bound [ImageCapture].
+     */
+    fun setPreferFastCapture(preferFast: Boolean) {
+        preferFastCapture = preferFast
+    }
 
     /**
      * Binds preview + capture + analysis for [lensFacing] to [lifecycleOwner], targeting [previewView].
      * Safe to call again (e.g. on lens switch): any existing binding is unbound first.
+     *
+     * Retries once, after [RETRY_DELAY_MS], on the two CameraX failure modes known to be transient rather
+     * than permanent — [IllegalStateException] (CameraX's own catch-all for "camera already
+     * in use"/state races, most often seen right after another app or `Activity` instance released the
+     * camera) and [CameraUnavailableException] (the camera service briefly busy/unavailable) — before
+     * giving up and reporting [CameraBindResult.Failure]. Any other exception fails immediately without a
+     * retry, since those aren't expected to resolve themselves on a second attempt a third of a second
+     * later.
      */
     suspend fun bind(
         lifecycleOwner: LifecycleOwner,
@@ -77,6 +105,14 @@ class CameraController(private val context: Context) {
         // Null when the vision pipeline is unavailable (e.g. the :vision stub) — the preview and capture
         // use cases still bind so the user still has a working camera; only live analysis is skipped.
         frameAnalyzer: ImageAnalysis.Analyzer?,
+    ): CameraBindResult = bindAttempt(lifecycleOwner, previewView, lensFacing, frameAnalyzer, isRetry = false)
+
+    private suspend fun bindAttempt(
+        lifecycleOwner: LifecycleOwner,
+        previewView: PreviewView,
+        lensFacing: LensFacing,
+        frameAnalyzer: ImageAnalysis.Analyzer?,
+        isRetry: Boolean,
     ): CameraBindResult = try {
         val provider = cameraProvider ?: ProcessCameraProvider.getInstance(context).awaitFuture().also { cameraProvider = it }
         provider.unbindAll()
@@ -94,14 +130,28 @@ class CameraController(private val context: Context) {
         }
         val boundIsFront = cameraSelector == CameraSelector.DEFAULT_FRONT_CAMERA
 
-        val newPreview = Preview.Builder().build().apply {
-            surfaceProvider = previewView.surfaceProvider
-        }
+        val targetRotation = previewView.display?.rotation ?: Surface.ROTATION_0
+
+        val newPreview = Preview.Builder()
+            .setTargetRotation(targetRotation)
+            .build()
+            .apply { surfaceProvider = previewView.surfaceProvider }
+
+        val captureResolutionSelector = ResolutionSelector.Builder()
+            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+            .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+            .build()
         val newImageCapture = ImageCapture.Builder()
-            // MINIMIZE_LATENCY over MAXIMIZE_QUALITY: this is a live-coaching camera, so shutter
-            // responsiveness matters more than the last bit of JPEG quality once framing is already dialed in.
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            // MAXIMIZE_QUALITY by default: this is a coaching camera whose whole point is a better final
+            // photo, so once framing is dialed in the extra processing time (typically well under a
+            // second) is worth it. Falls back to MINIMIZE_LATENCY when the device itself says it's
+            // conserving resources (battery saver or a thermal throttle tier) via setPreferFastCapture —
+            // see that property's KDoc for why this only takes effect on the next bind, not live.
+            .setCaptureMode(if (preferFastCapture) ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY else ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
             .setJpegQuality(95)
+            .setResolutionSelector(captureResolutionSelector)
+            .setTargetRotation(targetRotation)
+            .setFlashMode(flashMode.toImageCaptureFlashMode())
             .build()
 
         val analysisResolutionSelector = ResolutionSelector.Builder()
@@ -119,12 +169,13 @@ class CameraController(private val context: Context) {
                 .apply { setAnalyzer(analysisExecutor, analyzer) }
         }
 
-        // Share one ViewPort so the analysis crop matches exactly what the preview shows on screen.
-        // PreviewView.viewPort is null until the view is attached to a display; after awaitLayout() the
-        // fallback below uses the real measured size, so it only differs in how rotation is sourced.
+        // Share one ViewPort so the analysis and capture crops match exactly what the preview shows on
+        // screen — see the class doc above for why. PreviewView.viewPort is null until the view is
+        // attached to a display; after awaitLayout() the fallback below uses the real measured size, so
+        // it only differs in how rotation is sourced.
         val viewPort = previewView.viewPort ?: ViewPort.Builder(
             Rational(previewView.width.coerceAtLeast(1), previewView.height.coerceAtLeast(1)),
-            previewView.display?.rotation ?: Surface.ROTATION_0,
+            targetRotation,
         ).build()
 
         val useCaseGroup = UseCaseGroup.Builder()
@@ -146,18 +197,37 @@ class CameraController(private val context: Context) {
         if (boundLens != lensFacing) {
             Log.w(TAG, "Requested $lensFacing but device only has the other lens; bound to $boundLens.")
         }
-        CameraBindResult.Success(boundCamera, boundCamera.cameraInfo.hasFlashUnit(), boundLens)
+        val exposureState = boundCamera.cameraInfo.exposureState
+        val exposureRange = if (exposureState.isExposureCompensationSupported) exposureState.exposureCompensationRange else Range(0, 0)
+        CameraBindResult.Success(boundCamera, boundCamera.cameraInfo.hasFlashUnit(), boundLens, exposureRange)
     } catch (t: Throwable) {
-        Log.e(TAG, "Camera bind failed", t)
-        CameraBindResult.Failure(t)
+        if (!isRetry && (t is IllegalStateException || t is CameraUnavailableException)) {
+            Log.w(TAG, "Camera bind failed with a likely-transient error; retrying once in ${RETRY_DELAY_MS}ms", t)
+            delay(RETRY_DELAY_MS)
+            bindAttempt(lifecycleOwner, previewView, lensFacing, frameAnalyzer, isRetry = true)
+        } else {
+            Log.e(TAG, "Camera bind failed", t)
+            CameraBindResult.Failure(t)
+        }
     }
 
+    /**
+     * Unbinds all use cases. CameraX requires `bindToLifecycle`/`unbindAll` to run on the main thread;
+     * this is normally already true (the screen's `DisposableEffect.onDispose` runs on the composition's
+     * main-thread dispatcher), but as a defensive measure against any caller that isn't — a
+     * `ViewModel.onCleared` running on a different dispatcher, say — this marshals onto the main thread
+     * itself rather than letting CameraX throw. Kept synchronous (not `suspend`) since callers currently
+     * expect that; a call from a background thread returns immediately without waiting for the marshaled
+     * unbind to actually run; that's fine here since nothing observes `unbind()` completing synchronously.
+     */
     fun unbind() {
-        cameraProvider?.unbindAll()
-        camera = null
-        preview = null
-        imageCapture = null
-        imageAnalysis = null
+        runOnMainThread {
+            cameraProvider?.unbindAll()
+            camera = null
+            preview = null
+            imageCapture = null
+            imageAnalysis = null
+        }
     }
 
     fun shutdown() {
@@ -177,14 +247,16 @@ class CameraController(private val context: Context) {
 
     private fun applyFlashMode(mode: FlashMode) {
         val capture = imageCapture ?: return
-        capture.flashMode = when (mode) {
-            FlashMode.OFF -> ImageCapture.FLASH_MODE_OFF
-            FlashMode.AUTO -> ImageCapture.FLASH_MODE_AUTO
-            FlashMode.ON -> ImageCapture.FLASH_MODE_ON
-        }
+        capture.flashMode = mode.toImageCaptureFlashMode()
     }
 
-    /** Focuses (and meters) on a tap in [previewView]'s local coordinates. */
+    private fun FlashMode.toImageCaptureFlashMode(): Int = when (this) {
+        FlashMode.OFF -> ImageCapture.FLASH_MODE_OFF
+        FlashMode.AUTO -> ImageCapture.FLASH_MODE_AUTO
+        FlashMode.ON -> ImageCapture.FLASH_MODE_ON
+    }
+
+    /** Focuses (and meters) on a tap in [previewView]'s local coordinates. Auto-cancels after 3s. */
     fun tapToFocus(previewView: PreviewView, x: Float, y: Float) {
         val cam = camera ?: return
         val point: MeteringPoint = previewView.meteringPointFactory.createPoint(x, y)
@@ -210,35 +282,30 @@ class CameraController(private val context: Context) {
         return next
     }
 
+    /**
+     * Sets exposure compensation, clamped to the bound camera's supported range (see
+     * [CameraBindResult.Success.exposureRange]). A no-op if there is no bound camera, or the device
+     * doesn't support exposure compensation at all (an empty/zero range).
+     */
+    fun setExposureCompensation(index: Int) {
+        val cam = camera ?: return
+        val state = cam.cameraInfo.exposureState
+        if (!state.isExposureCompensationSupported) return
+        val range = state.exposureCompensationRange
+        val clamped = index.coerceIn(range.lower, range.upper)
+        runCatching { cam.cameraControl.setExposureCompensationIndex(clamped) }
+    }
+
+    private inline fun runOnMainThread(crossinline block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            mainHandler.post { block() }
+        }
+    }
+
     companion object {
         private const val TAG = "CameraController"
+        private const val RETRY_DELAY_MS = 300L
     }
 }
-
-/** Suspends until the view has completed at least one layout pass (returns immediately if it already has). */
-private suspend fun PreviewView.awaitLayout() {
-    if (width > 0 && height > 0) return
-    suspendCancellableCoroutine { cont ->
-        doOnLayout { if (cont.isActive) cont.resume(Unit) }
-    }
-}
-
-/**
- * Awaits a Guava [com.google.common.util.concurrent.ListenableFuture] without pulling in the
- * kotlinx-coroutines-guava artifact (not part of this project's dependency set): registers a direct
- * listener that resumes the coroutine, cancelling the future if the coroutine itself is cancelled.
- */
-private suspend fun <T> com.google.common.util.concurrent.ListenableFuture<T>.awaitFuture(): T =
-    suspendCancellableCoroutine { cont ->
-        addListener(
-            {
-                try {
-                    cont.resume(get())
-                } catch (t: Throwable) {
-                    cont.resumeWithException(t)
-                }
-            },
-            { it.run() },
-        )
-        cont.invokeOnCancellation { cancel(false) }
-    }

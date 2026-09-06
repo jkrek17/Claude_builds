@@ -25,4 +25,16 @@ interface VisionFeatureToggles {
      * "clears reuse" behaviour) rather than leaving a stale mask reported forever.
      */
     fun setSegmentationEnabled(enabled: Boolean)
+
+    /**
+     * Applies a device-health-driven [PerformanceTier] on top of the two toggles above — see
+     * [DetectorSchedule] for exactly how each tier changes pose/object cadence, and [PerformanceTier]
+     * for how `:app`'s `ThermalPolicy` derives one from thermal status and battery saver.
+     *
+     * Given a default no-op implementation so this stays a purely additive, opt-in capability: a
+     * caller that never calls it (or an alternate [FrameAnalysisSource]/[VisionFeatureToggles]
+     * implementation in a test double) keeps running at [PerformanceTier.FULL] cadence forever, which
+     * is exactly today's behaviour.
+     */
+    fun setPerformanceTier(tier: PerformanceTier) {}
 }

@@ -74,4 +74,16 @@ class SegmentationCadence(
         if (due) framesSinceMask = 0
         return due
     }
+
+    /**
+     * Resets the cadence to its just-constructed state: normal (non-degraded) interval, no latency
+     * streak, and mask age treated as "no mask yet". Call when the owning pipeline (re)starts after a
+     * [VisionPipeline.stop] — without this, a pipeline stopped while degraded (or mid-interval) would
+     * resume already degraded/mid-count from state that no longer describes anything real.
+     */
+    fun reset() {
+        intervalFrames = normalIntervalFrames
+        slowStreak = 0
+        framesSinceMask = 0
+    }
 }

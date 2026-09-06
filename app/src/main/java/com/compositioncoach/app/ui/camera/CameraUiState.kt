@@ -1,11 +1,13 @@
 package com.compositioncoach.app.ui.camera
 
+import android.net.Uri
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.composition.model.DetectedObject
 import com.compositioncoach.composition.model.SmoothedComposition
 import com.compositioncoach.composition.model.SubjectMask
+import com.compositioncoach.vision.PerformanceTier
 
 /** Rolling stats shown only in debug mode. */
 data class DebugStats(
@@ -42,15 +44,69 @@ data class CameraUiState(
     val captureError: String? = null,
     /** True right after a capture finishes, until [withPostCaptureFadeEnded] — see that function's doc. */
     val postCaptureFadeActive: Boolean = false,
+    /**
+     * The device-health-driven cadence tier currently applied to the vision pipeline (see
+     * `com.compositioncoach.app.camera.ThermalPolicy`). Surfaced here for the debug overlay; FULL is the
+     * default and everyday value on a device that is neither thermally throttled nor in battery saver.
+     */
+    val performanceTier: PerformanceTier = PerformanceTier.FULL,
+    /**
+     * The bound camera's supported exposure-compensation index range, converted from
+     * [com.compositioncoach.app.camera.CameraBindResult.Success.exposureRange] (an `android.util.Range`,
+     * which — unlike this plain Kotlin [IntRange] — cannot be exercised in a plain JVM unit test: its
+     * accessors are stubbed to return null under Gradle's mockable android.jar, which then NPEs on
+     * unboxing). Both bounds `0` means the device doesn't support exposure compensation (or no camera has
+     * bound yet) — a slider driven by this should hide itself in that case rather than render a
+     * zero-width range.
+     */
+    val exposureRange: IntRange = 0..0,
+    /** Current exposure-compensation index, for a slider's position — see [onExposureCompensationChanged]. */
+    val exposureIndex: Int = 0,
+    /**
+     * The most recently saved photo's [Uri] (process-lifetime only — not persisted across process death;
+     * see `CaptureRepository.latestPhotoUri` for restoring it on a fresh process start), for a
+     * gallery-shortcut thumbnail button. Null until the first successful capture this process.
+     */
+    val lastPhotoUri: Uri? = null,
 )
+
+/**
+ * Whether the *next* camera bind should trade capture quality for shutter speed — true when either the
+ * user's own battery-saver setting or a device-health-driven [performanceTier] below FULL calls for it.
+ * The UI passes this to `CameraController.setPreferFastCapture` before/at bind time (see that function's
+ * KDoc for why it only takes effect on the next bind, not live on an already-bound `ImageCapture`).
+ */
+val CameraUiState.preferFastCapture: Boolean
+    get() = settings.batterySaver || performanceTier != PerformanceTier.FULL
 
 // The functions below are pure state transforms with no Android dependency, extracted so the
 // camera view model's reducer logic is unit-testable on the plain JVM (see CameraUiStateTest).
 
 fun CameraUiState.withSettings(settings: CoachSettings): CameraUiState = copy(settings = settings)
 
-fun CameraUiState.withCameraBound(lensFacing: LensFacing, hasFlashUnit: Boolean): CameraUiState =
-    copy(lensFacing = lensFacing, hasFlashUnit = hasFlashUnit, cameraError = null)
+fun CameraUiState.withCameraBound(
+    lensFacing: LensFacing,
+    hasFlashUnit: Boolean,
+    exposureRange: IntRange = 0..0,
+): CameraUiState = copy(
+    lensFacing = lensFacing,
+    hasFlashUnit = hasFlashUnit,
+    cameraError = null,
+    exposureRange = exposureRange,
+    // A fresh bind may report a different (or no) exposure range than before (e.g. a lens switch to a
+    // camera with different capabilities); re-clamp rather than leave a now out-of-range index in place.
+    exposureIndex = exposureIndex.coerceIn(exposureRange),
+)
+
+/** Applies a new device-health-driven cadence tier; see [CameraUiState.performanceTier]'s doc. */
+fun CameraUiState.withPerformanceTier(tier: PerformanceTier): CameraUiState = copy(performanceTier = tier)
+
+/** Records the exposure-compensation index a slider (or [preferFastCapture]-style control) just applied. */
+fun CameraUiState.withExposureIndex(index: Int): CameraUiState =
+    copy(exposureIndex = index.coerceIn(exposureRange))
+
+/** Records the most recently saved photo, for a gallery-shortcut thumbnail button. */
+fun CameraUiState.withLastPhotoUri(uri: Uri?): CameraUiState = copy(lastPhotoUri = uri)
 
 fun CameraUiState.withCameraError(message: String): CameraUiState = copy(cameraError = message)
 

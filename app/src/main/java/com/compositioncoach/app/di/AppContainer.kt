@@ -3,6 +3,7 @@ package com.compositioncoach.app.di
 import android.content.Context
 import android.util.Log
 import com.compositioncoach.app.camera.CaptureRepository
+import com.compositioncoach.app.camera.ThermalPolicy
 import com.compositioncoach.app.settings.SettingsRepository
 import com.compositioncoach.composition.engine.CompositionCoach
 import com.compositioncoach.vision.FrameAnalysisSource
@@ -21,6 +22,9 @@ class AppContainer(private val appContext: Context) {
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(appContext) }
     val captureRepository: CaptureRepository by lazy { CaptureRepository(appContext) }
     val reviewStore: ReviewStore by lazy { ReviewStore() }
+
+    /** Thermal/battery-saver-driven [com.compositioncoach.vision.PerformanceTier]; see its KDoc. */
+    val thermalPolicy: ThermalPolicy by lazy { ThermalPolicy(appContext) }
 
     /** [CompositionCoach.create] is pure Kotlin/JVM and cheap; never fails. */
     val coach: CompositionCoach by lazy { CompositionCoach.create() }
