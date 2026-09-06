@@ -120,7 +120,11 @@ class EdgeTensionAnalyzer : CompositionAnalyzer {
             issue = if (touching) "Subject crowds the frame edge" else null,
             recommendation = recommendation,
             geometry = listOf(OverlayGeometry.Region(bounds, isProblem = touching)),
-            strength = if (score >= 0.9f) "Comfortable margin from the edges" else null,
+            // Gated on `!touching`, not score alone: `touching` fires at worstDistance <= EDGE_MARGIN,
+            // and score (worstDistance / EDGE_MARGIN) can already read >= 0.9 just inside that boundary
+            // (e.g. worstDistance = 0.038 of a 0.04 margin), which used to flag "crowds the frame edge"
+            // (issue) and "Comfortable margin" (strength) on the same metric at once.
+            strength = if (!touching && score >= 0.9f) "Comfortable margin from the edges" else null,
         )
     }
 

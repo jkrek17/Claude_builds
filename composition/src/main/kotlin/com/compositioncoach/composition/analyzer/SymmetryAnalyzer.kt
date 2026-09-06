@@ -33,9 +33,13 @@ class SymmetryAnalyzer : CompositionAnalyzer {
             return CompositionMetric(category, name, score = 1f, confidence = 0f, applicable = false)
         }
 
+        // Defensively clamped: horizontalSymmetry is documented as 0..1 by its producer, but this
+        // analyzer must not let a malformed/future producer push an out-of-range value straight into
+        // a public Recommendation/CompositionMetric confidence (see the module's quality-gate invariants).
+        val symmetryConfidence = stats.horizontalSymmetry.coerceIn(0f, 1f)
         val referenceX = context.primarySubject?.anchorPoint?.x ?: stats.visualWeightCentroid().x
         val offCenter = abs(referenceX - 0.5f)
-        val score = (stats.horizontalSymmetry * (1f - (offCenter / MAX_OFFSET).coerceIn(0f, 1f))).coerceIn(0f, 1f)
+        val score = (symmetryConfidence * (1f - (offCenter / MAX_OFFSET).coerceIn(0f, 1f))).coerceIn(0f, 1f)
         val flagged = offCenter > OFF_CENTER_THRESHOLD
 
         val recommendation = if (!flagged) {
@@ -47,7 +51,7 @@ class SymmetryAnalyzer : CompositionAnalyzer {
                 id = "symmetry.offcenter",
                 category = category,
                 priority = Priority.HIGH,
-                confidence = stats.horizontalSymmetry,
+                confidence = symmetryConfidence,
                 severity = Severity.MEDIUM,
                 title = "Strong symmetry — center the shot",
                 instruction = InstructionText.forDirection(direction),
@@ -61,7 +65,7 @@ class SymmetryAnalyzer : CompositionAnalyzer {
             category = category,
             analyzerName = name,
             score = score,
-            confidence = stats.horizontalSymmetry,
+            confidence = symmetryConfidence,
             severity = recommendation?.severity ?: Severity.NONE,
             issue = if (flagged) "Symmetric scene is off-centre" else null,
             recommendation = recommendation,

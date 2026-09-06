@@ -206,7 +206,11 @@ class BackgroundDistractionAnalyzer : CompositionAnalyzer {
             issue = if (recommendation != null) "A busy patch sits right behind the subject's head" else null,
             recommendation = recommendation,
             geometry = listOfNotNull(recommendation?.let { OverlayGeometry.Region(ring, isProblem = true) }),
-            strength = if (score >= 0.9f) "Clean background behind the subject" else null,
+            // Gated on `recommendation == null`: `growingOutOfHead` can fire on brightnessContrast
+            // alone (a bright, low-texture sky patch above the head) while both edge-density ratios
+            // stay near/below 1.0, which used to let `score` read ~1.0 -- "Clean background" (strength)
+            // right next to "A busy patch..." (issue) on the same metric.
+            strength = if (recommendation == null && score >= 0.9f) "Clean background behind the subject" else null,
         )
     }
 

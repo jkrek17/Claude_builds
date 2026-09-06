@@ -25,6 +25,20 @@ class ImageStatisticsComputerTest {
         mirror = mirror,
     )
 
+    /** A luma buffer with an interleaved layout: each real sample is followed by a [pixelStride]-1 byte
+     * "poison" gap holding a value that would produce a visibly different (wrong) result if `compute`
+     * ever mis-stepped and read the gap byte instead of the real sample. */
+    private fun interleavedLuma(width: Int, height: Int, pixelStride: Int, poison: Int, value: (x: Int, y: Int) -> Int): Pair<ByteArray, Int> {
+        val rowStride = width * pixelStride
+        val bytes = ByteArray(rowStride * height) { poison.toByte() }
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                bytes[y * rowStride + x * pixelStride] = value(x, y).coerceIn(0, 255).toByte()
+            }
+        }
+        return bytes to rowStride
+    }
+
     @Test
     fun `uniform image has near-zero edge density and contrast`() {
         val w = 64; val h = 64
@@ -125,5 +139,45 @@ class ImageStatisticsComputerTest {
             "expected the right edge ($rightSum) brighter than the left edge ($leftSum) after a 90 deg rotation",
             rightSum > leftSum,
         )
+    }
+
+    @Test
+    fun `pixelStride 2 (interleaved plane) samples the real byte, not the interleaved gap`() {
+        val w = 100; val h = 100
+        // Real samples are bright-top/dark-bottom (220/40); every gap byte is a poisoned mid-grey (128)
+        // that would flatten the whole frame to near-zero edge density / no horizon if `compute` ever
+        // stepped by 1 instead of `pixelStride` through the buffer.
+        val (bytes, rowStride) = interleavedLuma(w, h, pixelStride = 2, poison = 128) { _, y -> if (y < h / 2) 220 else 40 }
+        val mapper = identityMapper(w, h)
+        val stats = ImageStatisticsComputer.compute(bytes, w, h, rowStride = rowStride, pixelStride = 2, mapper = mapper)
+
+        assertTrue("expected non-trivial contrast, was ${stats.contrast}", stats.contrast > 0.2f)
+        val angle = stats.estimatedHorizonAngleDegrees
+        assertNotNull("expected a horizon to be found from the real samples", angle)
+        assertTrue("expected a roughly level horizon, was $angle deg", abs(angle!!) < 5f)
+    }
+
+    @Test
+    fun `odd width and height do not throw and still find a horizon`() {
+        val w = 101; val h = 97
+        val bytes = luma(w, h) { _, y -> if (y < h / 2) 220 else 40 }
+        val mapper = identityMapper(w, h)
+        val stats = ImageStatisticsComputer.compute(bytes, w, h, rowStride = w, pixelStride = 1, mapper = mapper)
+
+        assertNotNull("expected a horizon to be found on an odd-sized buffer", stats.estimatedHorizonAngleDegrees)
+        assertTrue(
+            "expected a roughly level horizon, was ${stats.estimatedHorizonAngleDegrees} deg",
+            abs(stats.estimatedHorizonAngleDegrees!!) < 5f,
+        )
+    }
+
+    @Test
+    fun `odd width with pixelStride 2 combined does not throw and samples correctly`() {
+        val w = 63; val h = 63
+        val (bytes, rowStride) = interleavedLuma(w, h, pixelStride = 2, poison = 0) { x, _ -> if (x < w / 2) 220 else 40 }
+        val mapper = identityMapper(w, h)
+        val stats = ImageStatisticsComputer.compute(bytes, w, h, rowStride = rowStride, pixelStride = 2, mapper = mapper)
+
+        assertTrue("expected non-trivial contrast, was ${stats.contrast}", stats.contrast > 0.2f)
     }
 }

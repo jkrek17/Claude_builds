@@ -90,7 +90,10 @@ class LookingRoomAnalyzer : CompositionAnalyzer {
             severity = recommendation?.severity ?: Severity.NONE,
             issue = if (cramped) "Not enough looking room" else null,
             recommendation = recommendation,
-            strength = if (score >= 0.9f) "Good looking room" else null,
+            // Gated on `!cramped`, not score alone: `cramped` also requires `inOuterBand`, so a room
+            // ratio just under IDEAL_ROOM_RATIO (e.g. 0.95, score 0.95) with the face in the outer band
+            // used to be flagged as "cramped" (issue) while also clearing the strength threshold.
+            strength = if (!cramped && score >= 0.9f) "Good looking room" else null,
         )
     }
 

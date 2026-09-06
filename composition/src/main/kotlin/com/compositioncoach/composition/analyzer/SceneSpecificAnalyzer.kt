@@ -92,7 +92,11 @@ class SceneSpecificAnalyzer : CompositionAnalyzer {
         val recommendation = if (distanceToThird <= THIRD_DEAD_ZONE) {
             null
         } else {
-            val vector = ReframeVector(dy = horizonY - nearestThird)
+            // dy follows ReframeVector's "to - from" vertical convention (see ReframeVector.toMoveSubject):
+            // moving the horizon from horizonY to nearestThird requires dy = nearestThird - horizonY, not
+            // the reverse -- the previous `horizonY - nearestThird` told the photographer to move the
+            // camera in exactly the wrong direction for every off-thirds horizon.
+            val vector = ReframeVector(dy = nearestThird - horizonY)
             val direction = vector.primaryDirection()
             Recommendation(
                 id = "scene.landscape.horizon",

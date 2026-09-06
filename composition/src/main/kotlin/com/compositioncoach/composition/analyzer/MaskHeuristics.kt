@@ -35,9 +35,18 @@ object MaskHeuristics {
     /**
      * Non-subject cells within [ringWidth] grid cells (Chebyshev distance) of at least one subject cell —
      * a thin border tracing the mask's own silhouette rather than a rectangular bounding-box ring.
+     *
+     * @param knownSubjectCells the result of a prior [subjectCells] call on this same [mask]/[threshold],
+     *   when the caller already has one (e.g. [SubjectSeparationAnalyzer]) — avoids re-scanning the whole
+     *   grid and re-allocating an identical cell list every call. Computed fresh when omitted.
      */
-    fun ringCells(mask: SubjectMask, ringWidth: Int = 2, threshold: Float = SUBJECT_THRESHOLD): List<Pair<Int, Int>> {
-        val subject = subjectCells(mask, threshold).toSet()
+    fun ringCells(
+        mask: SubjectMask,
+        ringWidth: Int = 2,
+        threshold: Float = SUBJECT_THRESHOLD,
+        knownSubjectCells: List<Pair<Int, Int>>? = null,
+    ): List<Pair<Int, Int>> {
+        val subject = (knownSubjectCells ?: subjectCells(mask, threshold)).toSet()
         if (subject.isEmpty()) return emptyList()
         val ring = mutableListOf<Pair<Int, Int>>()
         for (row in 0 until mask.gridHeight) for (col in 0 until mask.gridWidth) {

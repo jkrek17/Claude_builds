@@ -96,7 +96,12 @@ class HeadroomAnalyzer : CompositionAnalyzer {
                 else -> null
             },
             recommendation = recommendation,
-            strength = if (score >= 0.85f) "Comfortable headroom" else null,
+            // Gated on `recommendation == null`, not score alone: for a mid-sized face, idealMin can
+            // shrink below TIGHT_HEADROOM, so `tight` (headroom <= TIGHT_HEADROOM) can be true while
+            // `below` (headroom vs. the now-smaller idealMin) is clamped to 0 -- i.e. score can read
+            // 1.0 even while `tight` still fires, which used to emit "Comfortable headroom" (strength)
+            // right alongside "Head too close to the top of the frame" (issue) on the same metric.
+            strength = if (recommendation == null && score >= 0.85f) "Comfortable headroom" else null,
         )
     }
 
