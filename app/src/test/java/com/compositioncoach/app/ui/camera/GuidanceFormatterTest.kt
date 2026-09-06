@@ -96,4 +96,11 @@ class GuidanceFormatterTest {
         val findSubject = rec().copy(id = "intent.no_subject", title = "Looking for a face", instruction = "Move closer to your subject")
         assertEquals("Move closer to your subject", GuidanceFormatter.awaitingSubjectHeadline(findSubject))
     }
+
+    @Test
+    fun `hold framing hint appears only for decent scores`() {
+        org.junit.Assert.assertTrue(GuidanceFormatter.showsHoldFramingHint(70))
+        org.junit.Assert.assertTrue(GuidanceFormatter.showsHoldFramingHint(85))
+        org.junit.Assert.assertFalse(GuidanceFormatter.showsHoldFramingHint(69))
+    }
 }

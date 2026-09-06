@@ -44,9 +44,29 @@ fun GuidanceBanner(
     activeRecommendations: List<Recommendation>,
     guidanceLevel: GuidanceLevel,
     awaitingSubject: Boolean = false,
+    displayScore: Int = 0,
+    isShootReady: Boolean = false,
+    hasScene: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    val primary = activeRecommendations.firstOrNull() ?: return
+    val primary = activeRecommendations.firstOrNull()
+    if (primary == null) {
+        // No advice: when the framing is decent, say so quietly, so advice clearing reads as success
+        // rather than the banner vanishing. Shoot-ready already speaks through the score badge.
+        if (hasScene && !isShootReady && GuidanceFormatter.showsHoldFramingHint(displayScore)) {
+            Text(
+                text = GuidanceFormatter.HOLD_FRAMING_HINT,
+                color = Color.White.copy(alpha = 0.75f),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                modifier = modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black.copy(alpha = 0.3f))
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+        return
+    }
 
     if (awaitingSubject) {
         Column(

@@ -155,6 +155,9 @@ fun CameraScreen(
                 activeRecommendations = uiState.composition.activeRecommendations,
                 guidanceLevel = uiState.settings.guidanceLevel,
                 awaitingSubject = uiState.composition.awaitingSubject,
+                displayScore = uiState.composition.displayScore,
+                isShootReady = uiState.composition.isShootReady,
+                hasScene = uiState.composition.scene != SceneClassification.UNKNOWN,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 148.dp),
             )
 

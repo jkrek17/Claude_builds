@@ -122,13 +122,42 @@ class CompositionSmootherTest {
         assertEquals("challenger", shownId)
     }
 
+    private fun resultWithSubject(recommendation: Recommendation?, score: Float): CompositionResult =
+        resultWith(recommendation, score).copy(
+            subjects = listOf(
+                com.compositioncoach.composition.model.DetectedSubject(
+                    id = 0,
+                    kind = com.compositioncoach.composition.model.SubjectKind.FACE,
+                    bounds = com.compositioncoach.composition.model.NormalizedRect(0.4f, 0.3f, 0.6f, 0.5f),
+                ),
+            ),
+        )
+
     @Test
-    fun `advice is dropped promptly once its issue is gone`() {
+    fun `advice is dropped once its issue is gone and it has been readable long enough`() {
         val smoother = CompositionSmoother()
         val steady = recommendation("steady", Direction.LEFT)
-        repeat(3) { smoother.update(resultWith(steady, 70f)) }
+        repeat(3) { smoother.update(resultWithSubject(steady, 70f)) } // shown 0.3 s
         var shownId: String? = "steady"
-        repeat(9) { shownId = smoother.update(resultWith(null, 80f)).primaryRecommendation?.id } // 0.9 s absent
+        // Issue gone but the subject is still visible: must stay until it has been shown 1.5 s...
+        repeat(10) { shownId = smoother.update(resultWithSubject(null, 80f)).primaryRecommendation?.id } // 1.3 s total
+        assertEquals("steady", shownId)
+        // ...then drop (issue absent >= 1.2 s and shown >= 1.5 s).
+        repeat(4) { shownId = smoother.update(resultWithSubject(null, 80f)).primaryRecommendation?.id }
+        assertEquals(null, shownId)
+    }
+
+    @Test
+    fun `losing the subject briefly does not drop subject advice`() {
+        val smoother = CompositionSmoother()
+        val steady = recommendation("steady", Direction.LEFT)
+        repeat(20) { smoother.update(resultWithSubject(steady, 70f)) }
+        var shownId: String? = null
+        // Detector blink: 1.5 s of frames with no subject at all.
+        repeat(15) { shownId = smoother.update(resultWith(null, 70f)).primaryRecommendation?.id }
+        assertEquals("steady", shownId)
+        // Subject gone for good: dropped after 2.5 s without a subject.
+        repeat(12) { shownId = smoother.update(resultWith(null, 70f)).primaryRecommendation?.id }
         assertEquals(null, shownId)
     }
 

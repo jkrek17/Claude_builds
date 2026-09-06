@@ -71,4 +71,12 @@ object GuidanceFormatter {
      * directional glyph: the recommendation has no direction to point in.
      */
     fun awaitingSubjectHeadline(recommendation: Recommendation): String = recommendation.instruction
+
+    /** Text shown when there is no advice and the framing is already decent. */
+    const val HOLD_FRAMING_HINT = "Hold this framing"
+
+    /** The hold-framing hint only makes sense once the score is good; below that there is always advice. */
+    const val HOLD_FRAMING_MIN_SCORE = 70
+
+    fun showsHoldFramingHint(displayScore: Int): Boolean = displayScore >= HOLD_FRAMING_MIN_SCORE
 }

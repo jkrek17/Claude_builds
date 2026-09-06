@@ -2,6 +2,7 @@ package com.compositioncoach.composition.engine
 
 import com.compositioncoach.composition.model.CompositionResult
 import com.compositioncoach.composition.model.Direction
+import com.compositioncoach.composition.model.MetricCategory
 import com.compositioncoach.composition.model.Recommendation
 import com.compositioncoach.composition.model.Severity
 import com.compositioncoach.composition.model.SmoothedComposition
@@ -29,8 +30,13 @@ import kotlin.math.roundToInt
  *   before it replaces the current headline.
  * @param recommendationMinHoldMs the current headline is protected from replacement until it has been
  *   shown this long, so the photographer has time to read and act on it.
- * @param issueGoneMs if the current headline's issue has been absent from the raw ranking for this long,
- *   it is dropped at once (the problem is fixed; no point holding it).
+ * @param recommendationMinShowMs advice never disappears before it has been on screen this long, even if the
+ *   issue clears immediately: a line that flashes for half a second cannot be read.
+ * @param issueGoneMs if the current headline's issue has been absent from the raw ranking for this long
+ *   (while the subject was still being seen), it is dropped: the problem is fixed.
+ * @param subjectLostDropMs frames with no subject at all are not evidence that a subject-related issue was
+ *   fixed (the detector blinked, or the person is momentarily out of frame), so they do not count toward
+ *   [issueGoneMs]; instead the advice is dropped only after the subject has been missing this long.
  * @param oppositeDirectionExtraConfirmMs extra confirmation required when the challenger asks for the
  *   opposite action (LEFT after RIGHT, UP after DOWN...), which is the swap that reads as flicker.
  *
@@ -50,7 +56,9 @@ data class SmoothingConfig(
     val displaySnapDelta: Int = 10,
     val recommendationConfirmMs: Long = 800,
     val recommendationMinHoldMs: Long = 2000,
-    val issueGoneMs: Long = 700,
+    val recommendationMinShowMs: Long = 1500,
+    val issueGoneMs: Long = 1200,
+    val subjectLostDropMs: Long = 2500,
     val oppositeDirectionExtraConfirmMs: Long = 500,
     val shootReadyEnterScore: Int = 88,
     val shootReadyExitScore: Int = 84,
@@ -98,6 +106,7 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
     private var current: Recommendation? = null
     private var currentShownMs: Long = 0
     private var currentAbsentMs: Long = 0
+    private var subjectLostMs: Long = 0
     private var candidate: Recommendation? = null
     private var candidateMs: Long = 0
 
@@ -165,6 +174,7 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
         current = null
         currentShownMs = 0
         currentAbsentMs = 0
+        subjectLostMs = 0
         candidate = null
         candidateMs = 0
         shootReady = false
@@ -235,11 +245,22 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
         if (stillPresent != null) {
             current = stillPresent // same advice, refreshed numbers/vector
             currentAbsentMs = 0
+            subjectLostMs = 0
         } else {
-            currentAbsentMs += dtMs
-            if (currentAbsentMs >= config.issueGoneMs) {
-                promote(top) // the problem is fixed: drop it regardless of the hold time
-                return
+            val subjectRelated = existing.category != MetricCategory.HORIZON
+            if (subjectRelated && result.subjects.isEmpty()) {
+                // No subject in this frame: not evidence the issue was fixed, just that we can't see it.
+                subjectLostMs += dtMs
+                if (subjectLostMs >= config.subjectLostDropMs) {
+                    promote(top)
+                    return
+                }
+            } else {
+                currentAbsentMs += dtMs
+                if (currentAbsentMs >= config.issueGoneMs && currentShownMs >= config.recommendationMinShowMs) {
+                    promote(top) // the problem is fixed and the advice was readable long enough: drop it
+                    return
+                }
             }
         }
 
@@ -261,6 +282,7 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
         current = recommendation
         currentShownMs = 0
         currentAbsentMs = 0
+        subjectLostMs = 0
         candidate = null
         candidateMs = 0
     }
