@@ -122,4 +122,75 @@ class DeviceRotationQuantizerTest {
         assertEquals(0f, referenceRollToDeviceRotation(180f, 180), 1e-4f)
         assertEquals(0f, referenceRollToDeviceRotation(-90f, 270), 1e-4f)
     }
+
+    // --- Anchored to gravity, not to an intermediate roll -------------------------------------------------
+    // Everything above feeds the quantizer a roll number directly, which only proves it buckets correctly
+    // *given* that number's sign. These drive the whole thing from the raw gravity vector instead, so a
+    // sign error anywhere between "which way is up" and "which Surface.ROTATION_* band" is caught here.
+    //
+    // Android's device axes: +x out the RIGHT edge, +y out the TOP edge. A stationary device reports the
+    // direction of up in those axes, so the four holds are literally the four unit axes in the xy plane.
+
+    @Test
+    fun `each physical hold's gravity vector quantizes to that hold's Surface_ROTATION band`() {
+        // portrait: up is out the top edge      -> (0, +g)  -> ROTATION_0
+        assertEquals(0, settle(gravityToRollDegrees(0f, G)))
+        // right edge up (ROTATION_90 is defined as 90 degrees CCW from natural) -> (+g, 0)
+        assertEquals(90, settle(gravityToRollDegrees(G, 0f)))
+        // upside down: up is out the bottom edge -> (0, -g) -> ROTATION_180
+        assertEquals(180, settle(gravityToRollDegrees(0f, -G)))
+        // left edge up -> (-g, 0) -> ROTATION_270
+        assertEquals(270, settle(gravityToRollDegrees(-G, 0f)))
+    }
+
+    @Test
+    fun `90 and 270 are not swapped, which is the mistake this whole file exists to prevent`() {
+        assertEquals(90, settle(gravityToRollDegrees(G, 0f)))
+        assertEquals(270, settle(gravityToRollDegrees(-G, 0f)))
+    }
+
+    @Test
+    fun `a level hold reads roll ~0 in every orientation, straight from gravity`() {
+        for ((gx, gy) in listOf(0f to G, G to 0f, 0f to -G, -G to 0f)) {
+            val raw = gravityToRollDegrees(gx, gy)
+            assertEquals("gravity=($gx, $gy)", 0f, referenceRollToDeviceRotation(raw, settle(raw)), 1e-3f)
+        }
+    }
+
+    @Test
+    fun `a 5 degree clockwise horizon tilt reads +5 in every orientation, straight from gravity`() {
+        // Turning the camera 5 degrees further counter-clockwise sweeps a fixed scene 5 degrees clockwise
+        // inside the frame, so this is the gravity vector of "the hold, plus 5 degrees CCW".
+        for (theta in intArrayOf(0, 90, 180, 270)) {
+            val a = Math.toRadians(theta + 5.0)
+            val raw = gravityToRollDegrees((G * kotlin.math.sin(a)).toFloat(), (G * kotlin.math.cos(a)).toFloat())
+            val band = settle(raw)
+            assertEquals("theta=$theta band", theta, band)
+            assertEquals("theta=$theta roll", 5f, referenceRollToDeviceRotation(raw, band), 1e-3f)
+        }
+    }
+
+    @Test
+    fun `pitching the camera at the ground makes the reading unreliable rather than a random band`() {
+        // Rear camera pointed straight down: device +z swings up, so up in device axes is (0, 0, +g) and
+        // roll is numerically meaningless. gravityReadingIsReliable must say so; the quantizer then
+        // freezes rather than committing to whatever atan2 of two near-zero numbers produced.
+        assertEquals(false, gravityReadingIsReliable(0f, 0.02f, 1f))
+        assertEquals(true, gravityReadingIsReliable(0f, 1f, 0f))
+        // The accelerometer fallback path passes a ~9.81-magnitude vector; the scale keeps the same
+        // ~25-degree cone rather than making the check effectively never fire.
+        assertEquals(false, gravityReadingIsReliable(0f, 0.2f, 9.8f, magnitudeScale = 9.81f))
+        assertEquals(true, gravityReadingIsReliable(0f, 9.81f, 0f, magnitudeScale = 9.81f))
+    }
+
+    /** Feeds one reading through the quantizer until its debounce window has elapsed. */
+    private fun settle(rollDegrees: Float): Int {
+        val q = DeviceRotationQuantizer()
+        q.update(rollDegrees, isReliable = true, nowMs = 0L)
+        return q.update(rollDegrees, isReliable = true, nowMs = DeviceRotationQuantizer.DEBOUNCE_MS + 1)
+    }
+
+    private companion object {
+        const val G = 9.81f
+    }
 }

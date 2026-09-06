@@ -219,9 +219,12 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
             // physical-up rather than display-up. See UprightRotation's KDoc for the derivation.
             val displayUprightRotation = imageProxy.imageInfo.rotationDegrees
             val deviceRotation = orientationSensor.deviceRotationDegrees
-            val rotation = UprightRotation.computeUprightRotationDegrees(displayUprightRotation, deviceRotation)
-            val crop: Rect = imageProxy.cropRect
             val front = isFrontCamera
+            // The correction's sign depends on which way the camera faces (the front camera's optical
+            // axis is reversed, so physically rotating the phone sweeps the scene the other way inside
+            // its buffer) — see UprightRotation's KDoc.
+            val rotation = UprightRotation.computeUprightRotationDegrees(displayUprightRotation, deviceRotation, front)
+            val crop: Rect = imageProxy.cropRect
             val mapper = FrameCoordinateMapper(
                 sensorWidth = imageProxy.width,
                 sensorHeight = imageProxy.height,
@@ -343,6 +346,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                     isFrontCamera = front,
                     analysisLatencyMs = totalMs,
                     deviceRotationDegrees = deviceRotation,
+                    analysisRotationDegrees = rotation,
                     detectorTimings = mapOf(
                         "faces" to faceMs,
                         "pose" to poseMs,
@@ -370,6 +374,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                         orientation = orientationSensor.current,
                         analysisLatencyMs = totalMs,
                         deviceRotationDegrees = orientationSensor.deviceRotationDegrees,
+                        analysisRotationDegrees = imageProxy.imageInfo.rotationDegrees,
                     ),
                 )
             }

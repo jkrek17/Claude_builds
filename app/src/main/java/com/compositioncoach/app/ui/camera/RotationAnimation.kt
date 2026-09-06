@@ -48,20 +48,31 @@ object RotationAnimation {
 
 /**
  * Remembers an ever-accumulating target angle tracking [OverlayMapper.uprightChromeAngleDegrees] of
- * [deviceRotationDegrees] via [RotationAnimation.nextUnwrappedRotation] (updated only when
- * [deviceRotationDegrees] actually changes, via [LaunchedEffect]), and animates it over
+ * [deviceRotationDegrees] via [RotationAnimation.nextUnwrappedRotation], and animates it over
  * [RotationAnimation.ROTATION_ANIM_MS] — the angle Pixel-style chrome should visually rotate by (see
  * [RotatedChrome]) so it counter-rotates against the device and stays upright. Passed straight to
- * `Modifier.rotate(...)`/`graphicsLayer { rotationZ = ... }` by [RotatedChrome].
+ * [RotatedChrome]'s `placeWithLayer { rotationZ = ... }`.
  *
- * Note this is *not* negated (unlike an earlier version of this function) — see
- * [OverlayMapper.uprightChromeAngleDegrees]'s KDoc for why `-deviceRotationDegrees` was the wrong sign.
+ * The value is *not* negated — see [OverlayMapper.uprightChromeAngleDegrees]'s KDoc for the derivation
+ * and for why `-deviceRotationDegrees` (the original field bug) is the wrong sign.
+ *
+ * Two details that are load-bearing rather than incidental:
+ *  - The [LaunchedEffect] is keyed on the **target angle**, not on [deviceRotationDegrees]. They are 1:1
+ *    today, but keying on the value actually consumed means a change to how the angle is derived can
+ *    never silently stop re-arming the animation.
+ *  - `unwrapped` is seeded from the *current* target, not from zero, so chrome that first enters
+ *    composition while the phone is already held sideways renders at the right angle immediately instead
+ *    of animating in from upright.
+ *
+ * That the resulting angle really does reach the screen with the right sign — through this animation,
+ * [RotatedChromeMath]'s width/height swap and the graphics layer — is covered end to end by
+ * `RotatedChromeRotationTest` (Robolectric + Compose), since none of it is checkable by reading.
  */
 @Composable
 fun rememberControlCounterRotation(deviceRotationDegrees: Int): Float {
     val target = OverlayMapper.uprightChromeAngleDegrees(deviceRotationDegrees)
     var unwrapped by remember { mutableFloatStateOf(target) }
-    LaunchedEffect(deviceRotationDegrees) {
+    LaunchedEffect(target) {
         unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, target)
     }
     val animated by animateFloatAsState(

@@ -49,6 +49,15 @@ data class FrameAnalysis(
      * them back onto the portrait-locked preview and to rotate controls.
      */
     val deviceRotationDegrees: Int = 0,
+    /**
+     * Diagnostic only (the engine never reads it): the clockwise rotation, in degrees, that the vision
+     * layer applied to the raw camera buffer to produce the physically-upright frame this analysis is
+     * expressed in — `:vision`'s `UprightRotation.computeUprightRotationDegrees`, i.e.
+     * `imageInfo.rotationDegrees -/+ deviceRotationDegrees` (minus for the rear camera, plus for the
+     * front). Surfaced so the debug overlay can show the whole rotation chain — device rotation, this
+     * value, the chrome angle and the roll — on one line while the phone is turned.
+     */
+    val analysisRotationDegrees: Int = 0,
 ) {
     val aspectRatio: Float get() = if (frameHeight == 0) 1f else frameWidth.toFloat() / frameHeight
 }

@@ -184,6 +184,11 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
+    // Compose under Robolectric: RotatedChromeRotationTest drives the real RotatedChrome layout/
+    // graphics-layer path on the JVM, which is what pins the "chrome doesn't actually rotate" bug.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 // --- Play policy verification ---------------------------------------------------------------------

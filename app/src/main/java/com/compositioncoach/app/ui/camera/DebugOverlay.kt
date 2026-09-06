@@ -33,11 +33,15 @@ import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.ScoreWeights
 import com.compositioncoach.composition.model.Severity
 import com.compositioncoach.composition.model.SmoothedComposition
+import kotlin.math.roundToInt
 
 /**
  * Everything the debug/developer setting exposes: per-metric scores, recommendation confidences,
  * timings, and the optimizer's candidate framings. Text-only (boxes/landmarks are [DebugGeometryOverlay]);
  * collapsible so it doesn't have to stay in the way while checking the live preview.
+ *
+ * The `Rot:` line is the whole rotation chain in one place, for checking on a real device that the phone
+ * agrees with the maths — see [rotationDebugLine] for what each field should read in each hold.
  */
 @Composable
 fun DebugOverlay(
@@ -45,6 +49,7 @@ fun DebugOverlay(
     debugStats: DebugStats,
     modifier: Modifier = Modifier,
     performanceTier: String? = null,
+    deviceRotationDegrees: Int = 0,
 ) {
     var collapsed by rememberSaveable { mutableStateOf(false) }
     val raw = composition.raw
@@ -68,6 +73,15 @@ fun DebugOverlay(
             DebugText("Engine: ${raw.engineTimeMs}ms  FPS: ${"%.1f".format(debugStats.fps)}")
             DebugText("Latency: ${debugStats.lastLatencyMs}ms  Interval: ${debugStats.samplingIntervalMs}ms")
             DebugText("Shoot ready: ${raw.isShootReady}")
+            DebugText(
+                rotationDebugLine(
+                    deviceRotationDegrees = deviceRotationDegrees,
+                    analysisRotationDegrees = debugStats.analysisRotationDegrees,
+                    chromeAngleDegrees = OverlayMapper.uprightChromeAngleDegrees(deviceRotationDegrees),
+                    rollDegrees = debugStats.rollDegrees,
+                ),
+                color = Color(0xFF9AD5FF),
+            )
             HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
 
             DebugText("Metrics", bold = true)
@@ -108,6 +122,32 @@ fun DebugOverlay(
         }
     }
 }
+
+/**
+ * The debug overlay's one-line rotation readout. Pure (so it is unit-tested in `DebugOverlayTextTest`
+ * rather than needing a screenshot) and deliberately compact enough to fit the 260dp panel.
+ *
+ * What each field must read, per hold — this is the same truth table `RotationTruthTableTest` asserts, so
+ * a device that disagrees with this line has a real bug, not a display quirk:
+ * ```
+ * hold             device  upright (rear / front)  chrome  roll (level hold)
+ * portrait              0        90 /  270              0   ~0
+ * right edge up        90         0 /    0            +90   ~0
+ * upside down         180       270 /   90            180   ~0
+ * left edge up        270       180 /  180            -90   ~0
+ * ```
+ * `upright` is `imageInfo.rotationDegrees -/+ device` (minus rear, plus front) and assumes the usual
+ * Pixel-style mount (rear `R0 = 90`, front `R0 = 270`); `chrome` is clockwise-positive Compose degrees;
+ * `roll` is the residual tilt after re-referencing, so it stays near 0 in *every* hold when the phone is
+ * level and goes positive when the horizon appears rotated clockwise.
+ */
+fun rotationDebugLine(
+    deviceRotationDegrees: Int,
+    analysisRotationDegrees: Int,
+    chromeAngleDegrees: Float,
+    rollDegrees: Float,
+): String = "Rot: device=$deviceRotationDegrees upright=$analysisRotationDegrees " +
+    "chrome=${chromeAngleDegrees.roundToInt()} roll=${rollDegrees.roundToInt()}"
 
 @Composable
 private fun DebugText(text: String, bold: Boolean = false, color: Color = Color.White) {

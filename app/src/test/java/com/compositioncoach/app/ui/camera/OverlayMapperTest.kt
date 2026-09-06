@@ -41,21 +41,26 @@ class OverlayMapperTest {
     }
 
     // --- Rotation mapping: physical-up normalized point -> the (never-rotating) portrait preview -----------
-    // See OverlayMapper's class KDoc for the derivation; the ROTATION_90 case is the task's own worked
-    // example: the physical top-left corner lands at the display's bottom-left.
+    // The display frame is the physical-up frame turned CLOCKWISE by deviceRotationDegrees -- see
+    // OverlayMapper's class KDoc for the gravity-anchored derivation and RotationTruthTableTest for the
+    // full per-hold table. An earlier version of this file asserted the inverse (360 - theta), which is
+    // 180 degrees out at 90 and 270: that is the "arrow points at the top of the screen when it should
+    // point at the bottom" field bug.
 
     @Test
-    fun `rotation 90 sends the physical top-left corner to the display bottom-left`() {
+    fun `rotation 90 sends the physical top-left corner to the display top-right`() {
+        // At right-edge-up, physical up appears at the screen's right, so the physical top edge of the
+        // scene is drawn down the screen's right-hand side: its left end is the display's top-right.
         val mapped = OverlayMapper.rotatePointToDisplay(NormalizedPoint(0f, 0f), deviceRotationDegrees = 90)
-        assertEquals(0f, mapped.x, 1e-6f)
-        assertEquals(1f, mapped.y, 1e-6f)
+        assertEquals(1f, mapped.x, 1e-6f)
+        assertEquals(0f, mapped.y, 1e-6f)
     }
 
     @Test
-    fun `rotation 90 sends the physical top-right corner to the display top-left`() {
+    fun `rotation 90 sends the physical top-right corner to the display bottom-right`() {
         val mapped = OverlayMapper.rotatePointToDisplay(NormalizedPoint(1f, 0f), deviceRotationDegrees = 90)
-        assertEquals(0f, mapped.x, 1e-6f)
-        assertEquals(0f, mapped.y, 1e-6f)
+        assertEquals(1f, mapped.x, 1e-6f)
+        assertEquals(1f, mapped.y, 1e-6f)
     }
 
     @Test
@@ -66,10 +71,10 @@ class OverlayMapperTest {
     }
 
     @Test
-    fun `rotation 270 sends the physical top-left corner to the display top-right`() {
+    fun `rotation 270 sends the physical top-left corner to the display bottom-left`() {
         val mapped = OverlayMapper.rotatePointToDisplay(NormalizedPoint(0f, 0f), deviceRotationDegrees = 270)
-        assertEquals(1f, mapped.x, 1e-6f)
-        assertEquals(0f, mapped.y, 1e-6f)
+        assertEquals(0f, mapped.x, 1e-6f)
+        assertEquals(1f, mapped.y, 1e-6f)
     }
 
     @Test
@@ -95,11 +100,11 @@ class OverlayMapperTest {
     fun `rect rotation stays axis-aligned and rotates corners consistently at 90`() {
         val rect = NormalizedRect(left = 0.1f, top = 0.2f, right = 0.6f, bottom = 0.8f)
         val mapped = OverlayMapper.rotateRectToDisplay(rect, deviceRotationDegrees = 90)
-        // Corners: (0.1,0.2)->(0.2,0.9), (0.6,0.8)->(0.8,0.4); sorted into an axis-aligned rect.
+        // Corners: (0.1,0.2)->(0.8,0.1), (0.6,0.8)->(0.2,0.6); sorted into an axis-aligned rect.
         assertEquals(0.2f, mapped.left, 1e-6f)
-        assertEquals(0.4f, mapped.top, 1e-6f)
+        assertEquals(0.1f, mapped.top, 1e-6f)
         assertEquals(0.8f, mapped.right, 1e-6f)
-        assertEquals(0.9f, mapped.bottom, 1e-6f)
+        assertEquals(0.6f, mapped.bottom, 1e-6f)
     }
 
     @Test
@@ -116,21 +121,30 @@ class OverlayMapperTest {
     fun `rect rotation at 270 mirrors the 90 case`() {
         val rect = NormalizedRect(left = 0.1f, top = 0.2f, right = 0.6f, bottom = 0.8f)
         val mapped = OverlayMapper.rotateRectToDisplay(rect, deviceRotationDegrees = 270)
-        // Corners: (0.1,0.2)->(0.8,0.1), (0.6,0.8)->(0.2,0.6); sorted into an axis-aligned rect.
+        // Corners: (0.1,0.2)->(0.2,0.9), (0.6,0.8)->(0.8,0.4); sorted into an axis-aligned rect.
         assertEquals(0.2f, mapped.left, 1e-6f)
-        assertEquals(0.1f, mapped.top, 1e-6f)
+        assertEquals(0.4f, mapped.top, 1e-6f)
         assertEquals(0.8f, mapped.right, 1e-6f)
-        assertEquals(0.6f, mapped.bottom, 1e-6f)
+        assertEquals(0.9f, mapped.bottom, 1e-6f)
     }
 
     @Test
     fun `toPx applies the rotation before the plain multiply`() {
         val (x, y) = OverlayMapper.toPx(NormalizedPoint(0f, 0f), deviceRotationDegrees = 90, viewWidthPx = 1000f, viewHeightPx = 2000f)
-        assertEquals(0f, x, 1e-3f)
-        assertEquals(2000f, y, 1e-3f)
+        assertEquals(1000f, x, 1e-3f)
+        assertEquals(0f, y, 1e-3f)
     }
 
     // --- Direction vectors (arrow / rotate glyph / level indicator) -----------------------------------------
+
+    @Test
+    fun `a physical-right direction vector points down the screen at ROTATION_90`() {
+        // The concrete field bug: "Move slightly right" with the phone's right edge up must draw an arrow
+        // toward the screen's BOTTOM (that is where physical right is in that hold), not its top.
+        val (dx, dy) = OverlayMapper.rotateVectorToDisplay(1f, 0f, deviceRotationDegrees = 90)
+        assertEquals(0f, dx, 1e-6f)
+        assertEquals(1f, dy, 1e-6f)
+    }
 
     @Test
     fun `a physical-right direction vector rotates consistently with the point mapping at 90 degrees`() {

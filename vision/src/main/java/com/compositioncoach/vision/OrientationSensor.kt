@@ -31,35 +31,16 @@ import kotlin.math.hypot
  * reaction force opposing gravity, i.e. "up" in device coordinates.
  *
  * ### Deriving roll/pitch from the "up in device axes" vector (gx, gy, gz)
- * Android's documented device axis convention (see [SensorEvent]): with the phone held in its
- * natural/default (portrait) orientation, X points right, Y points up (towards the top edge), Z
- * points out of the screen face towards the viewer (and towards the sky when the phone lies flat
- * screen-up on a table — this is literally how Android's docs describe it, and matches the
- * well-known fact that a stationary phone lying flat screen-up reads `az ~= +9.8`).
- *
- * The rear camera looks out along **-Z**. Holding the phone vertically in the normal shooting pose,
- * level, aimed at the horizon: the top edge (Y) points at the sky, so `(gx, gy, gz) ~= (0, g, 0)`.
- *
- * **Pitch.** Tilting the camera to point straight down at the ground swings the device's own +Z axis
- * to point straight up at the sky (since -Z, the camera axis, now points down), giving
- * `(gy, gz) ~= (0, +g)`; pointing straight up at the sky gives `(gy, gz) ~= (0, -g)`. Together with
- * the level case `(g, 0)`, these three fixed points pin down (checked, not guessed):
+ * The signs live in the pure functions at the bottom of this file — [gravityToRollDegrees],
+ * [gravityToPitchDegrees] and [gravityReadingIsReliable] — where each is derived from Android's device-axis
+ * convention and checked against concrete holds (portrait, right-edge-up, upside-down, left-edge-up, plus
+ * camera-straight-up/straight-down for pitch). They are top-level and side-effect-free precisely so a test
+ * can drive the whole rotation chain from a gravity vector rather than from an already-signed roll:
  * ```
- * pitchDegrees = atan2(-gz, gy)
+ * rollDegrees  = atan2(gx, gy)     // = the phone's physical rotation from natural portrait, and equally
+ *                                  //   how far clockwise the world appears rotated in the captured frame
+ * pitchDegrees = atan2(-gz, gy)    // positive = camera pointed above the horizon
  * ```
- * (level -> atan2(0,g)=0; pointing up -> atan2(g,0)=+90; pointing down -> atan2(-g,0)=-90.) ✓.
- *
- * **Roll.** Rolling the phone 90° counter-clockwise (as the user looks at their own screen) turns
- * what was the device's +X (right edge) to point where +Y (top edge, i.e. "up") used to point, so
- * the "up-in-device-axes" vector becomes `(gx, gy) ~= (g, 0)`. A 90° CCW physical roll of the camera
- * makes a *fixed* scene appear rotated 90° **clockwise** in the resulting image (rotate the frame of
- * reference CCW and the world appears to sweep CW relative to it — the standard "spinning camera"
- * intuition). Since the contract's positive roll means "horizon appears clockwise on screen", this
- * case must report `rollDegrees = +90`, giving:
- * ```
- * rollDegrees = atan2(gx, gy)
- * ```
- * (level -> atan2(0,g)=0; this CCW-90 physical roll -> atan2(g,0)=+90.) ✓.
  *
  * ### Display-rotation remap
  * The app is locked to portrait, but as a defensive measure this class still reads the current
@@ -161,16 +142,14 @@ class OrientationSensor(private val context: Context) : SensorEventListener {
             fz += LOW_PASS_ALPHA * (upZ - fz)
         }
 
-        val rollRad = atan2(fx.toDouble(), fy.toDouble())
-        val pitchRad = atan2(-fz.toDouble(), fy.toDouble())
-        val rollDegrees = Math.toDegrees(rollRad).toFloat()
-        val pitchDegrees = Math.toDegrees(pitchRad).toFloat()
-
-        // Roll is undefined (numerically unstable) when the device points near straight up/down,
-        // i.e. when the "up in device axes" vector has collapsed onto the Z axis (fx, fy both tiny).
-        val horizontalMagnitude = hypot(fx.toDouble(), fy.toDouble())
-        val nearVertical = Math.abs(pitchDegrees) > RELIABLE_PITCH_LIMIT_DEGREES || horizontalMagnitude < NEAR_VERTICAL_MAGNITUDE
-        val isReliable = !nearVertical
+        // All three quantities come from the same pure functions the rotation truth-table test drives
+        // directly from a gravity vector (see the bottom of this file) — this class only supplies the
+        // vector and the filtering, so the *signs* live in exactly one, independently-testable place.
+        val rollDegrees = gravityToRollDegrees(fx, fy)
+        val pitchDegrees = gravityToPitchDegrees(fy, fz)
+        // The rotation-vector path yields a unit "up"; the raw accelerometer yields ~9.81 m/s^2.
+        val magnitudeScale = if (usingAccelerometerFallback) EARTH_GRAVITY else 1f
+        val isReliable = gravityReadingIsReliable(fx, fy, fz, magnitudeScale)
         // SensorEvent.timestamp is elapsed-realtime nanoseconds (monotonic, consistent across sensor
         // types), so it doubles as the quantizer's debounce clock without an extra syscall per event.
         val quantizedRotation = rotationQuantizer.update(rollDegrees, isReliable, event.timestamp / 1_000_000L)
@@ -224,7 +203,76 @@ class OrientationSensor(private val context: Context) : SensorEventListener {
 
     companion object {
         private const val LOW_PASS_ALPHA = 0.2f
-        private const val RELIABLE_PITCH_LIMIT_DEGREES = 65.0 // within 25 deg of +/-90
-        private const val NEAR_VERTICAL_MAGNITUDE = 0.42 // ~= sin(25 deg), horizontal component of "up"
+        private const val EARTH_GRAVITY = 9.81f
     }
 }
+
+// --- Pure gravity math ------------------------------------------------------------------------------
+// Extracted from [OrientationSensor] so the whole rotation chain can be driven from a plain gravity
+// vector in a unit test (see :app's RotationTruthTableTest and DeviceRotationQuantizerTest) instead of
+// from an intermediate "roll" whose sign would otherwise have to be taken on trust.
+//
+// The input in every case is the direction of **up** expressed in the device's own axes: `(gx, gy, gz)`.
+// A stationary accelerometer measures exactly that (the reaction force opposing gravity), and the third
+// row of `TYPE_ROTATION_VECTOR`'s device->world rotation matrix is the same vector. Android's device
+// axes (see `SensorEvent`): +x out the screen's RIGHT edge, +y out its TOP edge, +z out of the screen
+// face. So, with g = 9.8:
+//
+// ```
+// hold                     up in device axes     rollDegrees   quantized band
+// portrait (natural)       ( 0,  g,  0)                    0   0    = Surface.ROTATION_0
+// right edge up            ( g,  0,  0)                  +90   90   = Surface.ROTATION_90
+// upside down              ( 0, -g,  0)                  180   180  = Surface.ROTATION_180
+// left edge up             (-g,  0,  0)                  -90   270  = Surface.ROTATION_270
+// ```
+
+/**
+ * Roll from the gravity/"up in device axes" vector: `atan2(gx, gy)`, in degrees, in `(-180, 180]`.
+ *
+ * Two independent facts pin this down (neither is a guess, and neither depends on any other file's
+ * comments):
+ *  1. **It is the phone's physical rotation from natural portrait, in `Surface.ROTATION_*`'s own sense.**
+ *     `Surface.ROTATION_90` means the phone has been turned 90 degrees counter-clockwise from natural, so
+ *     its RIGHT edge points up; up in device axes is then `(+g, 0, 0)` and `atan2(g, 0) = +90`. Likewise
+ *     left-edge-up (`ROTATION_270`) gives `atan2(-g, 0) = -90`, which is the same band as 270. That is why
+ *     [DeviceRotationQuantizer] can bucket this value straight into `Surface.ROTATION_*` degrees with no
+ *     further sign work.
+ *  2. **It is also "how far clockwise the world appears to have rotated in the frame the camera captures",**
+ *     which is what `DeviceOrientation.rollDegrees` promises. Rotating the camera counter-clockwise by an
+ *     angle sweeps a fixed scene clockwise by that angle within the frame — so right-edge-up, a
+ *     counter-clockwise turn of 90 degrees, makes the horizon appear rotated +90 degrees clockwise on the
+ *     (never-rotating, portrait-locked) screen. Same number, same sign. ✓
+ */
+fun gravityToRollDegrees(gx: Float, gy: Float): Float =
+    Math.toDegrees(atan2(gx.toDouble(), gy.toDouble())).toFloat()
+
+/**
+ * Pitch from the gravity/"up in device axes" vector: `atan2(-gz, gy)`, in degrees. Positive = the camera
+ * is pointed **above** the horizon.
+ *
+ * Three fixed points: level and vertical (the normal shooting pose) puts the top edge at the sky, so
+ * `(gy, gz) = (g, 0)` and the result is 0; pointing the rear camera (which looks along -z) straight *up*
+ * at the sky swings device +z downward, `(0, -g)` -> `atan2(g, 0) = +90`; pointing it straight *down* at
+ * the ground gives `(0, +g)` -> `atan2(-g, 0) = -90`.
+ */
+fun gravityToPitchDegrees(gy: Float, gz: Float): Float =
+    Math.toDegrees(atan2(-gz.toDouble(), gy.toDouble())).toFloat()
+
+/**
+ * Whether a gravity vector yields a usable roll. Roll is `atan2(gx, gy)`, which is numerically undefined
+ * when the phone points near straight up or straight down — "up" has collapsed onto the device's z axis
+ * and both gx and gy are tiny. [magnitudeScale] is the expected length of `(gx, gy, gz)`: 1 for the unit
+ * vector read off a rotation matrix, ~9.81 for a raw accelerometer reading.
+ */
+fun gravityReadingIsReliable(gx: Float, gy: Float, gz: Float, magnitudeScale: Float = 1f): Boolean {
+    val pitch = gravityToPitchDegrees(gy, gz)
+    val horizontal = hypot(gx.toDouble(), gy.toDouble())
+    return Math.abs(pitch) <= RELIABLE_PITCH_LIMIT_DEGREES &&
+        horizontal >= NEAR_VERTICAL_MAGNITUDE * magnitudeScale
+}
+
+/** Within ~25 degrees of straight up/down, roll stops being meaningful. */
+private const val RELIABLE_PITCH_LIMIT_DEGREES = 65.0
+
+/** ~= sin(25 deg): the horizontal component of a unit "up" vector at the reliability limit. */
+private const val NEAR_VERTICAL_MAGNITUDE = 0.42

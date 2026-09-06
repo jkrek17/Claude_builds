@@ -97,11 +97,13 @@ fun RotatedChrome(
 
 /**
  * Which edge of the (never-rotating) preview [CameraScreen]'s score+banner stack should hug once wrapped
- * in [RotatedChrome], so the guidance never sits over the middle of the frame (Bug 2's "the banner covers
- * most of the preview"): the top at `deviceRotationDegrees == 0` (Pixel-standard, right under the top
- * bar), otherwise whichever screen edge the phone's physical top edge currently points to —
- * [ChromeStackEdge.RIGHT] for `ROTATION_90` (phone's right edge up, this task's field screenshot),
- * [ChromeStackEdge.LEFT] for `ROTATION_270`, [ChromeStackEdge.BOTTOM] for `180` (upside down).
+ * in [RotatedChrome], so the guidance never sits over the middle of the frame: the top at
+ * `deviceRotationDegrees == 0` (Pixel-standard, right under the top bar), otherwise whichever screen edge
+ * **physical up currently appears at** — i.e. where the top of the scene is drawn in the portrait-locked
+ * preview, so the banner still reads as "above the frame" to the photographer. That is
+ * [ChromeStackEdge.RIGHT] for `ROTATION_90` (phone's right edge up: physical up appears at the screen's
+ * right — see [OverlayMapper]'s derivation), [ChromeStackEdge.LEFT] for `ROTATION_270`, and
+ * [ChromeStackEdge.BOTTOM] for `180` (upside down).
  */
 enum class ChromeStackEdge { TOP, RIGHT, BOTTOM, LEFT }
 
