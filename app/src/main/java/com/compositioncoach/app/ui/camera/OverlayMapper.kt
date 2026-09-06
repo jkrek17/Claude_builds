@@ -2,6 +2,7 @@ package com.compositioncoach.app.ui.camera
 
 import com.compositioncoach.composition.model.NormalizedPoint
 import com.compositioncoach.composition.model.NormalizedRect
+import kotlin.math.atan2
 
 /**
  * Maps normalized (0..1) frame coordinates from [com.compositioncoach.composition.model] onto pixel
@@ -98,6 +99,42 @@ object OverlayMapper {
      */
     fun rotateVectorToDisplay(dx: Float, dy: Float, deviceRotationDegrees: Int): Pair<Float, Float> =
         rotateVectorXY(dx, dy, phiFor(deviceRotationDegrees))
+
+    /**
+     * The single, provably-consistent-with-the-arrow rotation (Compose `Modifier.rotate`/`graphicsLayer`
+     * degrees, clockwise-positive) that keeps Pixel-style chrome — icons, the score badge, the guidance
+     * banner text, drawn via [RotatedChrome] — upright to a person holding the phone, for every
+     * `Surface.ROTATION_*` [deviceRotationDegrees]. This is Bug 1's fix: the old code used
+     * `-deviceRotationDegrees` directly, which is off by a sign (see `RotationAnimationTest` for the
+     * regression check and `app/README.md`'s rotation section for the field-verified example below).
+     *
+     * ### Convention
+     * [rotateVectorToDisplay] answers "where does a *physical* direction (e.g. 'pan the camera right')
+     * land, as a display-space vector, on the never-rotating screen" — that's what the directional arrow
+     * uses, and it's ground truth (screenshot-verified). Chrome needs the opposite relationship: not
+     * "where does a physical direction land on the raw, tilted screen" but "how far must I spin a
+     * display-drawn glyph so it stops *looking* tilted". Concretely: feed the physical **up** direction
+     * `(0, -1)` through [rotateVectorToDisplay] to get `v`, the display-space vector that shows where
+     * physical-up lands on the raw (unrotated) screen; an upright glyph's own "up" (also `(0, -1)` before
+     * any rotation) must end up pointing the *opposite* way, `-v`, so it visually cancels that tilt.
+     * Solving "rotate `(0, -1)` clockwise by `theta` to land on `-v`" for `theta` gives
+     * `atan2(-v.x, -v.y)`.
+     *
+     * ### Checked against the field screenshot (`ROTATION_90`, phone's right edge pointing up)
+     * `v = rotateVectorToDisplay(0, -1, 90) = (-1, 0)` (physical-up lands at the display's *left* — the
+     * mirror of the arrow's own worked example, since chrome wants the opposite relationship). That gives
+     * `theta = atan2(1, 0) = 90`: chrome rotates 90 degrees *clockwise*, so "Move slightly right" reads
+     * top-to-bottom with its own up pointing toward the screen's right — matching the screenshot's
+     * expected fix (the old `-90` read bottom-to-top, up-left, which was the bug). Also matches
+     * `UprightRotation`'s independent "top of phone now points left" fact for `ROTATION_90`: the phone's
+     * physical CCW rotation needs an equal-and-opposite CW chrome rotation to cancel it, i.e. `+theta` —
+     * which is what this reduces to (modulo 360; `atan2` returns its result in `(-180, 180]`, so `270`
+     * comes back as `-90`, the same angle) at every quantized rotation (see `RotationAnimationTest`).
+     */
+    fun uprightChromeAngleDegrees(deviceRotationDegrees: Int): Float {
+        val (vx, vy) = rotateVectorToDisplay(0f, -1f, deviceRotationDegrees)
+        return Math.toDegrees(atan2(-vx, -vy).toDouble()).toFloat()
+    }
 
     /** [rotatePointToDisplay] followed by the plain normalized-to-pixel multiply described in the class KDoc. */
     fun toPx(point: NormalizedPoint, deviceRotationDegrees: Int, viewWidthPx: Float, viewHeightPx: Float): Pair<Float, Float> {

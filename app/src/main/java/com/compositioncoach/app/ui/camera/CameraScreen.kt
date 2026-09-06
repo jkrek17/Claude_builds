@@ -10,7 +10,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,10 +64,13 @@ private const val POST_CAPTURE_FADE_ALPHA = 0.3f
  * The camera experience: a [PreviewView] and every overlay share one 4:3 area (Pixel-style — the sensor
  * shoots 4:3, so the preview should too), full width and anchored right below the status bar; the rest of
  * the screen is plain black. Top controls sit in a translucent strip over the top of that area; the score
- * badge and guidance banner overlay its upper half; the shutter row lives in the black area beneath it. See
- * [CameraController] for how the preview and the live analysis stream are kept in the same field of view,
- * and [OverlayMapper] for why keeping every overlay in that one 4:3 box is what lets them place things with
- * a plain normalized-to-pixel multiply — a differently-sized overlay box would break that mapping.
+ * badge + guidance banner stack, wrapped in one [RotatedChrome], hugs whichever edge is currently the
+ * preview's *physical* top (see [chromeStackEdgeFor]) — top-centre in portrait, right/left/bottom once the
+ * phone is rotated, so guidance never sits over the middle of the frame; the shutter row lives in the black
+ * area beneath the preview. See [CameraController] for how the preview and the live analysis stream are
+ * kept in the same field of view, and [OverlayMapper] for why keeping every overlay in that one 4:3 box is
+ * what lets them place things with a plain normalized-to-pixel multiply — a differently-sized overlay box
+ * would break that mapping.
  */
 @Composable
 fun CameraScreen(
@@ -178,7 +183,15 @@ fun CameraScreen(
             Column(Modifier.fillMaxSize()) {
                 // The 4:3 preview: PreviewView plus every overlay that does normalized-to-pixel geometry
                 // math live in this exact box, and nothing else does — see the class doc above.
-                Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
+                // BoxWithConstraints (not a plain Box) so its measured `maxHeight` is available below.
+                BoxWithConstraints(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
+                    val chromeEdge = chromeStackEdgeFor(uiState.deviceRotationDegrees)
+                    // In landscape the rotated stack's banner *width* becomes its vertical extent on
+                    // screen, so cap it at 60% of the preview's height (never reaching frame centre) —
+                    // portrait's equivalent 85%-of-width cap is GuidanceBanner's own default.
+                    val landscapeBannerMaxWidth =
+                        if (RotatedChromeMath.swapsAxes(uiState.deviceRotationDegrees)) maxHeight * 0.6f else null
+
                     AndroidView(
                         factory = { previewView },
                         modifier = Modifier
@@ -223,32 +236,40 @@ fun CameraScreen(
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
 
-                    ScoreBadge(
-                        score = uiState.composition.displayScore,
-                        isShootReady = uiState.composition.isShootReady,
-                        hasScene = hasScene,
-                        showScore = uiState.settings.showScore,
-                        awaitingSubject = uiState.composition.awaitingSubject,
+                    // Score badge + guidance banner + empty-scene hint, stacked as one unit and wrapped in
+                    // RotatedChrome so the whole stack rotates and re-anchors together in landscape (see
+                    // `chromeStackEdgeFor`'s KDoc) — "Hold this framing" and awaiting-subject both live
+                    // inside GuidanceBanner, so they go through this exact same path.
+                    RotatedChrome(
                         deviceRotationDegrees = uiState.deviceRotationDegrees,
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp).alpha(postCaptureFadeAlpha),
-                    )
-
-                    EmptySceneHint(
-                        hasScene = hasScene,
-                        awaitingSubject = uiState.composition.awaitingSubject,
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 128.dp).alpha(postCaptureFadeAlpha),
-                    )
-
-                    GuidanceBanner(
-                        activeRecommendations = uiState.composition.activeRecommendations,
-                        guidanceLevel = uiState.settings.guidanceLevel,
-                        awaitingSubject = uiState.composition.awaitingSubject,
-                        displayScore = uiState.composition.displayScore,
-                        isShootReady = uiState.composition.isShootReady,
-                        hasScene = hasScene,
-                        deviceRotationDegrees = uiState.deviceRotationDegrees,
-                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 144.dp).alpha(postCaptureFadeAlpha),
-                    )
+                        modifier = Modifier
+                            .align(chromeEdge.toAlignment())
+                            .chromeStackEdgePadding(chromeEdge)
+                            .alpha(postCaptureFadeAlpha),
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            ScoreBadge(
+                                score = uiState.composition.displayScore,
+                                isShootReady = uiState.composition.isShootReady,
+                                hasScene = hasScene,
+                                showScore = uiState.settings.showScore,
+                                awaitingSubject = uiState.composition.awaitingSubject,
+                            )
+                            EmptySceneHint(hasScene = hasScene, awaitingSubject = uiState.composition.awaitingSubject)
+                            GuidanceBanner(
+                                activeRecommendations = uiState.composition.activeRecommendations,
+                                guidanceLevel = uiState.settings.guidanceLevel,
+                                awaitingSubject = uiState.composition.awaitingSubject,
+                                displayScore = uiState.composition.displayScore,
+                                isShootReady = uiState.composition.isShootReady,
+                                hasScene = hasScene,
+                                maxWidthOverride = landscapeBannerMaxWidth,
+                            )
+                        }
+                    }
 
                     if (uiState.settings.debugMode) {
                         DebugOverlay(

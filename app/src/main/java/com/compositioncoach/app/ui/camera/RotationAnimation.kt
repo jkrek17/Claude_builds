@@ -11,10 +11,12 @@ import androidx.compose.runtime.setValue
 
 /**
  * Pixel-style "controls rotate in place" support: [CameraTopBar]/[BottomControlBar]/[ScoreBadge]/
- * [GuidanceBanner] icons and text counter-rotate by `-deviceRotationDegrees` so they stay upright to the
- * person holding the phone, even though the *layout* (and the live preview content itself) never moves —
- * see `CameraUiState.deviceRotationDegrees` and `app/README.md`'s rotation section for the rest of the
- * fix. This file is the pure math + the one small Compose helper every rotating control shares.
+ * [GuidanceBanner] icons and text, wrapped in [RotatedChrome], rotate by
+ * [OverlayMapper.uprightChromeAngleDegrees] so they stay upright to the person holding the phone, even
+ * though the *layout* (and the live preview content itself) never moves — see
+ * `CameraUiState.deviceRotationDegrees`, [OverlayMapper.uprightChromeAngleDegrees]'s KDoc for the exact
+ * sign convention (and the bug it fixes), and `app/README.md`'s rotation section for the rest of the fix.
+ * This file is the pure math + the one small Compose helper every rotating control shares.
  */
 object RotationAnimation {
     const val ROTATION_ANIM_MS = 250
@@ -34,32 +36,38 @@ object RotationAnimation {
 
     /**
      * Adds [shortestSignedDelta] to [currentUnwrapped], an ever-accumulating (never wrapped mod 360)
-     * angle. Feeding a sequence of quantized device rotations (0/90/180/270) through this repeatedly
-     * produces a running total that always takes the shorter turn at each step — including across the
-     * 270 -> 0 (or 0 -> 270) boundary — so animating from one call's result to the next never spins the
-     * "long way around".
+     * angle. Feeding a sequence of quantized target angles (e.g. every
+     * [OverlayMapper.uprightChromeAngleDegrees] of 0/90/180/270) through this repeatedly produces a
+     * running total that always takes the shorter turn at each step — including across the 270 -> 0 (or
+     * 0 -> 270) boundary — so animating from one call's result to the next never spins the "long way
+     * around".
      */
-    fun nextUnwrappedRotation(currentUnwrapped: Float, newQuantizedDegrees: Int): Float =
-        currentUnwrapped + shortestSignedDelta(currentUnwrapped, newQuantizedDegrees.toFloat())
+    fun nextUnwrappedRotation(currentUnwrapped: Float, newTargetDegrees: Float): Float =
+        currentUnwrapped + shortestSignedDelta(currentUnwrapped, newTargetDegrees)
 }
 
 /**
- * Remembers an ever-accumulating target angle tracking [deviceRotationDegrees] via
- * [RotationAnimation.nextUnwrappedRotation] (updated only when it actually changes, via
- * [LaunchedEffect]), animates it over [RotationAnimation.ROTATION_ANIM_MS], and returns the *negated*
- * value — the angle Pixel-style chrome should visually rotate by so it counter-rotates against the
- * device and stays upright. Pass the result straight to `Modifier.rotate(...)`.
+ * Remembers an ever-accumulating target angle tracking [OverlayMapper.uprightChromeAngleDegrees] of
+ * [deviceRotationDegrees] via [RotationAnimation.nextUnwrappedRotation] (updated only when
+ * [deviceRotationDegrees] actually changes, via [LaunchedEffect]), and animates it over
+ * [RotationAnimation.ROTATION_ANIM_MS] — the angle Pixel-style chrome should visually rotate by (see
+ * [RotatedChrome]) so it counter-rotates against the device and stays upright. Passed straight to
+ * `Modifier.rotate(...)`/`graphicsLayer { rotationZ = ... }` by [RotatedChrome].
+ *
+ * Note this is *not* negated (unlike an earlier version of this function) — see
+ * [OverlayMapper.uprightChromeAngleDegrees]'s KDoc for why `-deviceRotationDegrees` was the wrong sign.
  */
 @Composable
 fun rememberControlCounterRotation(deviceRotationDegrees: Int): Float {
-    var unwrapped by remember { mutableFloatStateOf(deviceRotationDegrees.toFloat()) }
+    val target = OverlayMapper.uprightChromeAngleDegrees(deviceRotationDegrees)
+    var unwrapped by remember { mutableFloatStateOf(target) }
     LaunchedEffect(deviceRotationDegrees) {
-        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, deviceRotationDegrees)
+        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, target)
     }
     val animated by animateFloatAsState(
         targetValue = unwrapped,
         animationSpec = tween(RotationAnimation.ROTATION_ANIM_MS),
         label = "controlCounterRotation",
     )
-    return -animated
+    return animated
 }

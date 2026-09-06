@@ -21,7 +21,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -38,9 +37,9 @@ import com.compositioncoach.composition.model.SceneIntent
  * mode only) at the left, the shooting-mode chip (shown only when [sceneIntent] isn't [SceneIntent.AUTO],
  * tapping it opens Settings same as the gear) and the settings gear at the right.
  *
- * [deviceRotationDegrees] rotates the flash icon, mode chip and settings gear in place (via
- * [rememberControlCounterRotation]) so they stay upright to the person holding the phone even though this
- * strip's own position never moves — see `app/README.md`'s device-rotation section.
+ * [deviceRotationDegrees] rotates the flash icon, mode chip and settings gear in place (each wrapped in
+ * its own [RotatedChrome]) so they stay upright to the person holding the phone even though this strip's
+ * own position never moves — see `app/README.md`'s device-rotation section.
  */
 @Composable
 fun CameraTopBar(
@@ -53,7 +52,6 @@ fun CameraTopBar(
     deviceRotationDegrees: Int = 0,
     modifier: Modifier = Modifier,
 ) {
-    val controlRotation = rememberControlCounterRotation(deviceRotationDegrees)
     Row(
         modifier = modifier.fillMaxWidth().background(Scrim).padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -61,16 +59,18 @@ fun CameraTopBar(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (hasFlashUnit) {
-                IconButton(onClick = onFlashClick, modifier = Modifier.rotate(controlRotation)) {
-                    Icon(
-                        imageVector = when (flashMode) {
-                            FlashMode.OFF -> Icons.Filled.FlashOff
-                            FlashMode.AUTO -> Icons.Filled.FlashAuto
-                            FlashMode.ON -> Icons.Filled.FlashOn
-                        },
-                        contentDescription = "Flash: $flashMode",
-                        tint = OnScrim,
-                    )
+                RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
+                    IconButton(onClick = onFlashClick) {
+                        Icon(
+                            imageVector = when (flashMode) {
+                                FlashMode.OFF -> Icons.Filled.FlashOff
+                                FlashMode.AUTO -> Icons.Filled.FlashAuto
+                                FlashMode.ON -> Icons.Filled.FlashOn
+                            },
+                            contentDescription = "Flash: $flashMode",
+                            tint = OnScrim,
+                        )
+                    }
                 }
             }
             if (showDebugChip) {
@@ -93,25 +93,28 @@ fun CameraTopBar(
                 // minimumInteractiveComponentSize() reserves an at-least-48dp tap area around the small
                 // visible pill without growing how the chip itself looks (same idea IconButton uses
                 // internally, just with an explicit inner Box instead of a fixed .size()).
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .clickable(onClick = onSettingsClick)
-                        .rotate(controlRotation),
-                ) {
+                RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
                     Box(
+                        contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(OnScrim.copy(alpha = 0.15f))
-                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                            .minimumInteractiveComponentSize()
+                            .clickable(onClick = onSettingsClick),
                     ) {
-                        Text(text = sceneIntent.label, color = OnScrim, fontSize = 12.sp)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(OnScrim.copy(alpha = 0.15f))
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                        ) {
+                            Text(text = sceneIntent.label, color = OnScrim, fontSize = 12.sp)
+                        }
                     }
                 }
             }
-            IconButton(onClick = onSettingsClick, modifier = Modifier.rotate(controlRotation)) {
-                Icon(imageVector = Icons.Filled.Settings, contentDescription = "Settings", tint = OnScrim)
+            RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
+                IconButton(onClick = onSettingsClick) {
+                    Icon(imageVector = Icons.Filled.Settings, contentDescription = "Settings", tint = OnScrim)
+                }
             }
         }
     }

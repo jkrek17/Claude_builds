@@ -1,5 +1,6 @@
 package com.compositioncoach.app.ui.camera
 
+import kotlin.math.atan2
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -36,13 +37,13 @@ class RotationAnimationTest {
         // A full clockwise sweep through 0 -> 90 -> 180 -> 270 -> 0 should keep climbing by +90 each
         // step (never jumping back down by 270), so the unwrapped total ends at 360, not 0.
         var unwrapped = 0f
-        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 90)
+        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 90f)
         assertEquals(90f, unwrapped, 1e-4f)
-        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 180)
+        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 180f)
         assertEquals(180f, unwrapped, 1e-4f)
-        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 270)
+        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 270f)
         assertEquals(270f, unwrapped, 1e-4f)
-        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 0)
+        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 0f)
         assertEquals(360f, unwrapped, 1e-4f)
     }
 
@@ -50,14 +51,59 @@ class RotationAnimationTest {
     fun `nextUnwrappedRotation takes the short way even from a non-zero-mod-360 starting point`() {
         // Starting already "wrapped around" once (360 + 270 = 630), a new reading of 0 should still be
         // treated as a short +90 hop forward (to 720), not a huge jump back down to 0.
-        val unwrapped = RotationAnimation.nextUnwrappedRotation(630f, 0)
+        val unwrapped = RotationAnimation.nextUnwrappedRotation(630f, 0f)
         assertEquals(720f, unwrapped, 1e-4f)
     }
 
     @Test
     fun `repeated identical readings never drift the unwrapped total`() {
         var unwrapped = 90f
-        repeat(5) { unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 90) }
+        repeat(5) { unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, 90f) }
         assertEquals(90f, unwrapped, 1e-4f)
+    }
+
+    // --- Bug 1 regression: chrome must rotate the SAME way the (field-verified-correct) directional -----
+    // arrow does, both derived from OverlayMapper.rotateVectorToDisplay, not the old ad hoc
+    // `-deviceRotationDegrees` (which read "Move slightly right" bottom-to-top instead of top-to-bottom).
+
+    @Test
+    fun `chrome angle matches the concrete field-verified fix at ROTATION_90 (right edge up)`() {
+        // The screenshot this task fixes: phone's right edge points up: chrome should rotate +90 degrees
+        // clockwise so upright text reads top-to-bottom with its own "up" toward the screen's right,
+        // instead of the old -90 (bottom-to-top, up-left).
+        assertEquals(90f, OverlayMapper.uprightChromeAngleDegrees(90), 1e-3f)
+    }
+
+    @Test
+    fun `chrome angle is the identity on deviceRotationDegrees, modulo 360, at every quantized rotation`() {
+        // atan2 returns its result in (-180, 180], so 270 comes back as -90 -- the same angle, 90 degrees
+        // short of a full turn either way round -- rather than the literal float 270.0.
+        for (rotation in intArrayOf(0, 90, 180, 270)) {
+            val expected = RotationAnimation.shortestSignedDelta(0f, rotation.toFloat())
+            val actual = RotationAnimation.shortestSignedDelta(0f, OverlayMapper.uprightChromeAngleDegrees(rotation))
+            assertEquals("rotation=$rotation", expected, actual, 1e-3f)
+        }
+    }
+
+    @Test
+    fun `chrome angle is derived from the same rotateVectorToDisplay the arrow uses, for every rotation`() {
+        // Reproduce OverlayMapper.uprightChromeAngleDegrees's own arrow-anchored derivation independently
+        // here (rather than calling it) so a future edit to that function's internals still gets caught if
+        // it drifts from "physical-up's display vector, negated, as a clockwise angle".
+        for (rotation in intArrayOf(0, 90, 180, 270)) {
+            val (vx, vy) = OverlayMapper.rotateVectorToDisplay(0f, -1f, rotation)
+            val expected = Math.toDegrees(atan2(-vx, -vy).toDouble()).toFloat()
+            assertEquals("rotation=$rotation", expected, OverlayMapper.uprightChromeAngleDegrees(rotation), 1e-3f)
+        }
+    }
+
+    @Test
+    fun `rememberControlCounterRotation's target is no longer the negated deviceRotationDegrees`() {
+        // The old, buggy formula: guard against silently reintroducing it.
+        for (rotation in intArrayOf(90, 270)) {
+            assert(OverlayMapper.uprightChromeAngleDegrees(rotation) != -rotation.toFloat()) {
+                "uprightChromeAngleDegrees($rotation) regressed to the old -deviceRotationDegrees sign"
+            }
+        }
     }
 }

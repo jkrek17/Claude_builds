@@ -8,7 +8,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -19,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -28,38 +26,41 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.app.ui.theme.Motion
 import com.compositioncoach.app.ui.theme.OnScrim
 import com.compositioncoach.app.ui.theme.OnScrimMuted
 import com.compositioncoach.app.ui.theme.Scrim
-import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.GuidanceLevel
-import com.compositioncoach.composition.model.MetricCategory
-import com.compositioncoach.composition.model.Priority
 import com.compositioncoach.composition.model.Recommendation
-import com.compositioncoach.composition.model.Severity
 
-private const val MAX_LINES = 3
+/** Portrait's width cap when [GuidanceBanner]'s caller doesn't override it (see `maxWidthOverride`). */
+private const val PORTRAIT_WIDTH_FRACTION = 0.85f
 
 /** Reserves height for one titleMedium line so a shorter/longer instruction never resizes the banner. */
 private val HEADLINE_LINE_HEIGHT = 28.dp
 
 /**
  * The instruction readout below the score: the primary recommendation crossfades as it changes (a vector
- * [DirectionIcon] to its left rather than a text glyph), an optional COACH-mode reason sits under it, and
- * up to two secondary recommendations follow in smaller type. Never wider than 85% of the screen, and
- * never overlaps [ScoreBadge] above it (the two are positioned independently by [CameraScreen]).
+ * [DirectionIcon] to its left rather than a text glyph), an optional COACH-mode reason sits under it
+ * (one line, ellipsized), and at most one secondary recommendation follows in smaller type (also one line,
+ * ellipsized) — headline + reason + secondary is at most 3 lines total, deliberately compact so the banner
+ * never sits on top of the subject (see the class-level "Bug 2" note in `app/README.md`).
+ *
+ * Never wider than [maxWidthOverride] if given, else [PORTRAIT_WIDTH_FRACTION] of the screen; never
+ * overlaps [ScoreBadge] above it (the two are stacked by [CameraScreen], which also supplies
+ * [maxWidthOverride] in landscape — a fraction of the *preview's height*, since that's the banner's long
+ * axis once the stack is rotated 90/270 into place — see `RotatedChrome`/`chromeStackEdgeFor`).
  *
  * While [awaitingSubject] is true, [activeRecommendations] holds exactly the single find-subject
  * recommendation (see [com.compositioncoach.composition.model.SmoothedComposition.awaitingSubject]) and this
- * renders it prominently instead: its title as a small line, its instruction as the headline, no directional
- * icon (the recommendation has no direction to point in).
+ * renders it prominently instead: its title as a small line, its instruction as the (one-line, ellipsized)
+ * headline, no directional icon (the recommendation has no direction to point in).
  *
- * [deviceRotationDegrees] rotates the whole banner in place, Pixel-style, so it stays upright to the
- * person holding the phone (see [rememberControlCounterRotation]) — its position on screen never moves.
+ * Does *not* rotate itself: `CameraScreen` wraps this together with [ScoreBadge] in one [RotatedChrome] so
+ * the pair rotates and re-anchors as a single stack in landscape.
  */
 @Composable
 fun GuidanceBanner(
@@ -69,15 +70,14 @@ fun GuidanceBanner(
     displayScore: Int = 0,
     isShootReady: Boolean = false,
     hasScene: Boolean = true,
-    deviceRotationDegrees: Int = 0,
+    maxWidthOverride: Dp? = null,
     modifier: Modifier = Modifier,
 ) {
     // LocalWindowInfo.containerSize (px), not Configuration.screenWidthDp, per the accurate-window-size
     // guidance for Compose (Configuration's dp values round and vary with target SDK inset behaviour).
     val density = LocalDensity.current
     val screenWidthDp = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
-    val maxWidth = screenWidthDp * 0.85f
-    val controlRotation = rememberControlCounterRotation(deviceRotationDegrees)
+    val maxWidth = maxWidthOverride ?: (screenWidthDp * PORTRAIT_WIDTH_FRACTION)
     val primary = activeRecommendations.firstOrNull()
     if (primary == null) {
         // No advice: when the framing is decent, say so quietly, so advice clearing reads as success
@@ -88,8 +88,9 @@ fun GuidanceBanner(
                 color = OnScrimMuted,
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = modifier
-                    .rotate(controlRotation)
                     .widthIn(max = maxWidth)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Scrim)
@@ -108,7 +109,6 @@ fun GuidanceBanner(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = modifier
-                .rotate(controlRotation)
                 .widthIn(max = maxWidth)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Scrim)
@@ -125,22 +125,27 @@ fun GuidanceBanner(
                 color = OnScrimMuted,
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = GuidanceFormatter.awaitingSubjectHeadline(primary),
                 color = OnScrim,
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         return
     }
 
     val reason = GuidanceFormatter.reasonLine(primary, guidanceLevel)
-    val budgetForSecondary = (MAX_LINES - 1 - (if (reason != null) 1 else 0)).coerceAtLeast(0)
-    val secondary = activeRecommendations.drop(1).take(budgetForSecondary)
+    // At most one secondary recommendation, always — headline (1) + reason (0 or 1) + secondary (0 or 1)
+    // is at most 3 lines total, whether or not a reason is showing (see the class doc's "Bug 2" note).
+    val secondary = activeRecommendations.drop(1).take(1)
     // The full guidance sentence TalkBack announces: primary instruction, then the COACH-mode reason
-    // (if shown), then any secondary recommendations — in the same order they're drawn.
+    // (if shown), then any secondary recommendation — in the same order they're drawn.
     val guidanceDescription = buildList {
         add(GuidanceFormatter.primaryLine(primary))
         reason?.let(::add)
@@ -150,7 +155,6 @@ fun GuidanceBanner(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
-            .rotate(controlRotation)
             .widthIn(max = maxWidth)
             .clip(RoundedCornerShape(16.dp))
             .background(Scrim)
@@ -179,77 +183,35 @@ fun GuidanceBanner(
                     style = MaterialTheme.typography.titleMedium,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
+        // COACH-only, one line, ellipsized rather than wrapped -- a long "why" sentence must not grow the
+        // banner past its 3-line budget.
         reason?.let {
-            Text(text = it, color = OnScrimMuted, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+            Text(
+                text = it,
+                color = OnScrimMuted,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         secondary.forEach { rec ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 DirectionIcon(direction = rec.direction, tint = OnScrimMuted, size = 16.dp, modifier = Modifier.padding(end = 3.dp))
-                Text(text = rec.instruction, color = OnScrimMuted, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                Text(
+                    text = rec.instruction,
+                    color = OnScrimMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
 }
 
-private fun previewRecommendation(id: String, instruction: String, reason: String, direction: Direction) = Recommendation(
-    id = id,
-    category = MetricCategory.SUBJECT_PLACEMENT,
-    priority = Priority.HIGH,
-    confidence = 0.9f,
-    severity = Severity.MEDIUM,
-    title = instruction,
-    instruction = instruction,
-    reason = reason,
-    direction = direction,
-)
-
-@Preview(name = "Coach level (with reason)", showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun GuidanceBannerCoachPreview() {
-    CompositionCoachTheme {
-        GuidanceBanner(
-            activeRecommendations = listOf(
-                previewRecommendation("headroom", "Move slightly right", "Keeps eyes on the upper third", Direction.RIGHT),
-                previewRecommendation("horizon", "Level the horizon", "The horizon is tilted 4°", Direction.ROTATE_COUNTER_CLOCKWISE),
-            ),
-            guidanceLevel = GuidanceLevel.COACH,
-        )
-    }
-}
-
-@Preview(name = "Balanced level", showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun GuidanceBannerBalancedPreview() {
-    CompositionCoachTheme {
-        GuidanceBanner(
-            activeRecommendations = listOf(previewRecommendation("headroom", "Raise camera", "", Direction.UP)),
-            guidanceLevel = GuidanceLevel.BALANCED,
-        )
-    }
-}
-
-@Preview(name = "Awaiting subject", showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun GuidanceBannerAwaitingSubjectPreview() {
-    CompositionCoachTheme {
-        GuidanceBanner(
-            activeRecommendations = listOf(
-                Recommendation(
-                    id = "intent.no_subject",
-                    category = MetricCategory.SUBJECT_PLACEMENT,
-                    priority = Priority.HIGH,
-                    confidence = 1f,
-                    severity = Severity.HIGH,
-                    title = "Looking for a face",
-                    instruction = "Move closer to your subject",
-                ),
-            ),
-            guidanceLevel = GuidanceLevel.BALANCED,
-            awaitingSubject = true,
-        )
-    }
-}

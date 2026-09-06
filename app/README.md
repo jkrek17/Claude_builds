@@ -37,8 +37,10 @@ CameraPermissionGate
   `CameraUiState.postCaptureFadeActive` below); the badge uses tabular-figure numerals and a distinct
   shoot-ready state ("SHOOT" in `Accent.Ready`, the number smaller beneath); the banner shows a
   `DirectionIcon` (a real Material arrow, not a text glyph) instead of `GuidanceFormatter.glyphFor`'s
-  Unicode character, reserves a fixed height for its headline so a longer instruction never resizes it, and
-  never exceeds 85% of the screen's width. `EmptySceneHint` ("Point at a subject") shows under the badge
+  Unicode character, reserves a fixed height for its headline so a longer instruction never resizes it, is
+  capped to at most 3 lines total (headline, COACH-only reason, one secondary line — see "Device rotation
+  (Pixel style)" below), and never exceeds 85% of the screen's width in portrait (60% of the preview's
+  height in landscape). `EmptySceneHint` ("Point at a subject") shows under the badge
   before any scene is classified, and lingers 3s after one appears before fading out. `CameraTopBar` is now
   a translucent strip over the *top* of the preview carrying flash, the "DEBUG" chip, the shooting-mode chip
   (tap opens Settings), and the settings gear — flash moved here from the bottom bar, Pixel-style.
@@ -196,7 +198,7 @@ Other binding details:
 (like the stock Pixel Camera) stays `android:screenOrientation="portrait"` and the live preview never
 rotates. The actual bug was that *analysis* also silently treated "however the fixed portrait display is
 oriented" as "up", so the horizon analyzer reported a ~90° tilt and portrait-shaped logic (headroom,
-thirds) ran along the wrong axis whenever the phone was genuinely held sideways. The fix has three parts,
+thirds) ran along the wrong axis whenever the phone was genuinely held sideways. The fix has five parts,
 all driven by one value — `FrameAnalysis.deviceRotationDegrees` (0/90/180/270, `Surface.ROTATION_*`
 sense), the phone's quantized *physical* rotation from natural portrait, computed in `:vision` from the
 same gravity vector `OrientationSensor` already reads (see its README for the derivation) and carried
@@ -218,15 +220,39 @@ through as `CameraUiState.deviceRotationDegrees`:
    driven by `CameraUiState.deviceRotationDegrees`. The directional arrow/level indicator/rotate glyph
    specifically rotate the *direction* they point in too (`OverlayMapper.rotateVectorToDisplay`) so they
    keep pointing the physically-correct way — see "Arrow semantics" on `drawDirectionalArrow`.
-3. **Chrome rotates in place.** Flash, the shooting-mode chip, the settings gear (`CameraTopBar`), the
-   gallery thumbnail, shutter, and lens switch (`BottomControlBar`), plus `ScoreBadge` and
-   `GuidanceBanner`, each counter-rotate by `-deviceRotationDegrees` via `Modifier.rotate(...)` — their
-   position on screen never moves, only their orientation. `rememberControlCounterRotation`
-   (`RotationAnimation.kt`) drives this: it tracks an ever-accumulating (never-wrapped) target angle so
-   `animateFloatAsState`'s 250ms tween always takes the *shorter* turn between two quantized rotations
-   (e.g. 270 -> 0 animates as a +90 hop, not a -270 spin) — see `RotationAnimation.shortestSignedDelta`'s
-   KDoc and `RotationAnimationTest`.
-4. **Capture EXIF follows the physical rotation, not the bind-time display rotation.**
+3. **Chrome rotates in place, by the mapper-derived angle (not `-deviceRotationDegrees`).** Flash, the
+   shooting-mode chip, the settings gear (`CameraTopBar`), the gallery thumbnail, shutter, and lens switch
+   (`BottomControlBar`), plus the score badge + guidance banner stack, each counter-rotate via
+   `RotatedChrome` (`RotatedChrome.kt`) so they stay upright — their position on screen never moves, only
+   their orientation. The angle comes from `OverlayMapper.uprightChromeAngleDegrees` (see its KDoc for the
+   convention and derivation): feed the physical **up** direction through the same
+   `rotateVectorToDisplay` the directional arrow uses to find where physical-up lands on the raw,
+   never-rotating screen, then solve for the clockwise rotation that points a glyph's own "up" the
+   *opposite* way, so it visually cancels that tilt — for `ROTATION_90` (phone's right edge up) that's
+   **+90 degrees clockwise**, not `-90`. A second field-verified bug fixed the sign here: the old code used
+   `-deviceRotationDegrees` directly, which rotated chrome text the wrong way (e.g. "Move slightly right"
+   read bottom-to-top, up-left, instead of top-to-bottom, up-right) — `RotationAnimationTest` asserts the
+   fixed angle against that concrete example and pins it for every quantized rotation.
+   `rememberControlCounterRotation` (`RotationAnimation.kt`) then tracks an ever-accumulating (never-wrapped)
+   target so `animateFloatAsState`'s 250ms tween always takes the *shorter* turn between two rotations (e.g.
+   270 -> 0 animates as a +90 hop, not a -270 spin) — see `RotationAnimation.shortestSignedDelta`'s KDoc.
+4. **A rotated wide banner doesn't overflow its slot, and hugs the physical top edge in landscape.**
+   `Modifier.rotate` only rotates pixels — it never changes what the layout system thinks an element's size
+   is, so a wide guidance banner rotated 90 degrees in place still *reported* its original wide-short size,
+   overflowing whatever box it was aligned into and running across the middle of the preview, on top of the
+   subject. `RotatedChrome` (`RotatedChrome.kt`) fixes this: at 90/270 it measures its content with
+   width/height swapped and reports the *swapped* size to its own parent (the size/offset arithmetic is
+   pure and unit-tested in `RotatedChromeMathTest`), so a caller aligning it against an edge gets the
+   content's real, rotated footprint. `CameraScreen` wraps the score badge + guidance banner + empty-scene
+   hint in one `RotatedChrome` and aligns that stack to whichever screen edge is currently the preview's
+   *physical* top (`chromeStackEdgeFor`, unit-tested in `ChromeStackEdgeTest`): top-centre at
+   `deviceRotationDegrees == 0`, otherwise the screen's right (`ROTATION_90`), left (`ROTATION_270`), or
+   bottom (`180`) — so guidance never sits over the frame centre. `GuidanceBanner` itself is also more
+   compact now (headline always; the COACH-mode reason and at most one secondary recommendation, each one
+   line with ellipsis — 3 lines total, down from up to 5); in landscape its width is additionally capped at
+   60% of the *preview's height* (its long axis once rotated), vs. 85% of the screen's width in portrait.
+   "Hold this framing" and the awaiting-subject headline go through this exact same compact/rotated path.
+5. **Capture EXIF follows the physical rotation, not the bind-time display rotation.**
    `CameraController.setCaptureRotationDegrees(deviceRotationDegrees)` sets `ImageCapture.targetRotation`
    live (no rebind needed, unlike capture mode) — `CameraScreen` calls it from a
    `LaunchedEffect(uiState.deviceRotationDegrees)` — so CameraX writes the correct EXIF orientation
@@ -239,11 +265,10 @@ through as `CameraUiState.deviceRotationDegrees`:
 **What needs a physical device to confirm** (none of this could be hardware-tested in this environment —
 see `:vision`'s README for the same caveat on the underlying sensor math): holding the phone in all four
 orientations and checking the level indicator reads level, headroom/thirds advice still makes sense for a
-person in frame, every chrome icon reads upright, and a saved photo opens upright in the gallery; whether
-250ms is the right animation speed for the chrome counter-rotation to feel responsive without being
-jarring; and whether a rotated `ScoreBadge`/`GuidanceBanner` ever visibly clips in landscape (both were
-laid out assuming a portrait-wide/short shape, and rotating that whole shape 90° in place is inherent to
-the "controls rotate, layout doesn't" approach — Pixel's own equivalent chrome has the same trade-off).
+person in frame, every chrome icon and the guidance banner's text read upright (not mirrored or
+upside-down relative to the fix above), a saved photo opens upright in the gallery, the score+banner stack
+hugs the correct physical edge without ever crossing the frame centre, and that 250ms is the right
+animation speed for the chrome counter-rotation to feel responsive without being jarring.
 
 ## Camera/Activity lifecycle (`CameraViewModel`)
 
