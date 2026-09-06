@@ -276,6 +276,7 @@ fun CameraScreen(
                             composition = uiState.composition,
                             debugStats = uiState.debugStats,
                             performanceTier = uiState.performanceTier.name,
+                            deviceRotationDegrees = uiState.deviceRotationDegrees,
                             modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
                         )
                     }

@@ -22,43 +22,62 @@ import kotlin.math.atan2
  *
  * ## Device rotation (Pixel style)
  * The app stays portrait-locked, so the *preview* content (what [PreviewView] literally shows) never
- * rotates — but `:vision` now normalizes all `FrameAnalysis` geometry to physically-upright coordinates
- * (see its README), which is a *different* frame than the never-rotating preview whenever the phone is
- * actually held sideways. Every [toPx]/[toPxRect] call therefore first rotates the incoming normalized
- * point/rect from that physical-up frame onto the preview's own (unrotated, always-portrait) frame via
+ * rotates — but `:vision` normalizes all `FrameAnalysis` geometry to physically-upright coordinates (see
+ * its README), which is a *different* frame than the never-rotating preview whenever the phone is actually
+ * held sideways. Every [toPx]/[toPxRect] call therefore first rotates the incoming normalized point/rect
+ * from that physical-up frame onto the preview's own (unrotated, always-portrait) frame via
  * [rotatePointToDisplay]/[rotateRectToDisplay], using `deviceRotationDegrees` from
  * `com.compositioncoach.composition.model.FrameAnalysis.deviceRotationDegrees` (surfaced in
  * `CameraUiState.deviceRotationDegrees`) — *then* does the plain multiply described above. At
- * `deviceRotationDegrees == 0` (natural portrait) this rotation is the identity, so nothing changes from
- * before this fix.
+ * `deviceRotationDegrees == 0` (natural portrait) this rotation is the identity.
  *
- * ### Deriving the physical-up -> display-up point mapping
- * Call `theta` the device's quantized physical rotation (0/90/180/270, `Surface.ROTATION_*` sense — see
- * `:vision`'s `DeviceRotationQuantizer`). The physically-upright frame is the display (preview) frame
- * further rotated by `-theta` (see `:vision`'s `UprightRotation` KDoc for that derivation, which this is
- * the mirror image of); inverting that, a point in the physical-up frame lands in the display frame after
- * rotating it by `phi = (360 - theta) % 360` using the same "rotate a unit square clockwise" formulas
- * `FrameCoordinateMapper.rotateForward` uses for pixel buffers, just with width = height = 1:
+ * ### Deriving the physical-up -> display mapping (this is the sign two previous attempts got wrong)
+ * Call `theta` the device's quantized physical rotation (0/90/180/270, `Surface.ROTATION_*` sense: the
+ * phone is turned `theta` degrees **counter-clockwise** from natural portrait, so `theta = 90` is
+ * "right edge up"). Screen coordinates are x right, y down; a *visually clockwise* rotation by `phi` in
+ * that (y-down) space is the matrix `[[cos phi, -sin phi], [sin phi, cos phi]]`.
+ *
+ * Ground truth is gravity, not intuition. With the device rotated `theta` CCW, its axes in world terms are
+ * `x_hat = cos(theta) * right + sin(theta) * up` and `y_hat = -sin(theta) * right + cos(theta) * up`. The
+ * portrait-locked preview draws the scene in device axes, so:
+ *  - world **up** appears on screen at `(up . x_hat, -up . y_hat) = (sin theta, -cos theta)`
+ *  - world **right** appears on screen at `(right . x_hat, -right . y_hat) = (cos theta, sin theta)`
+ *
+ * Both are exactly `(0, -1)` and `(1, 0)` rotated **clockwise by theta**. The analysis frame is the frame
+ * in which up is `(0, -1)` and right is `(1, 0)` by construction, so:
  * ```
- * phi =   0: (x, y) -> (x, y)
- * phi =  90: (x, y) -> (1 - y, x)
- * phi = 180: (x, y) -> (1 - x, 1 - y)
- * phi = 270: (x, y) -> (y, 1 - x)
+ * display = rotate_clockwise(theta) . physicalUp        // phi == theta, NOT 360 - theta
  * ```
- * Checked against the task's own worked example: `theta = 90` (`ROTATION_90`) gives `phi = 270`, so the
- * physical top-left corner `(0, 0)` maps to `(0, 1)` — the display's **bottom-left** — matching the spec.
- * `theta = 180` maps `(0, 0)` (physical up-left, whatever that now points at in the real world) to
- * `(1, 1)` (display bottom-right), consistent with an upside-down hold flipping both axes. Direction
- * *vectors* (e.g. which way an arrow should point) use the same four cases but without the "1 -" offsets
- * (a pure rotation, no translation) — see [rotateVectorToDisplay].
+ * Checked against the two field reports this fixes, both at `theta = 90` (right edge up):
+ *  - "Move slightly right" is the physical-right vector `(1, 0)`; `phi = 90` sends it to `(0, +1)` —
+ *    the screen's **bottom**, which is where physical right actually is in that hold. The shipped build
+ *    used `phi = 360 - theta = 270`, which sent it to `(0, -1)`, the screen's top — exactly the wrong
+ *    arrow the tester photographed. (`phi` and `360 - phi` differ by 180 degrees at 90 and 270, so every
+ *    overlay point was also point-reflected through the frame's centre in both landscape holds, which is
+ *    the rest of "rotation doesn't work". They agree at 0 and 180, which is why portrait always looked
+ *    right.)
+ *  - The physical **top-centre** of the scene, `(0.5, 0)`, lands at `(1, 0.5)` — the screen's
+ *    right-centre — matching where the preview visibly shows the top of the scene at that hold.
+ *
+ * Points use the same four cases as `FrameCoordinateMapper.rotateForward` with width = height = 1;
+ * direction *vectors* use them without the `1 -` offsets (a pure rotation, no translation) —
+ * see [rotateVectorToDisplay].
+ * ```
+ * phi =   0: (x, y) -> (x, y)          (dx, dy) -> ( dx,  dy)
+ * phi =  90: (x, y) -> (1 - y, x)      (dx, dy) -> (-dy,  dx)
+ * phi = 180: (x, y) -> (1 - x, 1 - y)  (dx, dy) -> (-dx, -dy)
+ * phi = 270: (x, y) -> (y, 1 - x)      (dx, dy) -> ( dy, -dx)
+ * ```
  */
 object OverlayMapper {
 
-    /** deviceRotationDegrees=0 fast path aside, see the class KDoc for the [phi] derivation this drives. */
-    private fun phiFor(deviceRotationDegrees: Int): Int {
-        val theta = ((deviceRotationDegrees % 360) + 360) % 360
-        return ((360 - theta) % 360 + 360) % 360
-    }
+    /**
+     * The clockwise angle that carries the physical-up frame onto the display frame. It is
+     * [deviceRotationDegrees] itself — see the class KDoc's gravity-anchored derivation. (It is *not*
+     * `360 - deviceRotationDegrees`; that inversion is the bug this file's history is about.)
+     */
+    private fun phiFor(deviceRotationDegrees: Int): Int =
+        ((deviceRotationDegrees % 360) + 360) % 360
 
     private fun rotateXY(x: Float, y: Float, phi: Int): Pair<Float, Float> = when (phi) {
         0 -> x to y
@@ -101,39 +120,43 @@ object OverlayMapper {
         rotateVectorXY(dx, dy, phiFor(deviceRotationDegrees))
 
     /**
-     * The single, provably-consistent-with-the-arrow rotation (Compose `Modifier.rotate`/`graphicsLayer`
-     * degrees, clockwise-positive) that keeps Pixel-style chrome — icons, the score badge, the guidance
-     * banner text, drawn via [RotatedChrome] — upright to a person holding the phone, for every
-     * `Surface.ROTATION_*` [deviceRotationDegrees]. This is Bug 1's fix: the old code used
-     * `-deviceRotationDegrees` directly, which is off by a sign (see `RotationAnimationTest` for the
-     * regression check and `app/README.md`'s rotation section for the field-verified example below).
+     * The Compose rotation (`Modifier.rotate`/`graphicsLayer { rotationZ = ... }` degrees,
+     * **clockwise-positive**) that keeps Pixel-style chrome — icons, the score badge, the guidance banner
+     * text, all drawn via [RotatedChrome] — upright *to the person holding the phone*, for every
+     * `Surface.ROTATION_*` [deviceRotationDegrees].
      *
-     * ### Convention
-     * [rotateVectorToDisplay] answers "where does a *physical* direction (e.g. 'pan the camera right')
-     * land, as a display-space vector, on the never-rotating screen" — that's what the directional arrow
-     * uses, and it's ground truth (screenshot-verified). Chrome needs the opposite relationship: not
-     * "where does a physical direction land on the raw, tilted screen" but "how far must I spin a
-     * display-drawn glyph so it stops *looking* tilted". Concretely: feed the physical **up** direction
-     * `(0, -1)` through [rotateVectorToDisplay] to get `v`, the display-space vector that shows where
-     * physical-up lands on the raw (unrotated) screen; an upright glyph's own "up" (also `(0, -1)` before
-     * any rotation) must end up pointing the *opposite* way, `-v`, so it visually cancels that tilt.
-     * Solving "rotate `(0, -1)` clockwise by `theta` to land on `-v`" for `theta` gives
-     * `atan2(-v.x, -v.y)`.
+     * ### Derivation
+     * A glyph drawn with no rotation has its own "up" pointing along `(0, -1)` in screen coordinates;
+     * rotated clockwise by `phi` its up points along `(sin phi, -cos phi)`. For the glyph to look upright
+     * to the photographer, its up must point wherever *physical* up currently appears on the screen, which
+     * is [rotateVectorToDisplay] of `(0, -1)` — call it `v`. Solving `(sin phi, -cos phi) = v` gives
+     * ```
+     * phi = atan2(v.x, -v.y)
+     * ```
+     * Since `v = (sin theta, -cos theta)` (class KDoc), this reduces to `phi = theta`: the phone turned
+     * `theta` counter-clockwise needs chrome turned `theta` clockwise to cancel it. `atan2` reports in
+     * `(-180, 180]`, so `theta = 270` comes back as `-90` — the same angle, and the shorter way round for
+     * [rememberControlCounterRotation]'s animation.
      *
-     * ### Checked against the field screenshot (`ROTATION_90`, phone's right edge pointing up)
-     * `v = rotateVectorToDisplay(0, -1, 90) = (-1, 0)` (physical-up lands at the display's *left* — the
-     * mirror of the arrow's own worked example, since chrome wants the opposite relationship). That gives
-     * `theta = atan2(1, 0) = 90`: chrome rotates 90 degrees *clockwise*, so "Move slightly right" reads
-     * top-to-bottom with its own up pointing toward the screen's right — matching the screenshot's
-     * expected fix (the old `-90` read bottom-to-top, up-left, which was the bug). Also matches
-     * `UprightRotation`'s independent "top of phone now points left" fact for `ROTATION_90`: the phone's
-     * physical CCW rotation needs an equal-and-opposite CW chrome rotation to cancel it, i.e. `+theta` —
-     * which is what this reduces to (modulo 360; `atan2` returns its result in `(-180, 180]`, so `270`
-     * comes back as `-90`, the same angle) at every quantized rotation (see `RotationAnimationTest`).
+     * ### Why this is spelled out rather than written as `theta.toFloat()`
+     * The value is deliberately routed through [rotateVectorToDisplay] so chrome and the directional arrow
+     * can never drift apart again. Note the two are *not* the same expression: the previous shipped build
+     * paired an inverted [rotateVectorToDisplay] with `atan2(-v.x, -v.y)` here, and the two sign errors
+     * cancelled — chrome came out right while every arrow and box was 180 degrees out. Fixing only the
+     * obvious one flips chrome back to the original `-theta` field bug ("Move slightly right" reading
+     * bottom-to-top at `ROTATION_90`), so both are pinned independently by tests: `RotationTruthTableTest`
+     * derives each from gravity, and `RotatedChromeRotationTest` checks the sign that actually reaches the
+     * screen.
+     *
+     * ### Checked against the field report (`ROTATION_90`, phone's right edge pointing up)
+     * `v = rotateVectorToDisplay(0, -1, 90) = (1, 0)` — physical up appears at the screen's right, which is
+     * where the preview visibly shows the top of the scene in that hold. `phi = atan2(1, 0) = +90`: chrome
+     * rotates 90 degrees *clockwise*, so "Move slightly right" reads top-to-bottom with its own up toward
+     * the screen's right edge — which is up in the real world for that hold.
      */
     fun uprightChromeAngleDegrees(deviceRotationDegrees: Int): Float {
         val (vx, vy) = rotateVectorToDisplay(0f, -1f, deviceRotationDegrees)
-        return Math.toDegrees(atan2(-vx, -vy).toDouble()).toFloat()
+        return Math.toDegrees(atan2(vx, -vy).toDouble()).toFloat()
     }
 
     /** [rotatePointToDisplay] followed by the plain normalized-to-pixel multiply described in the class KDoc. */

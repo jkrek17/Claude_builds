@@ -194,81 +194,134 @@ Other binding details:
 
 ## Device rotation (Pixel style)
 
-**The field report this fixes:** held in landscape, the app didn't visually rotate — by design, this app
-(like the stock Pixel Camera) stays `android:screenOrientation="portrait"` and the live preview never
-rotates. The actual bug was that *analysis* also silently treated "however the fixed portrait display is
-oriented" as "up", so the horizon analyzer reported a ~90° tilt and portrait-shaped logic (headroom,
-thirds) ran along the wrong axis whenever the phone was genuinely held sideways. The fix has five parts,
-all driven by one value — `FrameAnalysis.deviceRotationDegrees` (0/90/180/270, `Surface.ROTATION_*`
-sense), the phone's quantized *physical* rotation from natural portrait, computed in `:vision` from the
-same gravity vector `OrientationSensor` already reads (see its README for the derivation) and carried
-through as `CameraUiState.deviceRotationDegrees`:
+Like the stock Pixel Camera, this app is `android:screenOrientation="portrait"` and the live preview
+content **never** rotates. Everything else has to compensate for that, and getting one sign wrong here has
+shipped twice. So this section states the whole chain as a truth table derived from physics, and every row
+of it is asserted in `RotationTruthTableTest` (`app/src/test/.../ui/camera/`), which starts from a gravity
+vector and runs the *same* functions the app runs.
 
-1. **Analysis reasons in true physical-up coordinates.** `:vision` now corrects
-   `imageInfo.rotationDegrees` by `deviceRotationDegrees` (`UprightRotation`, see `:vision`'s README)
-   before building `FrameCoordinateMapper` or handing ML Kit its `InputImage`, so every detector, the luma
-   statistics, the segmentation mask, and the horizon/thirds/headroom logic downstream all see a
-   physically-upright frame — `FrameAnalysis.frameWidth`/`frameHeight` follow suit (a landscape hold
-   reports wider-than-tall). `DeviceOrientation.rollDegrees` is likewise re-referenced onto
-   `deviceRotationDegrees` so a level landscape hold reads ~0°, not ~90°.
-2. **Overlays rotate the *coordinates*, not the canvas.** Since the live preview content itself never
-   rotates but the analysis geometry is now physical-up, `OverlayMapper` (see its class KDoc for the full
-   derivation) rotates every normalized point/rect/direction from `FrameAnalysis`'s physical-up frame onto
-   the preview's own never-rotating frame before the existing plain normalized-to-pixel multiply.
-   `CompositionOverlay` (target ring, level indicator, directional arrow, rotate glyph, region highlight)
-   and `DebugGeometryOverlay` (object boxes, subject boxes/landmarks, mask heat) both go through it,
-   driven by `CameraUiState.deviceRotationDegrees`. The directional arrow/level indicator/rotate glyph
-   specifically rotate the *direction* they point in too (`OverlayMapper.rotateVectorToDisplay`) so they
-   keep pointing the physically-correct way — see "Arrow semantics" on `drawDirectionalArrow`.
-3. **Chrome rotates in place, by the mapper-derived angle (not `-deviceRotationDegrees`).** Flash, the
-   shooting-mode chip, the settings gear (`CameraTopBar`), the gallery thumbnail, shutter, and lens switch
-   (`BottomControlBar`), plus the score badge + guidance banner stack, each counter-rotate via
-   `RotatedChrome` (`RotatedChrome.kt`) so they stay upright — their position on screen never moves, only
-   their orientation. The angle comes from `OverlayMapper.uprightChromeAngleDegrees` (see its KDoc for the
-   convention and derivation): feed the physical **up** direction through the same
-   `rotateVectorToDisplay` the directional arrow uses to find where physical-up lands on the raw,
-   never-rotating screen, then solve for the clockwise rotation that points a glyph's own "up" the
-   *opposite* way, so it visually cancels that tilt — for `ROTATION_90` (phone's right edge up) that's
-   **+90 degrees clockwise**, not `-90`. A second field-verified bug fixed the sign here: the old code used
-   `-deviceRotationDegrees` directly, which rotated chrome text the wrong way (e.g. "Move slightly right"
-   read bottom-to-top, up-left, instead of top-to-bottom, up-right) — `RotationAnimationTest` asserts the
-   fixed angle against that concrete example and pins it for every quantized rotation.
-   `rememberControlCounterRotation` (`RotationAnimation.kt`) then tracks an ever-accumulating (never-wrapped)
-   target so `animateFloatAsState`'s 250ms tween always takes the *shorter* turn between two rotations (e.g.
-   270 -> 0 animates as a +90 hop, not a -270 spin) — see `RotationAnimation.shortestSignedDelta`'s KDoc.
-4. **A rotated wide banner doesn't overflow its slot, and hugs the physical top edge in landscape.**
-   `Modifier.rotate` only rotates pixels — it never changes what the layout system thinks an element's size
-   is, so a wide guidance banner rotated 90 degrees in place still *reported* its original wide-short size,
-   overflowing whatever box it was aligned into and running across the middle of the preview, on top of the
-   subject. `RotatedChrome` (`RotatedChrome.kt`) fixes this: at 90/270 it measures its content with
-   width/height swapped and reports the *swapped* size to its own parent (the size/offset arithmetic is
-   pure and unit-tested in `RotatedChromeMathTest`), so a caller aligning it against an edge gets the
-   content's real, rotated footprint. `CameraScreen` wraps the score badge + guidance banner + empty-scene
-   hint in one `RotatedChrome` and aligns that stack to whichever screen edge is currently the preview's
-   *physical* top (`chromeStackEdgeFor`, unit-tested in `ChromeStackEdgeTest`): top-centre at
-   `deviceRotationDegrees == 0`, otherwise the screen's right (`ROTATION_90`), left (`ROTATION_270`), or
-   bottom (`180`) — so guidance never sits over the frame centre. `GuidanceBanner` itself is also more
-   compact now (headline always; the COACH-mode reason and at most one secondary recommendation, each one
-   line with ellipsis — 3 lines total, down from up to 5); in landscape its width is additionally capped at
-   60% of the *preview's height* (its long axis once rotated), vs. 85% of the screen's width in portrait.
-   "Hold this framing" and the awaiting-subject headline go through this exact same compact/rotated path.
-5. **Capture EXIF follows the physical rotation, not the bind-time display rotation.**
-   `CameraController.setCaptureRotationDegrees(deviceRotationDegrees)` sets `ImageCapture.targetRotation`
-   live (no rebind needed, unlike capture mode) — `CameraScreen` calls it from a
-   `LaunchedEffect(uiState.deviceRotationDegrees)` — so CameraX writes the correct EXIF orientation
-   regardless of how the phone was actually held when the shutter fired. `Preview`'s own `targetRotation`
-   is deliberately left alone (bind-time display rotation only): the live preview content must never
-   rotate. `ReviewScreen`'s photo box now sizes itself off the decoded image's own aspect ratio (via
-   Coil's `intrinsicSize`) instead of a hardcoded portrait 3:4, so a landscape capture is shown full-bleed
-   letterboxed rather than squeezed into a portrait-shaped box.
+### The conventions everything is derived from
 
-**What needs a physical device to confirm** (none of this could be hardware-tested in this environment —
-see `:vision`'s README for the same caveat on the underlying sensor math): holding the phone in all four
-orientations and checking the level indicator reads level, headroom/thirds advice still makes sense for a
-person in frame, every chrome icon and the guidance banner's text read upright (not mirrored or
-upside-down relative to the fix above), a saved photo opens upright in the gallery, the score+banner stack
-hugs the correct physical edge without ever crossing the frame centre, and that 250ms is the right
-animation speed for the chrome counter-rotation to feel responsive without being jarring.
+* **Device axes** (`SensorEvent`): `+x` out the screen's RIGHT edge, `+y` out its TOP edge, `+z` out of the
+  screen face. A stationary phone reports the direction of **up** in those axes.
+* **`Surface.ROTATION_90` = the phone turned 90 degrees counter-clockwise from natural** (as its user sees
+  it), so its RIGHT edge points up. `deviceRotationDegrees` (from `:vision`'s gravity-derived
+  `DeviceRotationQuantizer`, carried on `FrameAnalysis`) is in exactly that sense.
+* **Screen coordinates**: x right, y down. `Modifier.rotate` / `graphicsLayer.rotationZ` is
+  **clockwise-positive**.
+* **The analysis frame** (`Geometry.kt`) is physically upright: in it, world up is `(0, -1)` and world
+  right is `(1, 0)`, front camera mirrored so `x = 0` is always the left edge on screen.
+
+### The truth table
+
+| hold | gravity (up in device axes) | `deviceRotationDegrees` | analysis rotation (rear / front) | physical top-centre of the scene appears at | physical right points | chrome angle | `ImageCapture.targetRotation` |
+|---|---|---|---|---|---|---|---|
+| portrait (natural) | `( 0, +g, 0)` | 0 | 90 / 270 | screen top-centre | screen right | 0 | `ROTATION_0` |
+| right edge up | `(+g, 0, 0)` | 90 | 0 / 0 | screen **right**-centre | screen **down** | **+90** | `ROTATION_90` |
+| upside down | `( 0, -g, 0)` | 180 | 270 / 90 | screen bottom-centre | screen left | 180 | `ROTATION_180` |
+| left edge up | `(-g, 0, 0)` | 270 | 180 / 180 | screen **left**-centre | screen **up** | **-90** | `ROTATION_270` |
+
+(Analysis rotation assumes the usual mount, `imageInfo.rotationDegrees` = 90 rear / 270 front; it is
+`R0 - theta` for the rear camera and `R0 + theta` for the front — see `:vision`'s README.)
+
+The single fact that generates the middle three columns: **the portrait-locked display frame is the
+physical-up frame turned clockwise by `deviceRotationDegrees`.** With the phone turned `theta` CCW its axes
+are `x_hat = cos(theta)*right + sin(theta)*up` and `y_hat = -sin(theta)*right + cos(theta)*up`, so world up
+is drawn at `(sin theta, -cos theta)` and world right at `(cos theta, sin theta)` — both the unrotated
+vector turned clockwise by `theta`. Chrome then needs `+theta` clockwise, because a glyph rotated clockwise
+by `phi` has its own up at `(sin phi, -cos phi)`, and for it to read upright to the photographer that must
+equal where physical up appears.
+
+### Where each column is implemented
+
+1. **Analysis reasons in true physical-up coordinates.** `:vision` corrects `imageInfo.rotationDegrees` by
+   `deviceRotationDegrees` (`UprightRotation`, see `:vision`'s README) before building
+   `FrameCoordinateMapper` or handing ML Kit its `InputImage`, so every detector, the luma statistics, the
+   segmentation mask, and the horizon/thirds/headroom logic downstream all see a physically-upright frame —
+   `FrameAnalysis.frameWidth`/`frameHeight` follow suit (a landscape hold reports wider-than-tall).
+   `DeviceOrientation.rollDegrees` is re-referenced onto `deviceRotationDegrees` so a level hold reads ~0
+   in every orientation, and positive still means "the horizon appears rotated clockwise in the analysis
+   frame".
+2. **Overlays rotate the *coordinates*, not the canvas.** `OverlayMapper.rotatePointToDisplay` /
+   `rotateRectToDisplay` / `rotateVectorToDisplay` apply exactly the clockwise-by-`theta` rotation above
+   before the existing plain normalized-to-pixel multiply. `CompositionOverlay` (target ring, level
+   indicator, directional arrow, rotate glyph, region highlight) and `DebugGeometryOverlay` (object boxes,
+   subject boxes/landmarks, mask heat) both go through it.
+3. **Chrome counter-rotates in place by `+theta`.** Flash, the shooting-mode chip and the settings gear
+   (`CameraTopBar`), the gallery thumbnail, shutter and lens switch (`BottomControlBar`), plus the score
+   badge + guidance banner stack, each wrap in `RotatedChrome`, whose angle comes from
+   `OverlayMapper.uprightChromeAngleDegrees`. `rememberControlCounterRotation` tracks an ever-accumulating
+   (never-wrapped) target so `animateFloatAsState`'s 250 ms tween always takes the *shorter* turn (270 -> 0
+   is a +90 hop, not a -270 spin).
+4. **A rotated wide banner doesn't overflow its slot, and hugs the physical top edge.** `Modifier.rotate`
+   only rotates pixels — it never changes the size the layout system believes an element has, so a wide
+   banner rotated 90 degrees still reported its wide-short size and ran across the middle of the preview.
+   `RotatedChrome` measures its content with width/height swapped at 90/270 and reports the *swapped* size
+   to its parent (`RotatedChromeMath`, unit-tested). `CameraScreen` aligns that stack to whichever screen
+   edge physical up currently appears at (`chromeStackEdgeFor`: top at 0, right at `ROTATION_90`, left at
+   `ROTATION_270`, bottom at 180), so guidance never sits over the frame centre. `GuidanceBanner` is capped
+   at 3 lines and, in landscape, at 60% of the preview's *height* (its long axis once rotated) vs. 85% of
+   the screen's width in portrait.
+5. **Capture EXIF follows the physical rotation.** `CameraController.setCaptureRotationDegrees` sets
+   `ImageCapture.targetRotation` live (no rebind needed) from `CaptureRotation.surfaceRotationFor`, called
+   by `CameraScreen`'s `LaunchedEffect(uiState.deviceRotationDegrees)`. The mapping is the identity on
+   `deviceRotationDegrees` because `Surface.ROTATION_*` is defined counter-clockwise-positive, the same
+   sense the quantizer reports in — note that Android's own `OrientationEventListener` snippet is
+   clockwise-positive and swaps 90/270 if pasted verbatim. `Preview`'s `targetRotation` is deliberately
+   left alone: the preview content must never rotate. `ReviewScreen`'s photo box sizes itself off the
+   decoded image's aspect ratio (Coil `intrinsicSize`) so a landscape capture is letterboxed rather than
+   squeezed into a portrait box.
+
+### The two sign errors that shipped, and why they hid each other
+
+`OverlayMapper` used `phi = 360 - theta` instead of `theta`. That is 180 degrees out at both `ROTATION_90`
+and `ROTATION_270` (and coincidentally correct at 0 and 180, which is why portrait always looked fine):
+every overlay point was point-reflected through the frame centre, and "move slightly right" drew an arrow
+at the screen's **top** instead of its bottom — the photographed field bug.
+
+The chrome angle was then *derived from that same inverted mapping*, with a compensating negation
+(`atan2(-v.x, -v.y)`), so chrome came out correct — meaning a reviewer fixing only the obvious half would
+have flipped chrome straight back to the original `-theta` bug ("Move slightly right" reading
+bottom-to-top). Both halves are now pinned independently: `RotationTruthTableTest` derives each from
+gravity, and `RotatedChromeRotationTest` (Robolectric + Compose) checks the rotation that actually reaches
+the screen, by asserting that a left/right marker pair ends up top/bottom — a bounding box alone cannot
+tell +90 from -90, which is exactly how a sign error ships.
+
+Separately, `UprightRotation` used the rear-camera formula for both facings, which left the **front**
+camera's analysis frame upside down in both landscape holds (`R0 - theta` vs `R0 + theta` differ by 180
+degrees there — invisible to any check that only looks at the frame's aspect ratio). See `:vision`'s
+README.
+
+### The debug readout
+
+With debug mode on, `DebugOverlay` shows one line:
+
+```
+Rot: device=<0/90/180/270> upright=<n> chrome=<angle> roll=<n>
+```
+
+`device` is `FrameAnalysis.deviceRotationDegrees`, `upright` is `FrameAnalysis.analysisRotationDegrees`
+(the clockwise rotation `:vision` applied to the raw buffer), `chrome` is the clockwise Compose angle the
+chrome is rotating by, and `roll` is `DeviceOrientation.rollDegrees` (residual tilt after re-referencing).
+Read against the truth table above, for the rear camera:
+
+| hold | expected line (level phone) |
+|---|---|
+| portrait | `Rot: device=0 upright=90 chrome=0 roll=0` |
+| right edge up | `Rot: device=90 upright=0 chrome=90 roll=0` |
+| upside down | `Rot: device=180 upright=270 chrome=-180 roll=0` |
+| left edge up | `Rot: device=270 upright=180 chrome=-90 roll=0` |
+
+`chrome` is reported in `(-180, 180]`, so 180 may read as `-180` and 270 reads as `-90`; those are the same
+angles. `roll` should stay within a degree or two of 0 whenever the phone is level, in *every* hold, and go
+positive when the horizon looks rotated clockwise on screen. Switching to the front camera changes only the
+`upright` column (270 / 0 / 90 / 180 for the four holds).
+
+**What still needs a physical device to confirm:** that the four holds read as the table above; that the
+level indicator reads level and headroom/thirds advice makes sense for a person in frame in each; that
+every chrome icon and the banner's text read upright; that a saved photo opens upright in the gallery; that
+the score+banner stack hugs the right edge without crossing the frame centre; and whether 250 ms is the
+right tween for the chrome counter-rotation.
 
 ## Camera/Activity lifecycle (`CameraViewModel`)
 
@@ -384,7 +437,9 @@ Enable **Settings → Debug mode**. Two extra layers appear on the camera screen
   is the *only* place bounding boxes and the mask are drawn; outside debug mode, boxes never appear.
 * `DebugOverlay` — a collapsible, scrollable panel (tap the "DEBUG ▾/▸" header) listing: scene type +
   confidence + the declared shooting mode (`Intent:`), raw vs. smoothed score, engine time, FPS, last
-  analysis latency and sampling interval,
+  analysis latency and sampling interval, the one-line rotation readout
+  (`Rot: device=... upright=... chrome=... roll=...` — the whole rotation chain in one place; see
+  "Device rotation (Pixel style)" above for what it must read in each of the four holds),
   every `CompositionMetric` (category/score/confidence/severity/applicable), every recommendation id
   with priority/confidence/direction, per-detector timings (`FrameAnalysis.detectorTimings` — a generic
   map, so `:vision`'s `"objects"`/`"segmentation"`/`"mask_age"` entries show up for free; `"mask_age"` is

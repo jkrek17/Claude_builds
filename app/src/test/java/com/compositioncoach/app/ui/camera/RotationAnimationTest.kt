@@ -62,9 +62,13 @@ class RotationAnimationTest {
         assertEquals(90f, unwrapped, 1e-4f)
     }
 
-    // --- Bug 1 regression: chrome must rotate the SAME way the (field-verified-correct) directional -----
-    // arrow does, both derived from OverlayMapper.rotateVectorToDisplay, not the old ad hoc
-    // `-deviceRotationDegrees` (which read "Move slightly right" bottom-to-top instead of top-to-bottom).
+    // --- Chrome-angle regressions ------------------------------------------------------------------------
+    // Chrome is derived from the same OverlayMapper.rotateVectorToDisplay the directional arrow uses, so
+    // the two can never drift apart -- but note they are NOT the same expression (see
+    // uprightChromeAngleDegrees' KDoc): the shipped build paired an inverted rotateVectorToDisplay with a
+    // negated atan2 here, and the two errors cancelled, so chrome looked right while every arrow and box
+    // was 180 degrees out. RotationTruthTableTest pins each half against gravity independently; these
+    // tests pin the chrome half's concrete values.
 
     @Test
     fun `chrome angle matches the concrete field-verified fix at ROTATION_90 (right edge up)`() {
@@ -89,10 +93,12 @@ class RotationAnimationTest {
     fun `chrome angle is derived from the same rotateVectorToDisplay the arrow uses, for every rotation`() {
         // Reproduce OverlayMapper.uprightChromeAngleDegrees's own arrow-anchored derivation independently
         // here (rather than calling it) so a future edit to that function's internals still gets caught if
-        // it drifts from "physical-up's display vector, negated, as a clockwise angle".
+        // it drifts from "the clockwise angle whose glyph-up equals physical-up's display vector".
         for (rotation in intArrayOf(0, 90, 180, 270)) {
             val (vx, vy) = OverlayMapper.rotateVectorToDisplay(0f, -1f, rotation)
-            val expected = Math.toDegrees(atan2(-vx, -vy).toDouble()).toFloat()
+            // A glyph rotated clockwise by phi has its up at (sin phi, -cos phi); it must match where
+            // physical up lands on screen, which is (vx, vy). Hence phi = atan2(vx, -vy).
+            val expected = Math.toDegrees(atan2(vx, -vy).toDouble()).toFloat()
             assertEquals("rotation=$rotation", expected, OverlayMapper.uprightChromeAngleDegrees(rotation), 1e-3f)
         }
     }

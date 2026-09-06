@@ -16,6 +16,19 @@ data class DebugStats(
     val samplingIntervalMs: Long = CoachSettings.DEFAULT_INTERVAL_MS,
     val engineTimeMs: Long = 0L,
     val detectorTimings: Map<String, Long> = emptyMap(),
+    /**
+     * The clockwise rotation `:vision` applied to the raw camera buffer to reach physical-up coordinates
+     * for the latest frame (`FrameAnalysis.analysisRotationDegrees`). Shown on the debug overlay's `Rot:`
+     * line as `upright=`, next to the device rotation it was derived from — the two together make an
+     * on-device rotation bug readable without a screenshot.
+     */
+    val analysisRotationDegrees: Int = 0,
+    /**
+     * The latest frame's `DeviceOrientation.rollDegrees`: the residual tilt after re-referencing to the
+     * quantized device rotation, so a level hold reads ~0 in every orientation and positive means the
+     * horizon appears rotated clockwise in the analysis frame. Shown as `roll=` on the same line.
+     */
+    val rollDegrees: Float = 0f,
 )
 
 /**
@@ -145,6 +158,8 @@ fun CameraUiState.withFrameUpdate(
     detectorTimings: Map<String, Long> = emptyMap(),
     debugFrame: DebugFrameData = DebugFrameData(),
     deviceRotationDegrees: Int = 0,
+    analysisRotationDegrees: Int = 0,
+    rollDegrees: Float = 0f,
 ): CameraUiState = copy(
     composition = composition,
     debugStats = debugStats.copy(
@@ -153,6 +168,8 @@ fun CameraUiState.withFrameUpdate(
         samplingIntervalMs = samplingIntervalMs,
         engineTimeMs = engineTimeMs,
         detectorTimings = detectorTimings,
+        analysisRotationDegrees = analysisRotationDegrees,
+        rollDegrees = rollDegrees,
     ),
     debugFrame = debugFrame,
     deviceRotationDegrees = deviceRotationDegrees,

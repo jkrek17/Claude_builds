@@ -12,8 +12,11 @@ VisionFeatureToggles       // additional settings :app can opt into (object/segm
 VisionPipelineFactory      // .create(context) -> FrameAnalysisSource
 VisionPipeline             // real implementation (also implements VisionFeatureToggles)
 OrientationSensor          // device roll/pitch relative to gravity, plus quantized physical rotation
+gravityToRollDegrees       // pure gravity -> roll/pitch/reliability math, extracted from the sensor so
+gravityToPitchDegrees      //   the rotation chain can be driven from a gravity vector in a JVM test
+gravityReadingIsReliable   //   (top-level functions in OrientationSensor.kt)
 DeviceRotationQuantizer    // hysteresis/debounce quantizer, raw roll -> 0/90/180/270 (pure Kotlin)
-UprightRotation            // display-upright rotation -> physically-upright rotation (pure Kotlin)
+UprightRotation            // display-upright rotation -> physically-upright rotation, facing-aware (pure)
 FrameCoordinateMapper      // rotation/crop/mirror math (pure Kotlin)
 AdaptiveSampler            // frame-rate throttle (pure Kotlin)
 ImageStatisticsComputer    // luma-plane statistics (pure Kotlin)
@@ -80,86 +83,130 @@ A failure in a detector (or in luma decoding) is caught per-stage; the pipeline 
 stats-only or, in the worst case, a bare `FrameAnalysis` rather than dropping the frame silently or
 crashing the camera.
 
-## Coordinate conventions
+## Coordinate conventions: the rotation truth table
 
-**Physical-up, not display-up.** `:app` stays portrait-locked (`android:screenOrientation="portrait"`,
-Pixel-Camera-style — see `:app`'s README), so `Display.getRotation()` never itself changes no matter how
-the phone is physically held. Everything below still bridges to the single normalized, upright,
-front-mirrored space `Geometry.kt` in `:composition` documents — but "upright" means *physically* upright
-(as the photographer standing wherever they're pointing the camera actually sees the scene), not merely
-"upright for the app's fixed portrait target rotation". `UprightRotation.computeUprightRotationDegrees`
-(full derivation, checked against all four device rotations, in its own KDoc) corrects
-`imageProxy.imageInfo.rotationDegrees` (which only accounts for the latter) by the phone's actual physical
-rotation — `OrientationSensor.deviceRotationDegrees`, a quantized 0/90/180/270 value from
-`DeviceRotationQuantizer` — before it's used for *anything*: the `FrameCoordinateMapper` built for the
-frame, and the `InputImage` handed to every ML Kit detector. `FrameAnalysis.frameWidth`/`frameHeight`
-follow the same correction, so a landscape hold reports a frame wider than it is tall.
-`FrameAnalysis.deviceRotationDegrees` carries the same quantized value alongside the geometry so `:app` can
-map it back onto the (never-rotating) portrait preview and counter-rotate its Pixel-style chrome — see
-that field's KDoc and `:app`'s README's `OverlayMapper`/rotation sections. This is the fix for the "held in
-landscape, the app doesn't rotate" field report: the *screen* correctly never rotates (same as the stock
-Pixel Camera), but analysis — and therefore headroom/horizon/thirds advice — now reasons in the scene's
-true orientation instead of running along the wrong axis.
+`:app` stays portrait-locked (`android:screenOrientation="portrait"`, Pixel-Camera-style), so
+`Display.getRotation()` never changes and the live preview content never visually rotates. Analysis,
+however, must reason in the scene's *physical* orientation, or headroom/thirds/horizon logic runs along the
+wrong axis whenever the phone is held sideways. Bridging those two frames is the whole of this section, and
+getting one sign wrong in it has shipped twice — so it is stated below as a table derived from physics, and
+every row is asserted by a test that starts from a gravity vector and runs the same functions the pipeline
+runs (`:app`'s `RotationTruthTableTest`, plus `UprightRotationTest` and `DeviceRotationQuantizerTest` here).
 
-Two camera-buffer-space coordinate systems are bridged to that normalized, physically-upright,
-front-mirrored space — full derivation and KDoc live in `FrameCoordinateMapper.kt`:
+### The four conventions everything is derived from
 
-- **Sensor space**: raw pixel coordinates in the buffer before rotation. `imageProxy.cropRect` and
-  `ImageStatisticsComputer`'s own luma sampling work here.
-- **Rotated-full space**: ML Kit rotates the buffer internally (`InputImage.fromMediaImage(image,
-  rotationDegrees)`) and reports boxes/landmarks already rotated, in the *uncropped* rotated
-  buffer's pixel coordinates (width/height swapped from sensor space at 90°/270°).
+* **Device axes** (`SensorEvent`): `+x` out the screen's RIGHT edge, `+y` out its TOP edge, `+z` out of the
+  screen face. A stationary phone's accelerometer — and the third row of `TYPE_ROTATION_VECTOR`'s fused
+  device-to-world matrix — both report the direction of **up** expressed in those axes.
+* **`Surface.ROTATION_90` means the phone is turned 90 degrees counter-clockwise** from natural, as its
+  user sees it, i.e. its RIGHT edge points up. `ROTATION_270` is left-edge-up, `ROTATION_180` upside down.
+* **`imageInfo.rotationDegrees` (`R0`)** is the clockwise rotation that makes the sensor buffer upright
+  *for the current display orientation*. For a portrait-locked activity that never changes, so `R0` is a
+  per-camera constant — typically 90 rear, 270 front.
+* **Camera handedness.** A camera looking along `f` with up `u` images the world with right axis
+  `r = f x u`. The rear camera looks along `-z`, so `r = +x` (device-right is image-right); the front
+  camera looks along `+z`, so `r = -x` (device-right is image-**left**). That is why a front-camera photo
+  shows your right hand on the image's left — and it is why the buffer correction's sign differs per
+  facing.
 
-Both converge on: subtract the (rotated) crop-rect origin → divide by the (rotated) crop size (0..1
-*of the analysis crop*, matching the CameraX ViewPort-aligned preview FOV) → mirror `x' = 1 - x` for
-the front camera.
+### The truth table
 
-`DetectedFace.leftEye`/`rightEye` are swapped post-mirror so they always mean "whichever eye is
-drawn further left on screen" (ML Kit's own LEFT_EYE/RIGHT_EYE are the *subject's* anatomical
-left/right). `BodyLandmarkType` LEFT_*/RIGHT_* are **not** swapped — they keep meaning the subject's
-own left/right regardless of mirroring, per that enum's contract.
+`theta` = `deviceRotationDegrees`. `g` = 9.81. "Analysis rotation" is what
+`UprightRotation.computeUprightRotationDegrees` returns and what is passed to both `FrameCoordinateMapper`
+and `InputImage.fromMediaImage`, using the usual mount (`R0` = 90 rear, 270 front).
+
+| hold | gravity (up in device axes) | raw roll `atan2(gx, gy)` | quantized `theta` | analysis rotation, rear (`R0 - theta`) | analysis rotation, front (`R0 + theta`) | re-referenced `rollDegrees`, level |
+|---|---|---|---|---|---|---|
+| portrait (natural) | `( 0, +g, 0)` | 0 | 0 (`ROTATION_0`) | 90 | 270 | ~0 |
+| right edge up | `(+g, 0, 0)` | +90 | 90 (`ROTATION_90`) | 0 | 0 | ~0 |
+| upside down | `( 0, -g, 0)` | 180 | 180 (`ROTATION_180`) | 270 | 90 | ~0 |
+| left edge up | `(-g, 0, 0)` | -90 | 270 (`ROTATION_270`) | 180 | 180 | ~0 |
+
+In prose:
+
+* **Roll is the phone's own rotation.** `gravityToRollDegrees(gx, gy) = atan2(gx, gy)` reads +90 when up in
+  device axes is `(+g, 0, 0)` — right edge up — which is `Surface.ROTATION_90` by definition. The quantizer
+  therefore buckets it straight into `Surface.ROTATION_*` degrees with no further sign work. The same
+  number is also "how far clockwise the world appears rotated inside the captured frame", because turning
+  the camera counter-clockwise sweeps a fixed scene clockwise within it — which is what
+  `DeviceOrientation.rollDegrees` promises.
+* **The correction is `R0 - theta` for the rear camera and `R0 + theta` for the front.** Ask where world-up
+  lands in the display-upright image. With the phone turned `theta` CCW, device
+  `x_hat = cos(theta)*right + sin(theta)*up`, `y_hat = -sin(theta)*right + cos(theta)*up`; the rear camera
+  images world-up at `(sin theta, -cos theta)` — plain "up" turned **clockwise** by `theta` — so undoing it
+  means rotating a further `-theta`. The front camera, with its reversed right axis, images world-up at
+  `(-sin theta, -cos theta)`: turned **counter-clockwise**, so it needs `+theta`. The two agree at
+  `theta` 0 and 180 and differ by 180 degrees at 90 and 270, which is exactly how the front-camera branch
+  went unnoticed: an aspect-ratio check cannot see an upside-down frame. `:app`'s truth-table test places a
+  marked pixel in a modelled `W x H` buffer by working backwards from the display-upright image and checks
+  it comes back at the physical top-centre of the analysis frame, per hold, per facing.
+* **Mirroring is separate and comes last.** `FrameCoordinateMapper` mirrors `x' = 1 - x` in the *final*
+  upright frame for the front camera, so `x = 0` is always the left edge on screen (`Geometry.kt`'s
+  contract) regardless of which rotation produced that frame.
+* **Roll is re-referenced onto the quantized band.** `referenceRollToDeviceRotation(raw, theta)` is a
+  signed subtraction, so a level hold reads ~0 in *every* orientation (a level landscape hold has raw roll
+  ~90, and reports ~0 once the band has settled), and the residual is exactly what the horizon analyzer
+  wants: "how far clockwise the horizon appears in the analysis frame". A 5-degree clockwise horizon tilt
+  reads +5 in all four holds, including the two where the raw roll wraps past +/-180. That sense is the
+  same for both cameras: the front camera's reversed handedness and its mirroring cancel.
+* **On-screen mapping is camera-agnostic.** Because the preview mirrors the front camera's image, and
+  mirroring negates a rotation, the photographer sees world-up at `(sin theta, -cos theta)` either way. So
+  `:app`'s `OverlayMapper` needs no facing parameter: the display frame is the analysis frame turned
+  clockwise by `theta`, full stop. (See `:app`'s README for that half of the chain, the chrome
+  counter-rotation angle and the capture EXIF mapping.)
+
+### Where each piece lives
+
+* `gravityToRollDegrees` / `gravityToPitchDegrees` / `gravityReadingIsReliable` — top-level pure functions
+  at the bottom of `OrientationSensor.kt`. Extracted from the sensor class precisely so a test can drive
+  the whole chain from a gravity vector rather than from an intermediate roll whose sign would otherwise
+  have to be taken on trust. `pitchDegrees = atan2(-gz, gy)`, positive = camera pointed above the horizon;
+  reliability is false within ~25 degrees of straight up/down, where roll is numerically undefined.
+* `DeviceRotationQuantizer` — buckets the continuous roll into a stable `Surface.ROTATION_*` band, with
+  +/-25 degrees of hysteresis and a 400 ms debounce so it doesn't flap near a 45-degree hold, and freezes
+  on the last committed band while readings are unreliable.
+* `UprightRotation.computeUprightRotationDegrees(R0, theta, isFrontCamera)` — the facing-aware correction
+  above. Applied *before* anything else: it is what `FrameCoordinateMapper` is built with and what
+  `InputImage.fromMediaImage` is handed, so detectors, luma statistics, the segmentation mask and
+  `FrameAnalysis.frameWidth`/`frameHeight` all agree on physical-up (a landscape hold reports a frame wider
+  than it is tall). It is also surfaced verbatim as `FrameAnalysis.analysisRotationDegrees` for `:app`'s
+  debug readout.
+* `FrameCoordinateMapper` — rotation, crop and mirror in one place, bridging two camera-buffer spaces to
+  the normalized frame `Geometry.kt` documents:
+  * **Sensor space** — raw pixel coordinates before rotation. `imageProxy.cropRect` and
+    `ImageStatisticsComputer`'s own luma sampling work here.
+  * **Rotated-full space** — ML Kit rotates the buffer internally (we pass the corrected rotation into
+    `InputImage.fromMediaImage`) and reports boxes/landmarks already rotated, in the *uncropped* rotated
+    buffer's pixel coordinates (width/height swapped at 90/270).
+
+  Both converge on: subtract the (rotated) crop-rect origin, divide by the (rotated) crop size (0..1 *of
+  the analysis crop*, matching the CameraX ViewPort-aligned preview FOV), then mirror `x' = 1 - x` for the
+  front camera.
+* `FrameAnalysis.deviceRotationDegrees` carries the quantized value alongside the geometry so `:app` can
+  map it back onto the never-rotating portrait preview and counter-rotate its chrome.
+
+### Detector-output details that ride on top of this
+
+`DetectedFace.leftEye`/`rightEye` are swapped post-mirror so they always mean "whichever eye is drawn
+further left on screen" (ML Kit's own LEFT_EYE/RIGHT_EYE are the *subject's* anatomical left/right).
+`BodyLandmarkType` LEFT_*/RIGHT_* are **not** swapped — they keep meaning the subject's own left/right
+regardless of mirroring, per that enum's contract.
 
 `headEulerY` (yaw) and `headEulerZ` (roll) from ML Kit are both flipped in sign for the front camera
 (mirroring reverses the sense of both a turned head and a tilted head as seen on screen). Gaze:
-`|screenYaw| < 12°` → `CENTER`, else `RIGHT`/`LEFT` by the sign of `screenYaw`.
+`|screenYaw| < 12` degrees -> `CENTER`, else `RIGHT`/`LEFT` by the sign of `screenYaw`.
 
-`DetectedObject.bounds` uses the exact same `rotatedFullRectToNormalized` path as faces (ML Kit's
-object detector reports boxes in the same rotated-full pixel space as `Face.boundingBox`).
+`DetectedObject.bounds` uses the exact same `rotatedFullRectToNormalized` path as faces (ML Kit's object
+detector reports boxes in the same rotated-full pixel space as `Face.boundingBox`).
 
-**Segmentation mask mapping** is the one detector output that *isn't* a point/rect in rotated-full
-space: ML Kit's raw-size selfie-segmentation mask is a `ByteBuffer` of per-pixel float confidences at
-the *model's own* resolution (e.g. some fixed size unrelated to the sensor buffer), still covering the
-same rotated-full field of view. `MaskDownsampler` walks the *output* grid backward instead of
-resizing the source forward: for each of the 32×32 output cells (a few sub-samples per cell, box-
-averaged), `FrameCoordinateMapper.normalizedPointToRotatedFull` (new — the public inverse of
-`rotatedFullPointToNormalized`) gives the rotated-full pixel position, which is then rescaled by
-`sourceSize / mapper.rotatedFullWidth|Height` to land on a source-mask pixel. This is the same
-backward-sampling shape `ImageStatisticsComputer` uses for the luma plane, one coordinate space over.
-
-## Device orientation sign convention
-
-Documented and derived from first principles (three independent concrete checks: level, straight
-up, straight down, plus a 90° roll case) in `OrientationSensor.kt`'s KDoc:
-
-```
-rollDegrees  = atan2(gx, gy)     // positive = horizon appears clockwise on screen
-pitchDegrees = atan2(-gz, gy)    // positive = camera pointed above the horizon
-```
-
-where `(gx, gy, gz)` is "the direction of up, expressed in the device's own local axes" — read
-either off the fused rotation matrix (`TYPE_ROTATION_VECTOR` / `TYPE_GAME_ROTATION_VECTOR`) or
-directly off a low-pass-filtered accelerometer as a last-resort fallback. `isReliable` is false
-within ~25° of straight up/down (roll is numerically undefined there) or when no sensor exists.
-
-That raw `rollDegrees` is also, given the portrait lock above, already the phone's true physical
-rotation from natural portrait — `DeviceRotationQuantizer` buckets it into a stable 0/90/180/270-degree
-band (±25° hysteresis, 400ms debounce so it doesn't flap near a 45° boundary; freezes on the last value
-while `isReliable` is false) exposed as `OrientationSensor.deviceRotationDegrees`. `DeviceOrientation`'s
-own `rollDegrees` is then **re-referenced** onto that same quantized band
-(`referenceRollToDeviceRotation`, a plain signed subtraction) so a level hold reads ~0° in *every*
-physical orientation — e.g. a phone held level in landscape has a raw roll of ~90°, but once
-`deviceRotationDegrees` has settled on 90 the reported `rollDegrees` is ~0°, and the horizon/level
-analyzers never see a phantom ~90° tilt just because the phone is sideways.
+**Segmentation mask mapping** is the one detector output that *isn't* a point/rect in rotated-full space:
+ML Kit's raw-size selfie-segmentation mask is a `ByteBuffer` of per-pixel float confidences at the *model's
+own* resolution, still covering the same rotated-full field of view. `MaskDownsampler` walks the *output*
+grid backward instead of resizing the source forward: for each of the 32x32 output cells (a few sub-samples
+per cell, box-averaged), `FrameCoordinateMapper.normalizedPointToRotatedFull` gives the rotated-full pixel
+position, which is then rescaled by `sourceSize / mapper.rotatedFullWidth|Height` to land on a source-mask
+pixel. This is the same backward-sampling shape `ImageStatisticsComputer` uses for the luma plane, one
+coordinate space over.
 
 ## Detector settings
 
@@ -299,15 +346,25 @@ an empty list or a `null` horizon under low confidence is expected, correct beha
 
 ## Known limitations
 
-- `DeviceRotationQuantizer`'s ±25° hysteresis / 400ms debounce constants (like `OrientationSensor`'s
-  roll/pitch derivation more broadly) are reasoned from first principles and unit-tested in isolation,
-  not tuned against how quickly/jerkily a real hand actually rotates a phone — needs a physical device to
-  confirm the quantized rotation feels responsive without flapping near a 45° hold.
+- `DeviceRotationQuantizer`'s ±25° hysteresis / 400ms debounce constants are reasoned from first
+  principles and unit-tested in isolation, not tuned against how quickly/jerkily a real hand actually
+  rotates a phone — needs a physical device to confirm the quantized rotation feels responsive without
+  flapping near a 45° hold. (The *signs* around them are no longer in that category: they are derived
+  from the device-axis and `Surface.ROTATION_*` conventions above and asserted from a gravity vector in
+  `:app`'s `RotationTruthTableTest`.)
 - Horizon/dominant-line detection is a simple heuristic (row/column gradient tracking), not a real
   vanishing-point or Hough-transform detector; treat it as a soft hint, not ground truth.
-- `OrientationSensor`'s roll/pitch derivation could not be verified against a physical device in
-  this environment; it is derived and cross-checked from first principles (see its KDoc) rather than
-  hardware-tested.
+- `OrientationSensor`'s roll/pitch derivation could not be verified against a physical device in this
+  environment. The maths is derived from Android's documented device axes and asserted end to end from a
+  gravity vector (see "Coordinate conventions" above), but the *sensor plumbing* around it is not: that
+  `TYPE_ROTATION_VECTOR`'s matrix third row really is "up in device axes" on a given handset, that the
+  accelerometer fallback's magnitude scaling behaves, and that `Display.getRotation()` really does stay
+  `ROTATION_0` for this portrait-locked activity (the remap is defensive and expected to be a no-op) all
+  want a device. `:app`'s debug overlay prints the whole chain on one `Rot:` line for exactly this check —
+  see `:app`'s README for what it should read in each hold.
+- The `R0` values used throughout the docs (90 rear, 270 front) are the common Pixel-style mount, not a
+  guarantee: `UprightRotation` reads whatever `imageInfo.rotationDegrees` reports, so a handset with a
+  differently-mounted sensor is handled, but the worked examples in the tables would shift.
 - Pose detection reuses the previous frame's result on off-frames rather than interpolating, which
   can look slightly stale for fast-moving subjects at low sampling rates. The same is true of
   `SubjectMask` on segmentation off-cadence frames, more so given the coarser 3-6 frame cadence.

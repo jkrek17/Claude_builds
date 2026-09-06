@@ -158,6 +158,8 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                     detectorTimings = frame.detectorTimings,
                     debugFrame = DebugFrameData(objects = frame.objects, subjectMask = frame.subjectMask),
                     deviceRotationDegrees = frame.deviceRotationDegrees,
+                    analysisRotationDegrees = frame.analysisRotationDegrees,
+                    rollDegrees = frame.orientation?.rollDegrees ?: 0f,
                 )
             }
             .flowOn(Dispatchers.Default)
@@ -178,6 +180,8 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 detectorTimings = update.detectorTimings,
                 debugFrame = update.debugFrame,
                 deviceRotationDegrees = update.deviceRotationDegrees,
+                analysisRotationDegrees = update.analysisRotationDegrees,
+                rollDegrees = update.rollDegrees,
             )
         }
         if (_uiState.value.justEnteredShootReady(previous)) {
@@ -333,6 +337,8 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
         val detectorTimings: Map<String, Long>,
         val debugFrame: DebugFrameData,
         val deviceRotationDegrees: Int = 0,
+        val analysisRotationDegrees: Int = 0,
+        val rollDegrees: Float = 0f,
     )
 
     companion object {

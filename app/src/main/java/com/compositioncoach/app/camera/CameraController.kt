@@ -246,15 +246,12 @@ class CameraController(private val context: Context) {
      * CameraX write the correct EXIF orientation so the saved JPEG is upright in the gallery regardless of
      * how the phone was actually held when the shutter fired. [Preview]'s own `targetRotation` is
      * deliberately left alone: the live preview content must never rotate, Pixel-Camera-style — only the
-     * saved photo's metadata needs to reflect the true physical orientation.
+     * saved photo's metadata needs to reflect the true physical orientation. The mapping itself lives in
+     * [CaptureRotation.surfaceRotationFor] (pure, unit-tested in `CaptureRotationTest`) with its full
+     * hold-by-hold table.
      */
     fun setCaptureRotationDegrees(deviceRotationDegrees: Int) {
-        imageCapture?.targetRotation = when (deviceRotationDegrees) {
-            90 -> Surface.ROTATION_90
-            180 -> Surface.ROTATION_180
-            270 -> Surface.ROTATION_270
-            else -> Surface.ROTATION_0
-        }
+        imageCapture?.targetRotation = CaptureRotation.surfaceRotationFor(deviceRotationDegrees)
     }
 
     fun cycleFlashMode(): FlashMode {
