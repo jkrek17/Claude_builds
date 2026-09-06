@@ -1,7 +1,12 @@
 package com.compositioncoach.app.ui.navigation
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -28,12 +33,24 @@ object Routes {
 fun AppNavGraph(container: AppContainer) {
     val navController = rememberNavController()
 
+    // The gallery thumbnail's source: CameraUiState/CameraViewModel don't carry a `lastPhotoUri` field
+    // (that hook doesn't exist yet — see app/README.md and the final report), so this is wired here
+    // instead, straight off `AppContainer.reviewStore`'s last entry. `reviewStore.current` itself goes
+    // back to null once Keep/Retake clears it (see below), so the *last non-null* value seen is kept
+    // separately — that's the "optimistic" part: it stays correct across every capture without needing a
+    // ViewModel change, at the cost of not knowing about a photo taken in a previous process (cold start).
+    var lastPhotoUri by rememberSaveable { mutableStateOf<Uri?>(null) }
+    LaunchedEffect(container) {
+        container.reviewStore.current.collect { entry -> if (entry != null) lastPhotoUri = entry.photoUri }
+    }
+
     NavHost(navController = navController, startDestination = Routes.CAMERA) {
         composable(Routes.CAMERA) {
             val cameraViewModel: CameraViewModel = viewModel(factory = CameraViewModel.factory(container))
             CameraPermissionGate {
                 CameraScreen(
                     viewModel = cameraViewModel,
+                    lastPhotoUri = lastPhotoUri,
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToReview = { navController.navigate(Routes.REVIEW) },
                 )

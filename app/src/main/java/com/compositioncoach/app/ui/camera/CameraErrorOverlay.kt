@@ -13,9 +13,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.compositioncoach.app.ui.theme.OnScrim
+import com.compositioncoach.app.ui.theme.OnScrimMuted
+import com.compositioncoach.app.ui.theme.ScrimStrong
 
 /** Full-bleed scrim shown when camera initialization fails — a message plus a way to try again. */
 @Composable
@@ -23,21 +25,21 @@ fun CameraErrorOverlay(message: String, onRetry: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.85f))
+            .background(ScrimStrong)
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = "Camera unavailable",
-            color = Color.White,
+            color = OnScrim,
             style = MaterialTheme.typography.titleLarge,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = message,
-            color = Color.White.copy(alpha = 0.7f),
+            color = OnScrimMuted,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
         )

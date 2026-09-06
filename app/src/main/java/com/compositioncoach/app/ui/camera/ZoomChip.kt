@@ -10,10 +10,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
+import com.compositioncoach.app.ui.theme.OnScrim
+import com.compositioncoach.app.ui.theme.Scrim
 
 /**
  * The pinch-zoom readout ("1.0×") shown near the shutter for as long as [visible] is true — [CameraScreen]
@@ -25,10 +26,10 @@ fun ZoomChip(zoomRatio: Float, visible: Boolean, modifier: Modifier = Modifier) 
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         Text(
             text = ZoomChipFormatter.format(zoomRatio),
-            color = Color.White,
+            color = OnScrim,
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color.Black.copy(alpha = 0.45f))
+                .background(Scrim)
                 .padding(horizontal = 10.dp, vertical = 4.dp),
         )
     }

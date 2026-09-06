@@ -1,10 +1,17 @@
 package com.compositioncoach.app.ui.camera
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,6 +25,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.compositioncoach.app.ui.theme.Accent
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.composition.model.CompositionMetric
 import com.compositioncoach.composition.model.CompositionResult
@@ -32,25 +40,33 @@ import com.compositioncoach.composition.model.SceneClassification
 import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.Severity
 import com.compositioncoach.composition.model.SmoothedComposition
+import kotlinx.coroutines.delay
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
 private const val REGION_FADE_MS = 300
 private const val REGION_STROKE_ALPHA = 0.45f
+private const val LEVEL_LINGER_MS = 1_500L
+private const val LEVEL_FADE_MS = 400
+private const val ARROW_PULSE_MS = 900
+private val ARROW_PULSE_DISTANCE = 4.dp
 
 private val FALLBACK_ANCHOR = NormalizedPoint(0.5f, 0.85f)
 private val HORIZON_INDICATOR_ANCHOR = NormalizedPoint(0.5f, 0.14f)
 
 /**
  * Subtle, always-on (non-debug) composition guidance drawn over the preview: a target ring for where the
- * subject should go, a short level indicator for the horizon, a directional arrow following the primary
+ * subject should go (hidden once framing is within the dead zone — [Recommendation.direction] is
+ * [Direction.NONE] or the shot is already shoot-ready), a short level indicator for the horizon that snaps
+ * green and fades 1.5s after becoming level, a gently pulsing directional arrow following the primary
  * recommendation (anchored to [com.compositioncoach.composition.model.DetectedSubject.anchorPoint], which
- * is already the box centre for an object-kind subject — no special case needed here), and — while the
- * headline recommendation carries a `region` (background collisions, edge tension) and framing isn't
- * shoot-ready yet — a fading 1dp/45%-white rounded outline of that region. Detected-subject/object
- * *bounding boxes* remain debug-only (see [DebugGeometryOverlay]); this is the one region outline shown
- * outside debug mode, deliberately restrained (no fill, low alpha) so it reads as a hint, not a debug box.
+ * is already the box centre for an object-kind subject — no special case needed here), a curved arrow
+ * around the level indicator for rotation advice instead, and — while the headline recommendation carries a
+ * `region` (background collisions, edge tension) and framing isn't shoot-ready yet — a fading 1dp/45%-white
+ * rounded outline of that region. Detected-subject/object *bounding boxes* remain debug-only (see
+ * [DebugGeometryOverlay]); this is the one region outline shown outside debug mode, deliberately restrained
+ * (no fill, low alpha) so it reads as a hint, not a debug box.
  */
 @Composable
 fun CompositionOverlay(composition: SmoothedComposition, modifier: Modifier = Modifier) {
@@ -68,28 +84,61 @@ fun CompositionOverlay(composition: SmoothedComposition, modifier: Modifier = Mo
     var lastRegion by remember { mutableStateOf<NormalizedRect?>(null) }
     if (region != null) lastRegion = region
 
+    val metrics = composition.raw.metrics
+    val horizonMetric = metrics.firstOrNull { it.category == MetricCategory.HORIZON && it.applicable }
+    val horizonLine = horizonMetric?.geometry?.filterIsInstance<OverlayGeometry.Line>()?.firstOrNull()
+    val isLevel = horizonMetric?.severity == Severity.NONE
+    val showsRotateGlyph = primary != null &&
+        (primary.direction == Direction.ROTATE_CLOCKWISE || primary.direction == Direction.ROTATE_COUNTER_CLOCKWISE)
+
+    // The level indicator lingers for LEVEL_LINGER_MS once level, then fades out — tilting again before
+    // that cancels the fade (a fresh `isLevel` key restarts this effect) and brings it back instantly.
+    val levelAlpha = remember { Animatable(if (horizonLine != null) 1f else 0f) }
+    LaunchedEffect(horizonLine != null, isLevel, showsRotateGlyph) {
+        when {
+            horizonLine == null || showsRotateGlyph -> levelAlpha.snapTo(0f)
+            isLevel -> {
+                levelAlpha.snapTo(1f)
+                delay(LEVEL_LINGER_MS)
+                levelAlpha.animateTo(0f, tween(LEVEL_FADE_MS))
+            }
+            else -> levelAlpha.snapTo(1f)
+        }
+    }
+    val levelColor by animateColorAsState(if (isLevel) Accent.Ready else Color.White.copy(alpha = 0.85f), label = "levelColor")
+
+    // A directional arrow only makes sense while there is an active position/closer/back recommendation
+    // outside the dead zone (Direction.NONE) and the shot isn't already ready to fire.
+    val showsArrow = primary != null && !composition.isShootReady &&
+        primary.direction != Direction.NONE && !showsRotateGlyph
+    val infiniteTransition = rememberInfiniteTransition(label = "arrowPulse")
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(ARROW_PULSE_MS), repeatMode = RepeatMode.Reverse),
+        label = "arrowPulse",
+    )
+
+    // The target ring is the same "dead zone" affordance as the arrow: nothing to correct, nothing to show.
+    val showsTargetRing = primary != null && !composition.isShootReady && primary.direction != Direction.NONE
+
     Canvas(modifier = modifier.fillMaxSize()) {
-        val metrics = composition.raw.metrics
-
-        metrics.asSequence()
-            .flatMap { it.geometry.asSequence() }
-            .filterIsInstance<OverlayGeometry.TargetPoint>()
-            .forEach { drawTargetRing(it.point) }
-
-        val horizonMetric = metrics.firstOrNull { it.category == MetricCategory.HORIZON && it.applicable }
-        val horizonLine = horizonMetric?.geometry?.filterIsInstance<OverlayGeometry.Line>()?.firstOrNull()
-
-        if (primary != null && (primary.direction == Direction.ROTATE_CLOCKWISE || primary.direction == Direction.ROTATE_COUNTER_CLOCKWISE)) {
-            drawRotateGlyph(primary.direction, HORIZON_INDICATOR_ANCHOR)
-        } else if (horizonLine != null) {
-            drawLevelIndicator(horizonLine, isLevel = horizonMetric?.severity == Severity.NONE)
+        if (showsTargetRing) {
+            metrics.asSequence()
+                .flatMap { it.geometry.asSequence() }
+                .filterIsInstance<OverlayGeometry.TargetPoint>()
+                .forEach { drawTargetRing(it.point) }
         }
 
-        if (primary != null && primary.direction != Direction.NONE &&
-            primary.direction != Direction.ROTATE_CLOCKWISE && primary.direction != Direction.ROTATE_COUNTER_CLOCKWISE
-        ) {
+        if (showsRotateGlyph) {
+            drawRotateGlyph(primary!!.direction, HORIZON_INDICATOR_ANCHOR)
+        } else if (levelAlpha.value > 0f && horizonLine != null) {
+            drawLevelIndicator(horizonLine, levelColor, levelAlpha.value)
+        }
+
+        if (showsArrow) {
             val anchor = composition.primarySubject?.anchorPoint ?: FALLBACK_ANCHOR
-            drawDirectionalArrow(primary.direction, anchor)
+            drawDirectionalArrow(primary!!.direction, anchor, pulse * ARROW_PULSE_DISTANCE.toPx())
         }
 
         // Drawn last so it never sits under the arrow/target ring; regionAlpha (animated above) is what
@@ -118,28 +167,41 @@ private fun DrawScope.drawRegionHighlight(region: NormalizedRect, alpha: Float) 
     )
 }
 
+/** 18dp ring (9dp radius), 1.5dp stroke, 70% white — restrained on purpose, the arrow carries the advice. */
 private fun DrawScope.drawTargetRing(point: NormalizedPoint) {
     val center = px(point)
-    val radius = 14.dp.toPx()
-    drawCircle(color = Color.White.copy(alpha = 0.85f), radius = radius, center = center, style = Stroke(width = 2.dp.toPx()))
-    drawCircle(color = Color.White.copy(alpha = 0.85f), radius = 2.dp.toPx(), center = center)
+    drawCircle(color = Color.White.copy(alpha = 0.7f), radius = 9.dp.toPx(), center = center, style = Stroke(width = 1.5.dp.toPx()))
 }
 
-private fun DrawScope.drawLevelIndicator(line: OverlayGeometry.Line, isLevel: Boolean) {
+private fun DrawScope.drawLevelIndicator(line: OverlayGeometry.Line, color: Color, alpha: Float) {
     val angle = Math.toDegrees(atan2((line.end.y - line.start.y).toDouble(), (line.end.x - line.start.x).toDouble())).toFloat()
-    val color = if (isLevel) Color(0xFF34D399) else Color.White.copy(alpha = 0.85f)
     val center = px(HORIZON_INDICATOR_ANCHOR)
     val halfLength = 22.dp.toPx()
     rotate(degrees = angle, pivot = center) {
-        drawLine(color = color, start = center.copy(x = center.x - halfLength), end = center.copy(x = center.x + halfLength), strokeWidth = 2.dp.toPx())
+        drawLine(
+            color = color.copy(alpha = color.alpha * alpha),
+            start = center.copy(x = center.x - halfLength),
+            end = center.copy(x = center.x + halfLength),
+            strokeWidth = 2.dp.toPx(),
+        )
     }
     // A fixed level reference so the tilt reads relative to something.
-    drawLine(color = Color.White.copy(alpha = 0.25f), start = center.copy(x = center.x - halfLength), end = center.copy(x = center.x + halfLength), strokeWidth = 1.dp.toPx())
+    drawLine(
+        color = Color.White.copy(alpha = 0.25f * alpha),
+        start = center.copy(x = center.x - halfLength),
+        end = center.copy(x = center.x + halfLength),
+        strokeWidth = 1.dp.toPx(),
+    )
 }
 
-private fun DrawScope.drawDirectionalArrow(direction: Direction, anchor: NormalizedPoint) {
-    val center = px(anchor)
-    val color = Color.White.copy(alpha = 0.9f)
+/**
+ * A clean, pulsing arrow (24-32dp long) pointing the way the *camera* should move — [Direction.RIGHT]
+ * points right, matching `ReframeVector`'s "dx > 0 = pan right" convention, so the arrow always agrees
+ * with which way the photographer should actually move the phone. White with a thin dark outline so it
+ * reads over any background; [pulsePx] gently translates it along its own direction, 0..4dp.
+ */
+private fun DrawScope.drawDirectionalArrow(direction: Direction, anchor: NormalizedPoint, pulsePx: Float) {
+    val base = px(anchor)
     val length = 28.dp.toPx()
     val stroke = 3.dp.toPx()
     val (dx, dy) = when (direction) {
@@ -150,14 +212,24 @@ private fun DrawScope.drawDirectionalArrow(direction: Direction, anchor: Normali
         Direction.CLOSER, Direction.BACK, Direction.ROTATE_CLOCKWISE, Direction.ROTATE_COUNTER_CLOCKWISE, Direction.NONE -> 0f to 0f
     }
     if (dx == 0f && dy == 0f) return
+    val center = Offset(base.x + dx * pulsePx, base.y + dy * pulsePx)
     val tip = Offset(center.x + dx * length, center.y + dy * length)
-    drawLine(color = color, start = center, end = tip, strokeWidth = stroke)
-    val headSize = 9.dp.toPx()
     val angle = atan2(dy, dx)
+    val headSize = 9.dp.toPx()
     val leftWing = Offset(tip.x - headSize * cos(angle - 0.5f), tip.y - headSize * sin(angle - 0.5f))
     val rightWing = Offset(tip.x - headSize * cos(angle + 0.5f), tip.y - headSize * sin(angle + 0.5f))
-    drawLine(color = color, start = tip, end = leftWing, strokeWidth = stroke)
-    drawLine(color = color, start = tip, end = rightWing, strokeWidth = stroke)
+
+    // Outline pass first (dark, slightly thicker), then the white arrow on top — legible on any photo.
+    val outline = Color.Black.copy(alpha = 0.55f)
+    val outlineStroke = stroke + 2.dp.toPx()
+    drawLine(color = outline, start = center, end = tip, strokeWidth = outlineStroke)
+    drawLine(color = outline, start = tip, end = leftWing, strokeWidth = outlineStroke)
+    drawLine(color = outline, start = tip, end = rightWing, strokeWidth = outlineStroke)
+
+    val fill = Color.White
+    drawLine(color = fill, start = center, end = tip, strokeWidth = stroke)
+    drawLine(color = fill, start = tip, end = leftWing, strokeWidth = stroke)
+    drawLine(color = fill, start = tip, end = rightWing, strokeWidth = stroke)
 }
 
 private fun DrawScope.drawRotateGlyph(direction: Direction, anchor: NormalizedPoint) {
@@ -202,6 +274,27 @@ private fun CompositionOverlayRegionPreview() {
     CompositionCoachTheme {
         CompositionOverlay(
             composition = SmoothedComposition(70, listOf(recommendation), false, SceneClassification(SceneType.PORTRAIT, 0.9f), null, raw),
+        )
+    }
+}
+
+@Preview(name = "Directional arrow (pan right)", showBackground = true, backgroundColor = 0xFF303030)
+@Composable
+private fun CompositionOverlayArrowPreview() {
+    val recommendation = Recommendation(
+        id = "subject.right",
+        category = MetricCategory.SUBJECT_PLACEMENT,
+        priority = Priority.HIGH,
+        confidence = 0.9f,
+        severity = Severity.MEDIUM,
+        title = "Move slightly right",
+        instruction = "Move slightly right",
+        direction = Direction.RIGHT,
+    )
+    val raw = CompositionResult.empty().copy(recommendations = listOf(recommendation))
+    CompositionCoachTheme {
+        CompositionOverlay(
+            composition = SmoothedComposition(60, listOf(recommendation), false, SceneClassification(SceneType.PORTRAIT, 0.9f), null, raw),
         )
     }
 }

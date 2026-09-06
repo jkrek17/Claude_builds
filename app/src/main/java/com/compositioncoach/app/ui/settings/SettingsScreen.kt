@@ -1,36 +1,27 @@
 package com.compositioncoach.app.ui.settings
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -39,14 +30,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.BuildConfig
 import com.compositioncoach.app.R
 import com.compositioncoach.app.settings.CoachSettings
-import com.compositioncoach.app.settings.description
 import com.compositioncoach.app.settings.subjectMaskSubtitle
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
-import com.compositioncoach.app.settings.label
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.SceneIntent
 
-/** All coaching and privacy-relevant preferences, backed live by [SettingsViewModel]. */
+private const val SEGMENTED_ROW_MAX_OPTIONS = 4
+
+/** All coaching and privacy-relevant preferences, backed live by [SettingsViewModel], grouped into cards. */
 @Composable
 fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpenPrivacyPolicy: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -96,85 +87,64 @@ private fun SettingsContent(
             )
         },
     ) { padding ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
             item {
-                Text(
-                    "Shooting mode",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp),
-                )
+                SettingsCard(title = "Shooting mode", summary = stringResource(R.string.shooting_mode_description)) {
+                    SceneIntentSelector(selected = settings.sceneIntent, onChange = onSceneIntentChange)
+                }
             }
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SceneIntent.entries.forEach { intent ->
-                        FilterChip(
-                            selected = settings.sceneIntent == intent,
-                            onClick = { onSceneIntentChange(intent) },
-                            label = { Text(intent.label) },
-                        )
+                SettingsCard(title = "Guidance", summary = "Score, instructions, and how much detail they carry") {
+                    SwitchRow("Composition guidance", settings.guidanceEnabled, onGuidanceEnabledChange)
+                    SwitchRow("Show score", settings.showScore, onShowScoreChange)
+                    Text(
+                        "Guidance level",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                    )
+                    GuidanceLevel.entries.forEach { level ->
+                        GuidanceLevelRow(level, selected = settings.guidanceLevel == level, onClick = { onGuidanceLevelChange(level) })
                     }
                 }
             }
             item {
-                Text(
-                    text = stringResource(R.string.shooting_mode_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 4.dp),
-                )
-            }
-            item { HorizontalDivider() }
-            item { SwitchRow("Composition guidance", settings.guidanceEnabled, onGuidanceEnabledChange) }
-            item { SwitchRow("Show score", settings.showScore, onShowScoreChange) }
-            item { SwitchRow("Rule-of-thirds grid", settings.showThirdsGrid, onShowThirdsGridChange) }
-            item { HorizontalDivider() }
-            item {
-                Text(
-                    "Guidance level",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
-                )
-            }
-            items(GuidanceLevel.entries) { level ->
-                GuidanceLevelRow(level, selected = settings.guidanceLevel == level, onClick = { onGuidanceLevelChange(level) })
-            }
-            item { HorizontalDivider() }
-            item { SwitchRow("Body/pose detection", settings.poseDetectionEnabled, onPoseDetectionChange) }
-            item { SwitchRow("Battery saver (slower analysis)", settings.batterySaver, onBatterySaverChange) }
-            item { SwitchRow("Debug mode", settings.debugMode, onDebugModeChange) }
-            item { HorizontalDivider() }
-            item {
-                Text(
-                    "Detection",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
-                )
+                SettingsCard(title = "Overlays", summary = "Extra guides drawn over the live preview") {
+                    SwitchRow("Rule-of-thirds grid", settings.showThirdsGrid, onShowThirdsGridChange)
+                }
             }
             item {
-                SwitchRow(
-                    label = "Detect objects",
-                    subtitle = "Finds plates, drinks, products and other subjects",
-                    checked = settings.detectObjectsEnabled,
-                    onCheckedChange = onDetectObjectsChange,
-                )
+                SettingsCard(title = "Detection", summary = "What the on-device vision pipeline looks for") {
+                    SwitchRow("Body/pose detection", settings.poseDetectionEnabled, onPoseDetectionChange)
+                    SwitchRow(
+                        label = "Detect objects",
+                        subtitle = "Finds plates, drinks, products and other subjects",
+                        checked = settings.detectObjectsEnabled,
+                        onCheckedChange = onDetectObjectsChange,
+                    )
+                    SwitchRow(
+                        label = "Subject mask",
+                        subtitle = settings.subjectMaskSubtitle(),
+                        checked = settings.effectiveSubjectMaskEnabled,
+                        enabled = !settings.batterySaver,
+                        onCheckedChange = onSubjectMaskChange,
+                    )
+                }
             }
             item {
-                SwitchRow(
-                    label = "Subject mask",
-                    subtitle = settings.subjectMaskSubtitle(),
-                    checked = settings.effectiveSubjectMaskEnabled,
-                    enabled = !settings.batterySaver,
-                    onCheckedChange = onSubjectMaskChange,
-                )
+                SettingsCard(title = "Performance", summary = "Trade coaching detail for battery life or debugging") {
+                    SwitchRow("Battery saver (slower analysis)", settings.batterySaver, onBatterySaverChange)
+                    SwitchRow("Debug mode", settings.debugMode, onDebugModeChange)
+                }
             }
-            item { HorizontalDivider() }
-            item { AboutSection(onOpenPrivacyPolicy = onOpenPrivacyPolicy) }
+            item {
+                SettingsCard(title = "About", summary = "${BuildConfig.VERSION_NAME} — on-device only, no data leaves your phone") {
+                    AboutSection(onOpenPrivacyPolicy = onOpenPrivacyPolicy)
+                }
+            }
         }
     }
 }
@@ -182,16 +152,8 @@ private fun SettingsContent(
 /** App name, version, the "on your device" privacy summary, and a link into the full policy. */
 @Composable
 private fun AboutSection(onOpenPrivacyPolicy: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
-        Text(
-            text = "About",
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
-        Text(
-            text = stringResource(R.string.app_name),
-            style = MaterialTheme.typography.bodyLarge,
-        )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(text = stringResource(R.string.app_name), style = MaterialTheme.typography.bodyLarge)
         Text(
             text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
             style = MaterialTheme.typography.bodySmall,
@@ -206,48 +168,6 @@ private fun AboutSection(onOpenPrivacyPolicy: () -> Unit) {
         )
         TextButton(onClick = onOpenPrivacyPolicy, modifier = Modifier.padding(top = 4.dp, start = 0.dp)) {
             Text("Privacy policy")
-        }
-    }
-}
-
-/** A settings switch row; [subtitle], when given, is a smaller descriptive line under [label]. */
-@Composable
-private fun SwitchRow(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    subtitle: String? = null,
-    enabled: Boolean = true,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge)
-            if (subtitle != null) {
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
-    }
-}
-
-@Composable
-private fun GuidanceLevelRow(level: GuidanceLevel, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onClick)
-        Column(modifier = Modifier.padding(start = 4.dp)) {
-            Text(level.label(), style = MaterialTheme.typography.bodyLarge)
-            Text(
-                level.description(),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.Gray,
-            )
         }
     }
 }

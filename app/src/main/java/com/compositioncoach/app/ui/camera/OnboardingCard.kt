@@ -19,6 +19,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.R
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
+import com.compositioncoach.app.ui.theme.OnScrim
+import com.compositioncoach.app.ui.theme.Scrim
 
 /**
  * A single dismissible card shown once, on first launch after the camera permission is granted:
@@ -32,17 +34,17 @@ fun OnboardingCard(onDismiss: () -> Unit, modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(alpha = 0.55f))
+            .background(Scrim)
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Text(
             text = stringResource(R.string.onboarding_message),
-            color = Color.White,
+            color = OnScrim,
             style = MaterialTheme.typography.bodyMedium,
         )
         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.onboarding_dismiss), color = Color.White)
+                Text(stringResource(R.string.onboarding_dismiss), color = OnScrim)
             }
         }
     }

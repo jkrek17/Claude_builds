@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val CoachDarkColorScheme = darkColorScheme(
-    primary = Accent,
+    primary = Accent.Warn,
     onPrimary = Color(0xFF1A1A1A),
     background = Background,
     onBackground = OnSurface,

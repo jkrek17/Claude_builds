@@ -16,16 +16,36 @@ CameraPermissionGate
         └── "privacy"  PrivacyScreen    (pushed from Settings → About → Privacy policy)
 ```
 
-* **camera** — `CameraScreen` + `CameraViewModel`. Full-screen `PreviewView` with Compose overlays:
-  `ThirdsGridOverlay`, `CompositionOverlay` (target ring / horizon level / directional arrow — the arrow
-  anchors to `DetectedSubject.anchorPoint`, which is already the box centre for an `OBJECT`-kind primary
-  subject, no special-casing needed — plus a fading, restrained 1dp/45%-white rounded outline of the
-  headline recommendation's `region`, when it has one and framing isn't shoot-ready yet),
-  `DebugGeometryOverlay` + `DebugOverlay` (debug mode only — see "Debug mode guide" below), `ScoreBadge` and
-  `GuidanceBanner` (both fade to 30% for ~1s right after a capture, see `CameraUiState.postCaptureFadeActive`
-  below), `CameraTopBar` (shows the current shooting mode as a small chip when it isn't Auto — tap it to open
-  Settings), `BottomControlBar` (shutter has a 90%-scale press animation and a brief white capture flash),
-  `ZoomChip` (pinch-zoom ratio, e.g. "1.0×", fades out 1.2s after the last pinch delta), `FocusRingOverlay`
+* **camera** — `CameraScreen` + `CameraViewModel`. Pixel-style **4:3 layout**: the `PreviewView` and
+  *every* overlay that does normalized-to-pixel geometry math (`ThirdsGridOverlay`, `CompositionOverlay`,
+  `DebugGeometryOverlay`, `FocusRingOverlay`, `CameraTopBar`, `ScoreBadge`, `GuidanceBanner`,
+  `EmptySceneHint`, `OnboardingCard`, `DebugOverlay`) live inside one shared `Modifier.aspectRatio(3f/4f)`
+  `Box`, full width, anchored below the status bar — that shared box, plus `PreviewView` staying
+  `FILL_CENTER`, is what keeps `OverlayMapper`'s plain normalized-to-pixel multiply correct (see its class
+  doc); the rest of the screen is plain black, holding `ZoomChip` and `BottomControlBar`.
+  `CompositionOverlay` draws the target ring / horizon level / directional arrow — the arrow anchors to
+  `DetectedSubject.anchorPoint` (already the box centre for an `OBJECT`-kind primary subject), points the
+  way the *camera* should move (`Direction.RIGHT` → arrow points right, matching `ReframeVector`'s "dx>0 =
+  pan right" convention), pulses a gentle 4dp/900ms translation, and is hidden together with the target
+  ring whenever there's nothing to correct (`Direction.NONE` or shoot-ready); the horizon's level indicator
+  snaps to `Accent.Ready` green and fades out 1.5s after becoming level; rotation advice shows a curved
+  arrow around the level indicator instead — plus a fading, restrained 1dp/45%-white rounded outline of the
+  headline recommendation's `region`, when it has one and framing isn't shoot-ready yet.
+  `DebugGeometryOverlay` + `DebugOverlay` (debug mode only — see "Debug mode guide" below). `ScoreBadge`
+  and `GuidanceBanner` (both fade to 30% for ~1s right after a capture, see
+  `CameraUiState.postCaptureFadeActive` below); the badge uses tabular-figure numerals and a distinct
+  shoot-ready state ("SHOOT" in `Accent.Ready`, the number smaller beneath); the banner shows a
+  `DirectionIcon` (a real Material arrow, not a text glyph) instead of `GuidanceFormatter.glyphFor`'s
+  Unicode character, reserves a fixed height for its headline so a longer instruction never resizes it, and
+  never exceeds 85% of the screen's width. `EmptySceneHint` ("Point at a subject") shows under the badge
+  before any scene is classified, and lingers 3s after one appears before fading out. `CameraTopBar` is now
+  a translucent strip over the *top* of the preview carrying flash, the "DEBUG" chip, the shooting-mode chip
+  (tap opens Settings), and the settings gear — flash moved here from the bottom bar, Pixel-style.
+  `BottomControlBar` (in the black area below the preview) is gallery thumbnail — shutter — lens switch: the
+  72dp shutter has a 90%-scale press animation, a brief white capture flash, and its ring animates to
+  `Accent.Ready` with a soft glow once shoot-ready; the 44dp gallery thumbnail shows the last captured photo
+  (see "Gallery thumbnail" below) and opens it with `ACTION_VIEW`. `ZoomChip` (pinch-zoom ratio, e.g.
+  "1.0×", fades out 1.2s after the last pinch delta) sits above the shutter row. `FocusRingOverlay`
   (tap-to-focus ring, fades in over 150ms / out after 800ms), `OnboardingCard` (a single dismissible card
   shown once on first launch, see "Onboarding" below), and `CameraErrorOverlay` for camera init failures
   (shown for any `CameraBindResult.Failure`, including an `IllegalStateException` from CameraX binding —
@@ -33,19 +53,22 @@ CameraPermissionGate
   (`MainActivity.onKeyDown` → `AppContainer.volumeDownEvents`, a `SharedFlow` the screen collects).
 * **privacy** — `PrivacyScreen`. A plain scrolling Compose screen showing `PrivacyPolicyText` (same
   wording as `docs/PRIVACY_POLICY.md`) — no network fetch, since the app has none.
-* **review** — `ReviewScreen`. Shows the captured photo (Coil) next to the score, strengths,
-  improvements, scene chip, a "Subject: object" line when `CompositionResult.primarySubject.kind` is
-  `OBJECT`, and — when the shot was coached under a non-Auto shooting mode — a "`<Mode>` mode" chip (from
-  `CompositionResult.intent`), all from the `CompositionResult` computed at capture time. Strengths and
-  improvements are trimmed to the top two of each once there are more than four combined
-  (`ReviewFormatter.trim`) so the screen stays readable at a glance. Keep pops back to camera; Retake
-  deletes the photo via `CaptureRepository` first.
-* **settings** — `SettingsScreen` + `SettingsViewModel`, backed by `SettingsRepository` (DataStore).
-  "Shooting mode" is the first section on the screen: a chip selector over every `SceneIntent`
-  (Auto/Portrait/Group/Landscape/Architecture/Object), since it's the setting people change most. A
-  "Detection" section ("Detect objects", "Subject mask") controls `VisionFeatureToggles`, see below. The
-  last section is "About": app name, `BuildConfig.VERSION_NAME`/`VERSION_CODE`, the "all analysis runs
-  on your device" line, and a button into `PrivacyScreen`.
+* **review** — `ReviewScreen`. Full-bleed captured photo (Coil), letterboxed to the same 4:3 as the live
+  preview, with a bottom card: the score (large, tabular figures), the scene/mode chips, a "Subject: object"
+  line when `CompositionResult.primarySubject.kind` is `OBJECT`, and up to two strengths (`Accent.Ready`
+  dot) and two improvements (`Accent.Warn` dot) in plain sentences — `ReviewFormatter.trim` always caps
+  each list at `TRIMMED_COUNT`, independently of the other list's length. Three actions: **Retake**
+  (outlined, deletes the photo via `CaptureRepository` first), **Share** (icon, `ACTION_SEND` with the
+  photo's `Uri`), **Keep** (filled, pops back to camera). The system back gesture behaves exactly like
+  **Keep** (`BackHandler`) — a captured photo is never silently discarded by backing out of this screen.
+* **settings** — `SettingsScreen` + `SettingsViewModel`, backed by `SettingsRepository` (DataStore),
+  grouped into titled, one-line-summarized `SettingsCard`s (`SettingsComponents.kt`): **Shooting mode**
+  (a `SingleChoiceSegmentedButtonRow` when `SceneIntent` has few enough entries to fit one row without
+  crowding, chips otherwise — `SceneIntentSelector`), **Guidance** (the guidance master switch, show-score,
+  and the `GuidanceLevel` picker), **Overlays** (the rule-of-thirds grid), **Detection** ("Detect objects",
+  "Subject mask", pose detection — controls `VisionFeatureToggles`, see below), **Performance** (battery
+  saver, debug mode), and **About** (app name, `BuildConfig.VERSION_NAME`/`VERSION_CODE`, the "all analysis
+  runs on your device" line, and a button into `PrivacyScreen`). Every switch row is at least 48dp tall.
 
 ## State flow
 
@@ -239,8 +262,40 @@ Enable **Settings → Debug mode**. Two extra layers appear on the camera screen
 * `GuidanceBanner` does the same for the instruction text, and additionally sets
   `liveRegion = LiveRegionMode.Polite` on all three of its render paths (hold-framing hint, awaiting-subject,
   and the normal primary/reason/secondary layout) so TalkBack announces new advice as it changes, unprompted.
-* Text over the live camera preview relies on the same black scrim backgrounds the badge/banner already
-  used (`Color.Black.copy(alpha = 0.3f–0.35f)`) for contrast — unchanged, just confirmed still in place.
+* Text over the live camera preview relies on the same `Scrim` token (black, 40% alpha) for contrast.
+
+## Design tokens (`ui/theme/`)
+
+One visual language, defined once and used everywhere instead of ad-hoc `Color(0xFF...)` literals in
+screen code (the diagnostic-only `DebugGeometryOverlay`/`DebugOverlay`/`CrashReportScreen` are
+deliberately exempt — they're meant to look like instrumentation, not the product):
+
+* **`Accent.Ready`** (`#34D399`, green) and **`Accent.Warn`** (`#FFC857`, amber) are the *only* two
+  non-neutral accents anywhere in the app — white/amber/green, nothing else. `Accent.Warn` also backs
+  `MaterialTheme.colorScheme.primary`.
+* **`Scrim`** (black, 40% alpha — within the 35-45% range) is the one translucent-panel style used behind
+  the score badge, guidance banner, top bar, onboarding card, and zoom chip; **`ScrimStrong`** (85%) is for
+  full-screen states that must read over any photo (camera error). **`OnScrim`**/**`OnScrimMuted`** are
+  white / 70%-white text over those scrims.
+* Type scale: the score badge's numerals use tabular figures (`fontFeatureSettings = "tnum"`, via
+  `TextStyle`, not a bare `Text(fontSize=...)` call — Compose's `Text` has no such parameter) so a changing
+  digit count never shifts the badge's width; instruction headlines use `titleMedium`; secondary/reason
+  lines use `bodySmall` at `OnScrimMuted`. See `ui/theme/Type.kt`.
+* Motion (`ui/theme/Type.kt`'s `Motion` object): state changes ease out over `Motion.STATE_CHANGE_MS`
+  (220ms, inside the 180-250ms range), presses take `Motion.PRESS_MS` (120ms), crossfades take
+  `Motion.CROSSFADE_MS` (200ms). No bounces/springs anywhere in the redesigned surfaces.
+
+## Gallery thumbnail (`BottomControlBar`)
+
+`CameraUiState`/`CameraViewModel` do not carry a `lastPhotoUri` field or a `loadThumbnail` helper — that
+hook doesn't exist in this worktree (they're owned by the camera engineer's concurrent work; see the
+top-level task's file-ownership split). `AppNavGraph` wires the thumbnail *optimistically* instead: it
+collects `AppContainer.reviewStore.current` and remembers the last **non-null** `photoUri` it ever saw
+(`rememberSaveable`, so it survives process death), since `reviewStore.clear()` (called on Keep/Retake)
+would otherwise blank it the moment the user returns to the camera screen. That value is passed down as
+`CameraScreen(lastPhotoUri = ...)`. Caveats of this approach, to fix once the real hook lands: it doesn't
+know about a photo taken in a previous process (cold start shows the placeholder icon until the next
+capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rather than a pre-scaled one.
 
 ## Release build
 

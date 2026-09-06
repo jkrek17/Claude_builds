@@ -40,6 +40,13 @@ object GuidanceFormatter {
     fun reasonLine(recommendation: Recommendation, level: GuidanceLevel): String? =
         recommendation.reason.takeIf { level == GuidanceLevel.COACH && !it.isNullOrBlank() }
 
+    /**
+     * Whether the shoot-ready visual treatment (green ring/badge, "SHOOT") should actually show:
+     * [SmoothedComposition.isShootReady] alone isn't enough while [SmoothedComposition.awaitingSubject] is
+     * true, since the displayed score is a held, stale value in that state — see [ScoreBadge]'s doc.
+     */
+    fun effectiveShootReady(isShootReady: Boolean, awaitingSubject: Boolean): Boolean = isShootReady && !awaitingSubject
+
     fun scoreTier(score: Int): ScoreTier = when {
         score >= 88 -> ScoreTier.EXCELLENT
         score >= 70 -> ScoreTier.GOOD

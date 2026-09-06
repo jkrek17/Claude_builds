@@ -5,14 +5,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.compositioncoach.app.ui.theme.OnScrim
 
 /** A restrained rule-of-thirds grid: thin, barely-there lines, never competing with the photo. */
 @Composable
 fun ThirdsGridOverlay(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier.fillMaxSize()) {
-        val lineColor = Color.White.copy(alpha = 0.3f)
+        val lineColor = OnScrim.copy(alpha = 0.3f)
         val strokeWidth = 1.dp.toPx()
         val thirdWidth = size.width / 3f
         val thirdHeight = size.height / 3f

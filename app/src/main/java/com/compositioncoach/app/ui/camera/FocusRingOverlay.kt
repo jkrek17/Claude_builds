@@ -12,11 +12,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
+import com.compositioncoach.app.ui.theme.OnScrim
 import kotlinx.coroutines.delay
 
 private const val FADE_IN_MS = 150
@@ -45,7 +45,7 @@ fun FocusRingOverlay(tapOffset: Offset, modifier: Modifier = Modifier) {
         if (alpha <= 0f) return@Canvas
         val radius = 32.dp.toPx()
         drawCircle(
-            color = Color.White.copy(alpha = 0.9f * alpha),
+            color = OnScrim.copy(alpha = 0.9f * alpha),
             radius = radius,
             center = tapOffset,
             style = Stroke(width = 1.5.dp.toPx()),

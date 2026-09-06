@@ -9,23 +9,19 @@ import com.compositioncoach.composition.model.SubjectKind
  * shutter fires, so it never grows past a small, fixed amount of content.
  */
 object ReviewFormatter {
-    /** Above this many strengths+improvements combined, each list is trimmed down to [TRIMMED_COUNT]. */
-    const val TRIM_THRESHOLD = 4
+    /** The review card never shows more than this many strengths, or this many improvements. */
     const val TRIMMED_COUNT = 2
 
     data class TrimmedFeedback(val strengths: List<String>, val improvements: List<String>)
 
     /**
-     * Keeps [strengths]/[improvements] untouched when there are [TRIM_THRESHOLD] or fewer of them
-     * combined; otherwise keeps only the top [TRIMMED_COUNT] of each (lists already arrive ranked by the
-     * engine, so "top" just means "first").
+     * Keeps the first [TRIMMED_COUNT] of [strengths] and of [improvements] (lists already arrive ranked by
+     * the engine, so "first" just means "top") — the review card is meant to be readable at a glance right
+     * after the shutter fires, so it always shows *up to* two of each, never more, regardless of how many
+     * the engine found.
      */
     fun trim(strengths: List<String>, improvements: List<String>): TrimmedFeedback =
-        if (strengths.size + improvements.size > TRIM_THRESHOLD) {
-            TrimmedFeedback(strengths.take(TRIMMED_COUNT), improvements.take(TRIMMED_COUNT))
-        } else {
-            TrimmedFeedback(strengths, improvements)
-        }
+        TrimmedFeedback(strengths.take(TRIMMED_COUNT), improvements.take(TRIMMED_COUNT))
 
     /** "Subject: object" when the shot was coached around a [SubjectKind.OBJECT] primary subject, else null. */
     fun subjectLine(primarySubject: DetectedSubject?): String? =

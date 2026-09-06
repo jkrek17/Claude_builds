@@ -12,21 +12,30 @@ class ReviewFormatterTest {
     private val bounds = NormalizedRect(0.2f, 0.2f, 0.6f, 0.6f)
 
     @Test
-    fun `four or fewer items combined are shown untouched`() {
-        val trimmed = ReviewFormatter.trim(strengths = listOf("a", "b"), improvements = listOf("c", "d"))
-        assertEquals(listOf("a", "b"), trimmed.strengths)
-        assertEquals(listOf("c", "d"), trimmed.improvements)
+    fun `lists shorter than the cap are shown untouched`() {
+        val trimmed = ReviewFormatter.trim(strengths = listOf("a"), improvements = emptyList())
+        assertEquals(listOf("a"), trimmed.strengths)
+        assertEquals(emptyList<String>(), trimmed.improvements)
     }
 
     @Test
-    fun `exactly four combined is the untouched boundary, five trims both lists`() {
-        val untouched = ReviewFormatter.trim(strengths = listOf("a", "b", "c"), improvements = listOf("d"))
-        assertEquals(listOf("a", "b", "c"), untouched.strengths)
-        assertEquals(listOf("d"), untouched.improvements)
+    fun `each list is capped at TRIMMED_COUNT regardless of the other list's size`() {
+        val trimmed = ReviewFormatter.trim(
+            strengths = listOf("s1", "s2", "s3"),
+            improvements = listOf("i1"),
+        )
+        assertEquals(listOf("s1", "s2"), trimmed.strengths)
+        assertEquals(listOf("i1"), trimmed.improvements)
+    }
 
-        val trimmed = ReviewFormatter.trim(strengths = listOf("a", "b", "c"), improvements = listOf("d", "e"))
-        assertEquals(listOf("a", "b"), trimmed.strengths)
-        assertEquals(listOf("d", "e"), trimmed.improvements)
+    @Test
+    fun `both lists are capped independently when both are long`() {
+        val trimmed = ReviewFormatter.trim(
+            strengths = listOf("s1", "s2", "s3"),
+            improvements = listOf("i1", "i2", "i3"),
+        )
+        assertEquals(listOf("s1", "s2"), trimmed.strengths)
+        assertEquals(listOf("i1", "i2"), trimmed.improvements)
     }
 
     @Test
@@ -40,7 +49,7 @@ class ReviewFormatterTest {
     }
 
     @Test
-    fun `a short list stays shorter than TRIMMED_COUNT even when the combined total is trimmed`() {
+    fun `a short list stays shorter than TRIMMED_COUNT even when the other list is long`() {
         val trimmed = ReviewFormatter.trim(strengths = listOf("only one"), improvements = listOf("i1", "i2", "i3", "i4"))
         assertEquals(listOf("only one"), trimmed.strengths)
         assertEquals(listOf("i1", "i2"), trimmed.improvements)

@@ -2,9 +2,8 @@ package com.compositioncoach.app.ui.camera
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
-import android.view.WindowManager
-import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
@@ -12,7 +11,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -33,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -45,6 +46,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.camera.CameraController
+import com.compositioncoach.app.ui.theme.Background
+import com.compositioncoach.app.ui.theme.OnScrimMuted
 import com.compositioncoach.composition.model.SceneClassification
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -54,14 +57,18 @@ private const val ZOOM_CHIP_LINGER_MS = 1_200L
 private const val POST_CAPTURE_FADE_ALPHA = 0.3f
 
 /**
- * The full-screen camera experience: a [PreviewView] with the composition overlays, score badge, guidance
- * banner and controls drawn as Compose layers on top. See [CameraController] for how the preview and the
- * live analysis stream are kept in the same field of view, and [OverlayMapper] for why that lets these
- * overlays place things with a plain normalized-to-pixel multiply.
+ * The camera experience: a [PreviewView] and every overlay share one 4:3 area (Pixel-style — the sensor
+ * shoots 4:3, so the preview should too), full width and anchored right below the status bar; the rest of
+ * the screen is plain black. Top controls sit in a translucent strip over the top of that area; the score
+ * badge and guidance banner overlay its upper half; the shutter row lives in the black area beneath it. See
+ * [CameraController] for how the preview and the live analysis stream are kept in the same field of view,
+ * and [OverlayMapper] for why keeping every overlay in that one 4:3 box is what lets them place things with
+ * a plain normalized-to-pixel multiply — a differently-sized overlay box would break that mapping.
  */
 @Composable
 fun CameraScreen(
     viewModel: CameraViewModel,
+    lastPhotoUri: Uri?,
     onOpenSettings: () -> Unit,
     onNavigateToReview: () -> Unit,
 ) {
@@ -149,104 +156,126 @@ fun CameraScreen(
         animationSpec = tween(300),
         label = "postCaptureFade",
     )
+    val hasScene = uiState.composition.scene != SceneClassification.UNKNOWN
 
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }, containerColor = Color.Black) { innerPadding ->
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }, containerColor = Background) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            AndroidView(
-                factory = { previewView },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(cameraController) {
-                        detectTapGestures { offset ->
-                            cameraController.tapToFocus(previewView, offset.x, offset.y)
-                            focusTapOffset = offset
-                            focusTapId++
-                        }
-                    }
-                    .pointerInput(cameraController) {
-                        detectTransformGestures { _, _, zoom, _ ->
-                            val applied = cameraController.applyZoomDelta(zoom) ?: return@detectTransformGestures
-                            zoomRatio = applied
-                            zoomChipVisible = true
-                            zoomChipHideJob?.cancel()
-                            zoomChipHideJob = scope.launch {
-                                delay(ZOOM_CHIP_LINGER_MS)
-                                zoomChipVisible = false
+            Column(Modifier.fillMaxSize()) {
+                // The 4:3 preview: PreviewView plus every overlay that does normalized-to-pixel geometry
+                // math live in this exact box, and nothing else does — see the class doc above.
+                Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f)) {
+                    AndroidView(
+                        factory = { previewView },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(cameraController) {
+                                detectTapGestures { offset ->
+                                    cameraController.tapToFocus(previewView, offset.x, offset.y)
+                                    focusTapOffset = offset
+                                    focusTapId++
+                                }
                             }
-                        }
-                    },
-            )
+                            .pointerInput(cameraController) {
+                                detectTransformGestures { _, _, zoom, _ ->
+                                    val applied = cameraController.applyZoomDelta(zoom) ?: return@detectTransformGestures
+                                    zoomRatio = applied
+                                    zoomChipVisible = true
+                                    zoomChipHideJob?.cancel()
+                                    zoomChipHideJob = scope.launch {
+                                        delay(ZOOM_CHIP_LINGER_MS)
+                                        zoomChipVisible = false
+                                    }
+                                }
+                            },
+                    )
 
-            focusTapOffset?.let { offset -> key(focusTapId) { FocusRingOverlay(tapOffset = offset) } }
+                    focusTapOffset?.let { offset -> key(focusTapId) { FocusRingOverlay(tapOffset = offset) } }
 
-            if (uiState.settings.showThirdsGrid) ThirdsGridOverlay()
-            CompositionOverlay(uiState.composition)
-            if (uiState.settings.debugMode) DebugGeometryOverlay(uiState.composition, uiState.debugFrame)
+                    if (uiState.settings.showThirdsGrid) ThirdsGridOverlay()
+                    CompositionOverlay(uiState.composition)
+                    if (uiState.settings.debugMode) DebugGeometryOverlay(uiState.composition, uiState.debugFrame)
 
-            CameraTopBar(
-                showDebugChip = uiState.settings.debugMode,
-                sceneIntent = uiState.settings.sceneIntent,
-                onSettingsClick = onOpenSettings,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
+                    CameraTopBar(
+                        showDebugChip = uiState.settings.debugMode,
+                        sceneIntent = uiState.settings.sceneIntent,
+                        flashMode = uiState.flashMode,
+                        hasFlashUnit = uiState.hasFlashUnit,
+                        onFlashClick = { viewModel.onFlashModeChanged(cameraController.cycleFlashMode()) },
+                        onSettingsClick = onOpenSettings,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
 
-            ScoreBadge(
-                score = uiState.composition.displayScore,
-                isShootReady = uiState.composition.isShootReady,
-                hasScene = uiState.composition.scene != SceneClassification.UNKNOWN,
-                showScore = uiState.settings.showScore,
-                awaitingSubject = uiState.composition.awaitingSubject,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp).alpha(postCaptureFadeAlpha),
-            )
+                    ScoreBadge(
+                        score = uiState.composition.displayScore,
+                        isShootReady = uiState.composition.isShootReady,
+                        hasScene = hasScene,
+                        showScore = uiState.settings.showScore,
+                        awaitingSubject = uiState.composition.awaitingSubject,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp).alpha(postCaptureFadeAlpha),
+                    )
 
-            GuidanceBanner(
-                activeRecommendations = uiState.composition.activeRecommendations,
-                guidanceLevel = uiState.settings.guidanceLevel,
-                awaitingSubject = uiState.composition.awaitingSubject,
-                displayScore = uiState.composition.displayScore,
-                isShootReady = uiState.composition.isShootReady,
-                hasScene = uiState.composition.scene != SceneClassification.UNKNOWN,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 148.dp).alpha(postCaptureFadeAlpha),
-            )
+                    EmptySceneHint(
+                        hasScene = hasScene,
+                        awaitingSubject = uiState.composition.awaitingSubject,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 128.dp).alpha(postCaptureFadeAlpha),
+                    )
 
-            if (uiState.analysisUnavailable) {
-                Text(
-                    text = "Analysis unavailable",
-                    color = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 120.dp),
-                )
+                    GuidanceBanner(
+                        activeRecommendations = uiState.composition.activeRecommendations,
+                        guidanceLevel = uiState.settings.guidanceLevel,
+                        awaitingSubject = uiState.composition.awaitingSubject,
+                        displayScore = uiState.composition.displayScore,
+                        isShootReady = uiState.composition.isShootReady,
+                        hasScene = hasScene,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 144.dp).alpha(postCaptureFadeAlpha),
+                    )
+
+                    if (uiState.settings.debugMode) {
+                        DebugOverlay(
+                            composition = uiState.composition,
+                            debugStats = uiState.debugStats,
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
+                        )
+                    }
+
+                    if (!uiState.settings.onboardingSeen) {
+                        OnboardingCard(
+                            onDismiss = viewModel::onOnboardingDismissed,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).padding(horizontal = 4.dp),
+                        )
+                    }
+                }
+
+                // The rest of the screen: plain black, holding the zoom readout and the shutter row.
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    if (uiState.analysisUnavailable) {
+                        Text(
+                            text = "Analysis unavailable",
+                            color = OnScrimMuted,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                        )
+                    }
+
+                    ZoomChip(
+                        zoomRatio = zoomRatio,
+                        visible = zoomChipVisible,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                    )
+
+                    BottomControlBar(
+                        isCapturing = uiState.isCapturing,
+                        isShootReady = GuidanceFormatter.effectiveShootReady(
+                            uiState.composition.isShootReady,
+                            uiState.composition.awaitingSubject,
+                        ),
+                        lastPhotoUri = lastPhotoUri,
+                        onShutterClick = onShutterClick,
+                        onSwitchLensClick = { viewModel.onSwitchLensRequested() },
+                        onOpenGallery = { openGallery(context, lastPhotoUri) },
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
             }
-
-            if (uiState.settings.debugMode) {
-                DebugOverlay(
-                    composition = uiState.composition,
-                    debugStats = uiState.debugStats,
-                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
-                )
-            }
-
-            ZoomChip(
-                zoomRatio = zoomRatio,
-                visible = zoomChipVisible,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 108.dp),
-            )
-
-            if (!uiState.settings.onboardingSeen) {
-                OnboardingCard(
-                    onDismiss = viewModel::onOnboardingDismissed,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 108.dp),
-                )
-            }
-
-            BottomControlBar(
-                flashMode = uiState.flashMode,
-                hasFlashUnit = uiState.hasFlashUnit,
-                isCapturing = uiState.isCapturing,
-                onFlashClick = { viewModel.onFlashModeChanged(cameraController.cycleFlashMode()) },
-                onShutterClick = onShutterClick,
-                onSwitchLensClick = { viewModel.onSwitchLensRequested() },
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
 
             uiState.cameraError?.let { message ->
                 CameraErrorOverlay(
@@ -258,17 +287,5 @@ fun CameraScreen(
                 )
             }
         }
-    }
-}
-
-/** Sets `FLAG_KEEP_SCREEN_ON` for as long as this composable stays in composition (i.e. the camera screen is showing). */
-@Composable
-private fun KeepScreenOn() {
-    // LocalActivity (not a manual `LocalContext.current as? Activity` cast) is the lint-clean way to
-    // reach the hosting Activity from Compose — a Context is not always an Activity.
-    val activity = LocalActivity.current
-    DisposableEffect(activity) {
-        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose { activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 }

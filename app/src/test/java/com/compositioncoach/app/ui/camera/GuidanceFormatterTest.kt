@@ -98,6 +98,13 @@ class GuidanceFormatterTest {
     }
 
     @Test
+    fun `effectiveShootReady is false while awaiting a subject even if isShootReady is true`() {
+        org.junit.Assert.assertTrue(GuidanceFormatter.effectiveShootReady(isShootReady = true, awaitingSubject = false))
+        org.junit.Assert.assertFalse(GuidanceFormatter.effectiveShootReady(isShootReady = true, awaitingSubject = true))
+        org.junit.Assert.assertFalse(GuidanceFormatter.effectiveShootReady(isShootReady = false, awaitingSubject = false))
+    }
+
+    @Test
     fun `hold framing hint appears only for decent scores`() {
         org.junit.Assert.assertTrue(GuidanceFormatter.showsHoldFramingHint(70))
         org.junit.Assert.assertTrue(GuidanceFormatter.showsHoldFramingHint(85))

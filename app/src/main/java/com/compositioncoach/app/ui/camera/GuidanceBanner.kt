@@ -3,10 +3,15 @@ package com.compositioncoach.app.ui.camera
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -14,7 +19,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -24,6 +30,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
+import com.compositioncoach.app.ui.theme.Motion
+import com.compositioncoach.app.ui.theme.OnScrim
+import com.compositioncoach.app.ui.theme.OnScrimMuted
+import com.compositioncoach.app.ui.theme.Scrim
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.MetricCategory
@@ -33,16 +43,19 @@ import com.compositioncoach.composition.model.Severity
 
 private const val MAX_LINES = 3
 
+/** Reserves height for one titleMedium line so a shorter/longer instruction never resizes the banner. */
+private val HEADLINE_LINE_HEIGHT = 28.dp
+
 /**
- * The instruction readout below the score: the primary recommendation crossfades as it changes, an
- * optional COACH-mode reason sits under it, and up to two secondary recommendations follow in smaller
- * type. Never renders more lines than [activeRecommendations] actually has content for, and never more
- * than [MAX_LINES] total.
+ * The instruction readout below the score: the primary recommendation crossfades as it changes (a vector
+ * [DirectionIcon] to its left rather than a text glyph), an optional COACH-mode reason sits under it, and
+ * up to two secondary recommendations follow in smaller type. Never wider than 85% of the screen, and
+ * never overlaps [ScoreBadge] above it (the two are positioned independently by [CameraScreen]).
  *
  * While [awaitingSubject] is true, [activeRecommendations] holds exactly the single find-subject
  * recommendation (see [com.compositioncoach.composition.model.SmoothedComposition.awaitingSubject]) and this
  * renders it prominently instead: its title as a small line, its instruction as the headline, no directional
- * glyph (the recommendation has no direction to point in).
+ * icon (the recommendation has no direction to point in).
  */
 @Composable
 fun GuidanceBanner(
@@ -54,6 +67,11 @@ fun GuidanceBanner(
     hasScene: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    // LocalWindowInfo.containerSize (px), not Configuration.screenWidthDp, per the accurate-window-size
+    // guidance for Compose (Configuration's dp values round and vary with target SDK inset behaviour).
+    val density = LocalDensity.current
+    val screenWidthDp = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    val maxWidth = screenWidthDp * 0.85f
     val primary = activeRecommendations.firstOrNull()
     if (primary == null) {
         // No advice: when the framing is decent, say so quietly, so advice clearing reads as success
@@ -61,12 +79,13 @@ fun GuidanceBanner(
         if (hasScene && !isShootReady && GuidanceFormatter.showsHoldFramingHint(displayScore)) {
             Text(
                 text = GuidanceFormatter.HOLD_FRAMING_HINT,
-                color = Color.White.copy(alpha = 0.75f),
+                color = OnScrimMuted,
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 modifier = modifier
+                    .widthIn(max = maxWidth)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Black.copy(alpha = 0.3f))
+                    .background(Scrim)
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     // Announce "framing looks good, hold steady" once when it appears, same as any other
                     // change in guidance text.
@@ -82,8 +101,9 @@ fun GuidanceBanner(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = modifier
+                .widthIn(max = maxWidth)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.Black.copy(alpha = 0.35f))
+                .background(Scrim)
                 .padding(horizontal = 20.dp, vertical = 10.dp)
                 // TalkBack should hear the "looking for a subject" guidance as one sentence, and hear it
                 // again whenever it changes (e.g. from "Looking for a face" to a different find-subject cue).
@@ -94,13 +114,13 @@ fun GuidanceBanner(
         ) {
             Text(
                 text = GuidanceFormatter.awaitingSubjectTitleLine(primary),
-                color = Color.White.copy(alpha = 0.7f),
+                color = OnScrimMuted,
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
             )
             Text(
                 text = GuidanceFormatter.awaitingSubjectHeadline(primary),
-                color = Color.White,
+                color = OnScrim,
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
             )
@@ -122,8 +142,9 @@ fun GuidanceBanner(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
+            .widthIn(max = maxWidth)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(alpha = 0.35f))
+            .background(Scrim)
             .padding(horizontal = 20.dp, vertical = 10.dp)
             // liveRegion = Polite is what makes TalkBack announce new advice as it changes, unprompted,
             // instead of only when the user explicitly navigates focus to this banner.
@@ -134,31 +155,33 @@ fun GuidanceBanner(
     ) {
         AnimatedContent(
             targetState = primary,
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            transitionSpec = { fadeIn(tween(Motion.CROSSFADE_MS)) togetherWith fadeOut(tween(Motion.CROSSFADE_MS)) },
             label = "primaryInstruction",
+            modifier = Modifier.heightIn(min = HEADLINE_LINE_HEIGHT),
         ) { rec ->
-            Text(
-                text = GuidanceFormatter.primaryLine(rec),
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center,
-            )
+            // Fixed to one line (ellipsized, not wrapped) so a longer instruction never grows the
+            // banner's height and shifts the shutter row/onboarding card beneath it — the whole point of
+            // reserving [HEADLINE_LINE_HEIGHT] above.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DirectionIcon(direction = rec.direction, tint = OnScrim, modifier = Modifier.padding(end = 4.dp))
+                Text(
+                    text = rec.instruction,
+                    color = OnScrim,
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
         }
         reason?.let {
-            Text(
-                text = it,
-                color = Color.White.copy(alpha = 0.7f),
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-            )
+            Text(text = it, color = OnScrimMuted, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
         }
         secondary.forEach { rec ->
-            Text(
-                text = GuidanceFormatter.secondaryLine(rec),
-                color = Color.White.copy(alpha = 0.6f),
-                style = MaterialTheme.typography.bodySmall,
-                textAlign = TextAlign.Center,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                DirectionIcon(direction = rec.direction, tint = OnScrimMuted, size = 16.dp, modifier = Modifier.padding(end = 3.dp))
+                Text(text = rec.instruction, color = OnScrimMuted, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+            }
         }
     }
 }
