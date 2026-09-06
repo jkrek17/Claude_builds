@@ -142,13 +142,34 @@ letterbox). `OverlayMapperTest` covers the four corners + centre + a rect.
 
 Other binding details:
 
-* Analysis resolution targets ~640×480 via `ResolutionSelector` (4:3 `AspectRatioStrategy` +
-  `ResolutionStrategy(640x480, FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)`), output format
-  `YUV_420_888`, backpressure `STRATEGY_KEEP_ONLY_LATEST`, analyzer on a dedicated single-thread
-  executor.
-* `ImageCapture` uses `CAPTURE_MODE_MINIMIZE_LATENCY` (a live-coaching camera should feel snappy on
-  the shutter; see the comment in `CameraController` for the trade-off against
-  `MAXIMIZE_QUALITY`), JPEG quality 95.
+* **Capture** targets 4:3 at the sensor's highest available resolution (`ResolutionSelector` with
+  `AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY` + `ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY`)
+  — the classic Pixel-style full-quality still aspect. **Analysis** stays ~640×480 4:3 (its own
+  `ResolutionSelector`, `ResolutionStrategy(640x480, FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)`), output
+  format `YUV_420_888`, backpressure `STRATEGY_KEEP_ONLY_LATEST`, analyzer on a dedicated single-thread
+  executor. Both use cases still share the one `ViewPort` from the preview (see above), so despite the
+  different pixel sizes and independent `ResolutionSelector`s, all three use cases crop to the identical
+  field of view — see the "why capture is cropped to the shared ViewPort" section of `CameraController`'s
+  class doc for the full reasoning.
+* `ImageCapture` uses `CAPTURE_MODE_MAXIMIZE_QUALITY` by default (this is a coaching camera whose whole
+  point is a better final photo, worth the extra processing time once framing is dialed in), falling back
+  to `CAPTURE_MODE_MINIMIZE_LATENCY` when `CameraController.setPreferFastCapture(true)` has been called —
+  driven by `CameraUiState.preferFastCapture` (true when either the user's own battery-saver setting or a
+  degraded `PerformanceTier`, see below, calls for it). CameraX fixes an `ImageCapture`'s capture mode at
+  `Builder.build()` time, so this only takes effect on the *next* bind — a caller that wants it to react
+  live should include whatever drives `preferFastCapture` in the rebind `DisposableEffect`'s keys, the
+  same way `lensFacing` already is. JPEG quality is 95; `setTargetRotation` is set from the display
+  rotation on every bind so EXIF orientation matches actual device orientation.
+* `CameraController.setExposureCompensation(index)` sets exposure compensation, clamped to the bound
+  camera's supported range; that range comes back in `CameraBindResult.Success.exposureRange`
+  (`android.util.Range<Int>`, both bounds `0` when unsupported) and is mirrored into
+  `CameraUiState.exposureRange`/`exposureIndex` (a plain Kotlin `IntRange`, deliberately not the Android
+  type — see that field's KDoc for why) for a slider to size and position itself against.
+* `CameraController.bind()` retries once, after 300ms, on `IllegalStateException` or
+  `CameraUnavailableException` (both observed as transient CameraX failures — a state race right after
+  another `Activity`/app instance released the camera, or the camera service briefly busy) before
+  reporting `CameraBindResult.Failure`; any other exception fails immediately. `unbind()` marshals onto
+  the main thread if called from anywhere else, since CameraX requires bind/unbind to run there.
 * If the vision pipeline fails to construct for any reason, `AppContainer.frameSourceOrNull()` catches
   that once and logs it; `CameraController.bind()` is called with a `null` analyzer and simply does not
   add an `ImageAnalysis` use case, so preview + capture keep working and the UI shows a small "Analysis
@@ -156,11 +177,63 @@ Other binding details:
 * Lens switching: `CameraViewModel.onSwitchLensRequested()` flips the desired facing in state, which
   re-keys a `DisposableEffect` that re-binds; once bound, `onCameraBindResult` calls
   `frameSource.setFrontCamera(...)` and `coach.reset()` so the smoother doesn't blend across camera
-  switches. If the requested lens isn't available, `CameraController` falls back to the other one and
-  logs it.
+  switches, and updates `CameraUiState.hasFlashUnit`/`exposureRange` from the fresh `CameraBindResult` —
+  both are re-derived on every bind, so switching to/from a lens with no flash unit or a different
+  exposure range is reflected immediately. If the requested lens isn't available, `CameraController`
+  falls back to the other one and logs it.
 * Flash cycles OFF → AUTO → ON and is hidden entirely when `cameraInfo.hasFlashUnit()` is false.
-  Tap-to-focus uses `PreviewView.meteringPointFactory`; pinch-zoom is wired via
-  `detectTransformGestures` (optional per the spec, included).
+  Tap-to-focus uses `PreviewView.meteringPointFactory` with AE+AF and a 3s auto-cancel; pinch-zoom is
+  wired via `detectTransformGestures` (optional per the spec, included).
+
+## Camera/Activity lifecycle (`CameraViewModel`)
+
+`CameraViewModel` exposes two equivalent-but-distinct pairs of lifecycle hooks, both idempotent and
+both funnelling into the same private `resumePipeline()`/`pausePipeline()`:
+
+* `onScreenStarted()` / `onScreenStopped()` — the pre-existing hooks, wired to
+  `DisposableEffect(viewModel) { ... onDispose { ... } }` in `CameraScreen`, firing on Compose
+  entry/exit.
+* `onScreenResumed()` / `onScreenPaused()` — **new**; wire these to
+  `LifecycleEventEffect(Lifecycle.Event.ON_RESUME)` / `LifecycleEventEffect(Lifecycle.Event.ON_PAUSE)` on
+  the camera screen. Compose entry/exit and the Activity going to/from the background are different
+  events — backgrounding the app (home button, app switch, a permission dialog from another app) does
+  *not* leave composition, so before this hook existed the vision pipeline's orientation sensor stayed
+  registered and its ML Kit detectors stayed allocated for as long as the app sat in the background.
+
+Both pairs are safe to wire simultaneously (as `CameraScreen` now does): `resumePipeline()`/
+`pausePipeline()` track their own active/inactive flag, so whichever hook fires first actually starts/stops
+`frameSource`+`ThermalPolicy` and resets the coach smoother; the other is then a no-op until the pipeline
+is paused again. `VisionPipeline.start()` after a `stop()` fully re-arms itself — every piece of
+cross-frame cached state (last bodies/objects/subject-mask, `DetectorSchedule`'s frame counter,
+`SegmentationCadence`'s degradation ladder) resets, not just the ML Kit detector instances — so resuming
+from the background never shows a stale detection left over from before backgrounding.
+
+## Thermal/battery-saver performance tiers (`ThermalPolicy`, `PerformanceTier`)
+
+`camera/ThermalPolicy` listens to `PowerManager.addThermalStatusListener` (API 29+) and battery saver
+(`PowerManager.isPowerSaveMode` + `ACTION_POWER_SAVE_MODE_CHANGED`) and derives a
+`com.compositioncoach.vision.PerformanceTier` (FULL / REDUCED / MINIMAL — see that enum's KDoc and
+`:vision`'s README for exactly what each tier changes in the detector cadence). `CameraViewModel` collects
+`AppContainer.thermalPolicy.tier`, forwards it to the pipeline
+(`(frameSource as? VisionFeatureToggles)?.setPerformanceTier(tier)`) and surfaces it as
+`CameraUiState.performanceTier` for the debug overlay. This is a separate signal from the user's own
+`battery_saver` setting (which independently affects the analysis interval and forces the subject mask
+off) — the two combine (via `CameraUiState.preferFastCapture` for capture mode, and inside `VisionPipeline`
+itself for the analysis interval, both `maxOf`/"more conservative wins") rather than one overriding the
+other. `ThermalPolicy.start()`/`stop()` are called from the same `resumePipeline()`/`pausePipeline()` as
+the vision pipeline above.
+
+## Photo saving, thumbnail and gallery-shortcut hooks
+
+* After a successful capture, `CameraViewModel` records the saved `Uri` in
+  `CameraUiState.lastPhotoUri` (process-lifetime; survives navigation but not process death) so the
+  screen can show a gallery-shortcut thumbnail button. On a fresh process start, the same field is
+  populated from `CaptureRepository.latestPhotoUri()` — a MediaStore query for the newest image under
+  `Pictures/CompositionCoach` — so the button has something to show without waiting for the next capture.
+* `CameraViewModel.loadThumbnail(uri, sizePx)` forwards to `CaptureRepository.loadThumbnail`, a suspend
+  function (`Dispatchers.IO`) using `ContentResolver.loadThumbnail` on API 29+ (cheap, provider-side
+  downsampling) or a bounds-then-`inSampleSize` decode below that; returns `null` on any failure rather
+  than throwing, since a thumbnail is a nice-to-have, not something worth surfacing an error for.
 
 ## Settings keys (DataStore Preferences, `SettingsRepository`)
 
@@ -342,3 +415,12 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
   by the vision layer's normalized-coordinate contract.
 * Pinch-to-zoom is still not exposed as a settings toggle — it's a direct gesture on the preview — but it
   now drives the `ZoomChip` readout described above.
+* **Needs a physical device to confirm:** `CAPTURE_MODE_MAXIMIZE_QUALITY`'s actual shutter-to-saved-JPEG
+  latency (the KDoc's "typically well under a second" is the documented CameraX trade-off, not measured
+  here); `ThermalPolicy`'s live behaviour against `PowerManager.addThermalStatusListener` (Robolectric has
+  no thermal hardware to simulate, so only the pure `ThermalPolicy.computeTier` mapping is unit-tested);
+  the exposure-compensation range/step actually reported by `cameraInfo.exposureState` on a real sensor;
+  and whether `ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY` picks a capture resolution large enough that
+  `CAPTURE_MODE_MAXIMIZE_QUALITY`'s processing time becomes noticeable on lower-end hardware (if so, the
+  fallback ladder is already in place via `preferFastCapture`/`PerformanceTier`, just untuned against a
+  real device's numbers).

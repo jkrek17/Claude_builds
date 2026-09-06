@@ -46,7 +46,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.nio.ByteOrder
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 
 /**
@@ -76,19 +75,30 @@ import kotlin.math.abs
  * that fails detection entirely still emits an [ImageStatistics]-only (or, in the worst case, a bare)
  * [FrameAnalysis] rather than dropping the frame or crashing the camera pipeline.
  *
- * ## Object detection and segmentation
- * Two more ML Kit detectors run alongside face/pose, both toggleable via [VisionFeatureToggles]
- * (implemented by this class in addition to [FrameAnalysisSource]):
- *  - The **object detector** (`STREAM_MODE`, multiple objects, classification on) runs every accepted
- *    frame, concurrently with the face detector on the same [InputImage]. Raw results are filtered and
- *    mapped by [ObjectMapper] (frame-covering and face-overlapping boxes dropped, top 3 by area kept).
+ * ## Detector cadence, object detection and segmentation
+ * Every detector's per-frame cadence — which accepted frames it actually runs on — is centralized in
+ * [DetectorSchedule] rather than scattered across this class; see its KDoc for the full baseline +
+ * [PerformanceTier] ladder. In short:
+ *  - **Faces** run every accepted frame, always.
+ *  - **Pose** runs every 2nd accepted frame at [PerformanceTier.FULL] (every 3rd at
+ *    [PerformanceTier.REDUCED], never at [PerformanceTier.MINIMAL]); the previous
+ *    [com.compositioncoach.composition.model.DetectedBody] list is reused on off-cadence frames.
+ *  - The **object detector** (`STREAM_MODE`, multiple objects, classification on) runs every 2nd
+ *    accepted frame, offset from pose so the two never land on the same frame (off entirely at
+ *    [PerformanceTier.MINIMAL]), concurrently with the face detector on the same [InputImage]. Raw
+ *    results are filtered and mapped by [ObjectMapper] (frame-covering and face-overlapping boxes
+ *    dropped, top 3 by area kept); the previous filtered list is reused for up to two off-cadence
+ *    frames (ML Kit's tracking ids make that read as continuity, not a glitch) before falling back to
+ *    empty. All three of the above are toggleable via [VisionFeatureToggles] (implemented by this
+ *    class in addition to [FrameAnalysisSource]).
  *  - **Selfie segmentation** (`STREAM_MODE`, raw-size mask) runs on a cadence managed by
- *    [SegmentationCadence]: every 3rd accepted frame by default, only when the *previous* frame had a
- *    face or body (it's a person segmenter — pointing it at a still life wastes a frame's worth of
- *    inference), and backed off to every 6th frame under sustained latency (the "thermal/perf ladder";
- *    see [SegmentationCadence]'s KDoc). The previous mask is reused unchanged on off-cadence frames;
- *    [MaskDownsampler] converts a fresh raw mask to a 32x32 [SubjectMask] using the same
- *    [FrameCoordinateMapper] built for this frame's faces/objects.
+ *    [SegmentationCadence] *and* gated off entirely below [PerformanceTier.FULL]: every 3rd accepted
+ *    frame by default, only when the *previous* frame had a face or body (it's a person segmenter —
+ *    pointing it at a still life wastes a frame's worth of inference), and backed off to every 6th
+ *    frame under sustained latency (the "thermal/perf ladder"; see [SegmentationCadence]'s KDoc). The
+ *    previous mask is reused unchanged on off-cadence frames; [MaskDownsampler] converts a fresh raw
+ *    mask to a 32x32 [SubjectMask] using the same [FrameCoordinateMapper] built for this frame's
+ *    faces/objects.
  */
 @androidx.annotation.OptIn(ExperimentalGetImage::class)
 class VisionPipeline(private val context: Context) : FrameAnalysisSource, VisionFeatureToggles {
@@ -96,6 +106,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
     private val sampler = AdaptiveSampler()
     private val orientationSensor = OrientationSensor(context)
     private val segmentationCadence = SegmentationCadence()
+    private val detectorSchedule = DetectorSchedule()
 
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "vision-pipeline") }
     private val dispatcher = executor.asCoroutineDispatcher()
@@ -105,6 +116,15 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
     @Volatile private var poseDetectionEnabled = true
     @Volatile private var objectDetectionEnabled = true
     @Volatile private var segmentationEnabled = true
+
+    /** Whether [start] has been called without a matching [stop] yet; makes both idempotent. */
+    @Volatile private var running = false
+
+    /** The settings-driven floor set via [setTargetIntervalMs]; combined with [tierTargetIntervalMs]. */
+    @Volatile private var settingsTargetIntervalMs = AdaptiveSampler.DEFAULT_INTERVAL_MS
+
+    /** The [PerformanceTier]-driven floor set via [setPerformanceTier]; combined with [settingsTargetIntervalMs]. */
+    @Volatile private var tierTargetIntervalMs = PerformanceTier.FULL.targetIntervalMs
 
     private val detectorLock = Any()
     private var faceDetector: FaceDetector? = null
@@ -118,8 +138,10 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
     /** Scratch copy of a raw segmentation mask's float confidences; only touched from [dispatcher]. */
     private var maskFloatScratch = FloatArray(0)
 
-    private val poseFrameCounter = AtomicInteger(0)
     @Volatile private var lastBodies: List<DetectedBody> = emptyList()
+
+    /** Reused on frames [DetectorSchedule] skips the object detector but still marks reusable. */
+    @Volatile private var lastObjects: List<DetectedObject> = emptyList()
 
     /** Whether the previous frame reported any face or body — gates [SegmentationCadence]. */
     @Volatile private var hadSubjectLastFrame = false
@@ -212,11 +234,18 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
             val mediaImage = imageProxy.image
             if (mediaImage != null) {
                 val input = InputImage.fromMediaImage(mediaImage, rotation)
-                val doPose = poseDetectionEnabled && (poseFrameCounter.getAndIncrement() % 2 == 0)
-                val doObjects = objectDetectionEnabled
-                // Short-circuits (cadence bookkeeping only advances while segmentation is enabled) so
-                // toggling it off and back on doesn't skew the interval/mask-age tracked in between.
-                val doSegmentation = segmentationEnabled && segmentationCadence.onAcceptedFrame(wasSubjectPresent)
+                // DetectorSchedule owns pose/object cadence (including the PerformanceTier ladder);
+                // called exactly once per accepted frame that reaches detection, same as the counter
+                // it replaces.
+                val schedule = detectorSchedule.onAcceptedFrame()
+                val doPose = poseDetectionEnabled && schedule.runPose
+                val doObjects = objectDetectionEnabled && schedule.runObjects
+                // Short-circuits (cadence bookkeeping only advances while segmentation is enabled and
+                // permitted by the current tier) so toggling either off and back on doesn't skew the
+                // interval/mask-age tracked in between.
+                val doSegmentation = segmentationEnabled &&
+                    detectorSchedule.segmentationAllowedByTier() &&
+                    segmentationCadence.onAcceptedFrame(wasSubjectPresent)
 
                 coroutineScope {
                     val faceDeferred = async {
@@ -259,6 +288,14 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                     if (objectDeferred != null) {
                         val rawObjects = objectDeferred.await().map { mapRawObject(it, mapper) }
                         objects = ObjectMapper.map(rawObjects, faces.map { it.bounds })
+                        lastObjects = objects
+                    } else if (schedule.reuseStaleObjects) {
+                        // DetectorSchedule already bounds how many frames old this is allowed to be
+                        // (OBJECT_STALE_LIMIT_FRAMES); ML Kit's object detector carries tracking ids,
+                        // so a couple of frames' reuse reads as continuity rather than a stale glitch.
+                        objects = lastObjects
+                    } else {
+                        objects = emptyList()
                     }
                     if (segmentationDeferred != null) {
                         // A null result means either the detector genuinely failed (caught above) or
@@ -515,23 +552,52 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         isFrontCamera = isFront
     }
 
+    /**
+     * Sets the settings-driven interval floor. The *effective* floor handed to [sampler] is
+     * `maxOf(this, the PerformanceTier floor from [setPerformanceTier])` — see [applyEffectiveInterval]
+     * — so neither caller can accidentally speed the pipeline up past what the other requires.
+     */
     override fun setTargetIntervalMs(intervalMs: Long) {
-        sampler.setTargetIntervalMs(intervalMs)
+        settingsTargetIntervalMs = intervalMs
+        applyEffectiveInterval()
     }
 
     override fun setPoseDetectionEnabled(enabled: Boolean) {
         poseDetectionEnabled = enabled
+        // Mirror setSegmentationEnabled(false)'s "clear cached reuse" behaviour: leaving the last
+        // pose result cached forever after the user (or a performance tier) turns pose off would
+        // silently report a body that's no longer being tracked at all.
+        if (!enabled) lastBodies = emptyList()
+    }
+
+    private fun applyEffectiveInterval() {
+        sampler.setTargetIntervalMs(maxOf(settingsTargetIntervalMs, tierTargetIntervalMs))
     }
 
     // --- VisionFeatureToggles ----------------------------------------------------------------
 
     override fun setObjectDetectionEnabled(enabled: Boolean) {
         objectDetectionEnabled = enabled
+        if (!enabled) lastObjects = emptyList()
     }
 
     override fun setSegmentationEnabled(enabled: Boolean) {
         segmentationEnabled = enabled
         if (!enabled) lastSubjectMask = null
+    }
+
+    /**
+     * See [PerformanceTier]/[DetectorSchedule] for what each tier changes. Also clears cached
+     * pose/mask reuse when the new tier forces that detector off, for the same "don't report a stale
+     * result forever" reason [setPoseDetectionEnabled]/[setSegmentationEnabled] already clear it on an
+     * explicit user toggle — a tier is just another source of "this detector is off right now".
+     */
+    override fun setPerformanceTier(tier: PerformanceTier) {
+        detectorSchedule.setTier(tier)
+        tierTargetIntervalMs = tier.targetIntervalMs
+        applyEffectiveInterval()
+        if (tier == PerformanceTier.MINIMAL) lastBodies = emptyList()
+        if (tier != PerformanceTier.FULL) lastSubjectMask = null
     }
 
     /**
@@ -543,8 +609,27 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
      * A device where ML Kit's `MlKitContext` failed to initialize (e.g. its `ContentProvider` got
      * merged out, or a bundled-model native library is missing for this ABI) must not crash the app on
      * screen entry just because this warm-up ran first — see [warmUp] for why each client is isolated.
+     *
+     * Idempotent: a second call while already running (e.g. both `onScreenStarted()` and an
+     * Activity-lifecycle `onScreenResumed()` calling this on the same underlying pipeline instance) is
+     * a no-op rather than re-registering the sensor listener or double-warming the detectors.
+     *
+     * A fresh start also *fully* re-arms the pipeline rather than only reconstructing detectors: every
+     * piece of cross-frame cached state ([lastBodies], [lastObjects], [lastSubjectMask],
+     * [hadSubjectLastFrame], [detectorSchedule]'s frame counter, [segmentationCadence]'s degradation
+     * ladder) is reset first. Without this, a pipeline stopped mid-degraded (say, backgrounded while
+     * thermally throttled) would resume already degraded, and a stale cached mask/body/object list
+     * from *before* the stop could be shown for up to a few frames as if it were live.
      */
     override fun start() {
+        if (running) return
+        running = true
+        lastBodies = emptyList()
+        lastObjects = emptyList()
+        lastSubjectMask = null
+        hadSubjectLastFrame = false
+        detectorSchedule.reset()
+        segmentationCadence.reset()
         synchronized(detectorLock) {
             if (faceDetector == null) faceDetector = warmUp("face") { FaceDetection.getClient(faceDetectorOptions) }
             if (poseDetector == null) poseDetector = warmUp("pose") { PoseDetection.getClient(poseDetectorOptions) }
@@ -566,7 +651,10 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
             .onFailure { Log.e(TAG, "Failed to construct the $label ML Kit client; that feature will be unavailable", it) }
             .getOrNull()
 
+    /** Idempotent counterpart to [start]; a second call while already stopped is a no-op. */
     override fun stop() {
+        if (!running) return
+        running = false
         orientationSensor.stop()
         synchronized(detectorLock) {
             faceDetector?.close()

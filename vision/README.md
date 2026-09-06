@@ -18,6 +18,8 @@ ImageStatisticsComputer    // luma-plane statistics (pure Kotlin)
 ObjectMapper               // ML Kit object-detection label mapping + filtering (pure Kotlin)
 MaskDownsampler            // segmentation-mask -> SubjectMask grid resampling (pure Kotlin)
 SegmentationCadence        // segmentation run cadence + thermal/perf ladder (pure Kotlin)
+DetectorSchedule           // pose/object cadence + PerformanceTier ladder (pure Kotlin)
+PerformanceTier            // FULL/REDUCED/MINIMAL cadence tier, set via VisionFeatureToggles
 ```
 
 ## Pipeline
@@ -38,18 +40,27 @@ launch on a dedicated single-thread coroutine dispatcher ("vision-pipeline")
         ├─ ImageStatisticsComputer.compute(yPlane, mapper)   ── luma grid, edges, symmetry,
         │                                                        horizon, dominant lines
         │
+        ├─ DetectorSchedule.onAcceptedFrame()                 ── decides this frame's pose/object plan
+        │        (see "Detector cadence" below; also gates on the current PerformanceTier)
+        │
         ├─ (concurrently, via kotlinx-coroutines-play-services `.await()`, same InputImage shared)
-        │     ├─ FaceDetector.process(InputImage)             ── every accepted frame
-        │     ├─ PoseDetector.process(InputImage)              ── every *other* accepted frame
-        │     │                                                    (previous body result reused
-        │     │                                                     on the frames in between)
-        │     ├─ ObjectDetector.process(InputImage)            ── every accepted frame (toggleable)
-        │     │                                                    → ObjectMapper filters/maps
-        │     └─ Segmenter.process(InputImage)                 ── every 3rd..6th accepted frame,
-        │                                                           only when the previous frame had
-        │                                                           a face/body (SegmentationCadence);
-        │                                                           previous SubjectMask reused
-        │                                                           otherwise → MaskDownsampler
+        │     ├─ FaceDetector.process(InputImage)             ── every accepted frame, every tier
+        │     ├─ PoseDetector.process(InputImage)              ── per DetectorSchedule (every 2nd frame
+        │     │                                                    at FULL, every 3rd at REDUCED, never
+        │     │                                                    at MINIMAL); previous body result
+        │     │                                                    reused on off-cadence frames
+        │     ├─ ObjectDetector.process(InputImage)            ── per DetectorSchedule (every 2nd frame,
+        │     │                                                    offset from pose; off at MINIMAL;
+        │     │                                                    toggleable) → ObjectMapper
+        │     │                                                    filters/maps; previous filtered
+        │     │                                                    list reused for up to 2 off-cadence
+        │     │                                                    frames, then empty
+        │     └─ Segmenter.process(InputImage)                 ── every 3rd..6th accepted frame, only
+        │                                                           at PerformanceTier.FULL, only when
+        │                                                           the previous frame had a face/body
+        │                                                           (SegmentationCadence); previous
+        │                                                           SubjectMask reused otherwise →
+        │                                                           MaskDownsampler
         │
         ├─ OrientationSensor.current                          ── latest roll/pitch (own sensor
         │                                                          callback thread, no camera stall)
@@ -123,36 +134,72 @@ within ~25° of straight up/down (roll is numerically undefined there) or when n
 ## Detector settings
 
 - **Face**: `PERFORMANCE_MODE_FAST`, `LANDMARK_MODE_ALL`, `CLASSIFICATION_MODE_NONE`,
-  `enableTracking()`, `minFaceSize = 0.1f`. Runs on every accepted frame. ML Kit exposes no scalar
-  per-face confidence score, so `DetectedFace.confidence` is always `1f`.
+  `enableTracking()`, `minFaceSize = 0.1f`. Runs on every accepted frame, at every `PerformanceTier` —
+  see "Detector cadence" below, faces are the one detector never gated by cadence or tier. ML Kit
+  exposes no scalar per-face confidence score, so `DetectedFace.confidence` is always `1f`.
 - **Pose**: `com.google.mlkit.vision.pose.defaults.PoseDetectorOptions` (the "fast"/base model, not
-  the separate accurate library), `STREAM_MODE`. Runs on every *other* accepted frame; the previous
-  `DetectedBody` list is reused on the frames in between (`setPoseDetectionEnabled(false)` disables
-  it entirely and clears reuse). Body bounds are the clamped bounding box of landmarks with
-  `inFrameLikelihood > 0.5`.
+  the separate accurate library), `STREAM_MODE`. Cadence is owned by `DetectorSchedule` (see below,
+  toggleable via `setPoseDetectionEnabled`); the previous `DetectedBody` list is reused on off-cadence
+  frames (`setPoseDetectionEnabled(false)` disables it entirely and clears reuse). Body bounds are the
+  clamped bounding box of landmarks with `inFrameLikelihood > 0.5`.
 - **Objects**: `com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions`, `STREAM_MODE`,
   `enableMultipleObjects()`, `enableClassification()` (the default on-device model — no bundled/custom
-  model). Runs on every accepted frame (toggleable via `VisionFeatureToggles.setObjectDetectionEnabled`),
-  concurrently with the face detector on the same `InputImage`. Raw results are filtered/mapped by
-  `ObjectMapper`, which is what actually enforces the "prominent object, not the whole scene, not the
-  person" contract — see its KDoc:
+  model). Cadence is owned by `DetectorSchedule` (toggleable via
+  `VisionFeatureToggles.setObjectDetectionEnabled`), concurrently with the face detector on the same
+  `InputImage`. Raw results are filtered/mapped by `ObjectMapper`, which is what actually enforces the
+  "prominent object, not the whole scene, not the person" contract — see its KDoc:
     - drop boxes covering more than 85% of the frame (that's the scene, not an object in it);
     - drop boxes whose IoU with any detected face exceeds 0.3 (that's the person, already covered by
       `DetectedFace`/`DetectedBody`);
     - keep at most 3, largest (by normalized area) first.
   Category comes from ML Kit's coarse label text (`"Fashion good"`/`"Food"`/`"Home good"`/`"Place"`/
   `"Plant"` → the matching `ObjectCategory`, anything else → `UNKNOWN`); confidence from that label
-  when present, else `1f`. Object detection does **not** reuse stale results across frames the way
-  pose does — when disabled or when nothing survives filtering, `objects` is simply empty.
+  when present, else `1f`. Unlike pose, an object-detector frame that doesn't run *does* have a form of
+  reuse now — see `DetectorSchedule`'s two-frame staleness window below — but disabling the detector
+  entirely, or exhausting that window, reports empty rather than an indefinitely stale list.
 - **Segmentation**: `SelfieSegmenterOptions`, `STREAM_MODE`, `enableRawSizeMask()` (skips ML Kit's own
   upscale to input size, since we downsample ourselves anyway — cheaper and we control the resampling).
-  Cadence and gating are owned by `SegmentationCadence` (toggleable via
-  `VisionFeatureToggles.setSegmentationEnabled`); see the dedicated section below. On a frame that
+  Cadence and subject-gating are owned by `SegmentationCadence` (toggleable via
+  `VisionFeatureToggles.setSegmentationEnabled`, and gated off entirely below `PerformanceTier.FULL` by
+  `DetectorSchedule.segmentationAllowedByTier()`); see the dedicated section below. On a frame that
   doesn't run it, the previous `SubjectMask` is reused unchanged (not reprocessed, not interpolated).
 - All four detectors run **concurrently** (`async`/`await` inside `coroutineScope`) on a dedicated
   single-thread coroutine dispatcher, via `kotlinx-coroutines-play-services`'s `Task.await()`, sharing
   one `InputImage` per frame (ML Kit permits this). Each detector's failure is caught independently —
   one detector throwing never prevents the others' results from being used.
+
+## Detector cadence and the `PerformanceTier` ladder (`DetectorSchedule`)
+
+Measured on a Pixel, face+pose alone already only sustains ~4.7 analyses/s; object detection and
+segmentation both add real cost on top of that. `DetectorSchedule` makes every detector's cadence (which
+accepted frames it actually runs detection on) explicit and centralized in one pure-Kotlin,
+directly-unit-tested class (`DetectorScheduleTest`), rather than scattered counters:
+
+- **Baseline (at `PerformanceTier.FULL`)**: faces every accepted frame; pose every 2nd accepted frame;
+  objects every 2nd accepted frame too, but *offset by one* from pose (`n % 2 == 1` vs. pose's
+  `n % 2 == 0`) so the two never land on the same frame — this caps how many detectors ever run
+  concurrently on one frame at three (faces + one of pose/objects) instead of four, without reducing
+  either detector's overall duty cycle. On the frames objects don't run, the previous *filtered* object
+  list (post-`ObjectMapper`) is reused as-is for up to 2 accepted frames — ML Kit's object tracking ids
+  make that read as continuity rather than a glitch — after which it's reported empty rather than staying
+  stale forever.
+- **`PerformanceTier.REDUCED`**: segmentation gated off entirely (`segmentationAllowedByTier()` returns
+  false); pose backed off to every 3rd accepted frame; object cadence unaffected.
+- **`PerformanceTier.MINIMAL`**: pose off entirely (never runs, previous body list stays cleared);
+  objects off entirely (reported empty, no stale reuse); segmentation still gated off. Faces are the
+  only detector besides image statistics left running.
+- **Applying a tier**: `VisionFeatureToggles.setPerformanceTier(tier)` (a *default*-implemented method on
+  that interface — see its KDoc — so adding it didn't touch the interface's existing consumers) calls
+  `DetectorSchedule.setTier`, updates the effective analysis-interval floor (`maxOf` against the
+  settings-driven floor from `setTargetIntervalMs` — the slower of the two always wins), and clears
+  cached pose/mask reuse when the new tier forces that detector off, the same "don't report a stale
+  result forever" reasoning `setPoseDetectionEnabled(false)`/`setSegmentationEnabled(false)` already
+  apply to an explicit user toggle. `:app`'s `ThermalPolicy` derives the tier from thermal status
+  (API 29+) and battery saver; see its KDoc and `:app`'s README for the mapping.
+- **Re-arming**: `VisionPipeline.start()` after a `stop()` resets `DetectorSchedule` (frame counter and
+  object staleness) and `SegmentationCadence` (degradation ladder) alongside recreating the ML Kit
+  detectors and clearing cached bodies/objects/mask — a pipeline stopped mid-degraded (backgrounded while
+  thermally throttled, say) resumes at a clean baseline rather than picking up where it left off.
 
 ## Segmentation cadence and the thermal/perf ladder (`SegmentationCadence`)
 
@@ -239,6 +286,13 @@ an empty list or a `null` horizon under low confidence is expected, correct beha
 - The segmentation buffer's byte order is read as `ByteOrder.nativeOrder()` (matching the reference
   ML Kit integration pattern of reading it as a float view with no manual per-byte assembly); this
   could not be cross-checked against a physical device's actual buffer either.
+- `DetectorSchedule`'s object-detector 2-frame stride/offset and 2-frame staleness window, and
+  `ThermalPolicy`'s (`:app`) thermal-status-to-`PerformanceTier` mapping, are reasoned from the
+  detectors' documented behaviour and `PowerManager`'s documented thermal-status levels respectively,
+  not benchmarked/hardware-tested in this environment — same caveat as the constants above. In
+  particular, whether `PerformanceTier.REDUCED`/`MINIMAL`'s 150ms/250ms interval floors and pose/object
+  cadence cuts are the *right* amount of degradation for a genuinely throttled or battery-saving Pixel
+  (versus too much or too little) needs a real device to confirm.
 
 ## What the `:app` integrator needs to know
 
@@ -252,20 +306,32 @@ an empty list or a `null` horizon under low confidence is expected, correct beha
   throttle check.
 - **Lifecycle**: call `start()` when the camera screen becomes active (registers the orientation
   sensor and (re)creates all four ML Kit detectors — face, pose, object, segmenter) and `stop()` when
-  it stops/pauses (unregisters the sensor and closes all four). `start()` after `stop()` recreates
-  fresh detector instances.
+  it stops/pauses (unregisters the sensor and closes all four). Both are **idempotent** — a second
+  `start()` while already running, or a second `stop()` while already stopped, is a no-op — so `:app`
+  can safely call them from more than one lifecycle hook (Compose composition entry/exit *and* the
+  Activity's own resume/pause) without double-registering the sensor or double-closing detectors.
+  `start()` after `stop()` doesn't just recreate detector instances: it fully re-arms the pipeline,
+  resetting every piece of cross-frame cached state (`DetectorSchedule`'s frame counter,
+  `SegmentationCadence`'s degradation ladder, cached bodies/objects/subject-mask) so a resume never
+  shows a detection left over from before the stop.
 - **`setFrontCamera(isFront)`**: call whenever the bound camera selector changes, *before* frames
   from that camera start arriving — it controls mirroring for every coordinate this module reports.
 - **`setPoseDetectionEnabled(false)`**: wire to a performance/settings toggle if desired; pose is the
-  more expensive detector.
+  more expensive detector. Clears the cached body list immediately, same reasoning as
+  `setSegmentationEnabled(false)` below.
 - **`VisionFeatureToggles`**: `setObjectDetectionEnabled`/`setSegmentationEnabled` (both default
   `true`) live on this separate interface, not on `FrameAnalysisSource` itself, so they don't widen
   the contract `:app` already depends on. Opt in with a safe cast:
   `(frameAnalysisSource as? VisionFeatureToggles)?.setSegmentationEnabled(false)`. Disabling
   segmentation clears the cached mask immediately (mirrors pose's "clears reuse" behaviour) rather
-  than leaving a stale one reported forever; disabling object detection just reports empty (objects
-  are never reused/stale the way pose bodies and the segmentation mask are).
-- **`setTargetIntervalMs`**: optional; the sampler adapts on its own, this just moves the floor.
+  than leaving a stale one reported forever; disabling object detection clears the cached object list
+  too (objects otherwise get up to 2 accepted frames of reuse under `DetectorSchedule`, see "Detector
+  cadence" above — disabling the detector bypasses that window rather than waiting it out).
+  `setPerformanceTier(tier)` is the third member — see "Detector cadence and the PerformanceTier
+  ladder" above; it has a default no-op implementation so this remains purely additive.
+- **`setTargetIntervalMs`**: optional; the sampler adapts on its own, this just moves the floor —
+  combined via `maxOf` with whatever floor the current `PerformanceTier` imposes (see above), so
+  neither caller can accidentally speed the pipeline up past what the other requires.
 - Collect `frames` (a conflated `SharedFlow`, replay=1) from a `LifecycleOwner`-scoped coroutine.
 - **Expected added per-frame cost** (see the "Segmentation cadence" section above for why these are
   amortized, not always paid): the object detector, like face detection, runs every accepted frame —

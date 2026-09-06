@@ -5,6 +5,7 @@ import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.composition.model.CompositionResult
 import com.compositioncoach.composition.model.SmoothedComposition
+import com.compositioncoach.vision.PerformanceTier
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -140,6 +141,60 @@ class CameraUiStateTest {
             engineTimeMs = 5L,
         )
         assertFalse(notAwaiting.composition.awaitingSubject)
+    }
+
+    @Test
+    fun `withCameraBound records the exposure range and clamps the current index into it`() {
+        val state = CameraUiState(exposureIndex = 10)
+        val updated = state.withCameraBound(LensFacing.BACK, hasFlashUnit = false, exposureRange = -4..4)
+        assertEquals(-4..4, updated.exposureRange)
+        assertEquals(4, updated.exposureIndex)
+    }
+
+    @Test
+    fun `withCameraBound defaults to a zero exposure range when the camera doesn't support it`() {
+        val updated = CameraUiState().withCameraBound(LensFacing.BACK, hasFlashUnit = false)
+        assertEquals(0..0, updated.exposureRange)
+        assertEquals(0, updated.exposureIndex)
+    }
+
+    @Test
+    fun `withExposureIndex clamps to the current exposure range`() {
+        val state = CameraUiState(exposureRange = -2..2)
+        assertEquals(2, state.withExposureIndex(5).exposureIndex)
+        assertEquals(-2, state.withExposureIndex(-9).exposureIndex)
+        assertEquals(0, state.withExposureIndex(0).exposureIndex)
+    }
+
+    @Test
+    fun `withPerformanceTier replaces only the tier`() {
+        val updated = CameraUiState().withPerformanceTier(PerformanceTier.REDUCED)
+        assertEquals(PerformanceTier.REDUCED, updated.performanceTier)
+    }
+
+    @Test
+    fun `preferFastCapture is true when battery saver is on, even at FULL tier`() {
+        val state = CameraUiState(settings = CoachSettings(batterySaver = true), performanceTier = PerformanceTier.FULL)
+        assertTrue(state.preferFastCapture)
+    }
+
+    @Test
+    fun `preferFastCapture is true when the performance tier is degraded, even without battery saver`() {
+        val state = CameraUiState(settings = CoachSettings(batterySaver = false), performanceTier = PerformanceTier.REDUCED)
+        assertTrue(state.preferFastCapture)
+    }
+
+    @Test
+    fun `preferFastCapture is false only when neither signal calls for it`() {
+        val state = CameraUiState(settings = CoachSettings(batterySaver = false), performanceTier = PerformanceTier.FULL)
+        assertFalse(state.preferFastCapture)
+    }
+
+    @Test
+    fun `withLastPhotoUri records or clears the last photo`() {
+        val withUri = CameraUiState().withLastPhotoUri(android.net.Uri.EMPTY)
+        assertEquals(android.net.Uri.EMPTY, withUri.lastPhotoUri)
+        assertNull(withUri.withLastPhotoUri(null).lastPhotoUri)
     }
 
     @Test
