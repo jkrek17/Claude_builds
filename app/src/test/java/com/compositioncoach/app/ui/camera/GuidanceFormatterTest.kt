@@ -78,4 +78,22 @@ class GuidanceFormatterTest {
     fun `shootReadyScoreText formats the em-dash SHOOT suffix`() {
         assertEquals("94 — SHOOT", GuidanceFormatter.shootReadyScoreText(94))
     }
+
+    @Test
+    fun `badgeAlpha dims the score only while awaiting a subject`() {
+        assertEquals(GuidanceFormatter.AWAITING_SUBJECT_ALPHA, GuidanceFormatter.badgeAlpha(awaitingSubject = true))
+        assertEquals(1f, GuidanceFormatter.badgeAlpha(awaitingSubject = false))
+    }
+
+    @Test
+    fun `awaitingSubjectTitleLine surfaces the find-subject recommendation's title`() {
+        val findSubject = rec().copy(id = "intent.no_subject", title = "Looking for a face", instruction = "Move closer to your subject")
+        assertEquals("Looking for a face", GuidanceFormatter.awaitingSubjectTitleLine(findSubject))
+    }
+
+    @Test
+    fun `awaitingSubjectHeadline surfaces the find-subject recommendation's instruction, not its title`() {
+        val findSubject = rec().copy(id = "intent.no_subject", title = "Looking for a face", instruction = "Move closer to your subject")
+        assertEquals("Move closer to your subject", GuidanceFormatter.awaitingSubjectHeadline(findSubject))
+    }
 }

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.SceneIntent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -36,6 +37,7 @@ class SettingsRepository(context: Context) {
             prefs[Keys.POSE_DETECTION_ENABLED] = updated.poseDetectionEnabled
             prefs[Keys.BATTERY_SAVER] = updated.batterySaver
             prefs[Keys.DEBUG_MODE] = updated.debugMode
+            prefs[Keys.SCENE_INTENT] = SceneIntentCodec.encode(updated.sceneIntent)
         }
     }
 
@@ -46,6 +48,7 @@ class SettingsRepository(context: Context) {
     suspend fun setPoseDetectionEnabled(enabled: Boolean) = update { it.copy(poseDetectionEnabled = enabled) }
     suspend fun setBatterySaver(enabled: Boolean) = update { it.copy(batterySaver = enabled) }
     suspend fun setDebugMode(enabled: Boolean) = update { it.copy(debugMode = enabled) }
+    suspend fun setSceneIntent(intent: SceneIntent) = update { it.copy(sceneIntent = intent) }
 
     private fun Preferences.toCoachSettings() = CoachSettings(
         guidanceEnabled = this[Keys.GUIDANCE_ENABLED] ?: true,
@@ -55,6 +58,7 @@ class SettingsRepository(context: Context) {
         poseDetectionEnabled = this[Keys.POSE_DETECTION_ENABLED] ?: true,
         batterySaver = this[Keys.BATTERY_SAVER] ?: false,
         debugMode = this[Keys.DEBUG_MODE] ?: false,
+        sceneIntent = SceneIntentCodec.decode(this[Keys.SCENE_INTENT]),
     )
 
     /** Preference key names. Exposed for tests; do not rename in place without a migration. */
@@ -66,5 +70,6 @@ class SettingsRepository(context: Context) {
         val POSE_DETECTION_ENABLED = booleanPreferencesKey("pose_detection_enabled")
         val BATTERY_SAVER = booleanPreferencesKey("battery_saver")
         val DEBUG_MODE = booleanPreferencesKey("debug_mode")
+        val SCENE_INTENT = stringPreferencesKey("scene_intent")
     }
 }

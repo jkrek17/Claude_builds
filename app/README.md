@@ -18,11 +18,15 @@ CameraPermissionGate
 * **camera** — `CameraScreen` + `CameraViewModel`. Full-screen `PreviewView` with Compose overlays:
   `ThirdsGridOverlay`, `CompositionOverlay` (target ring / horizon level / directional arrow),
   `DebugGeometryOverlay` + `DebugOverlay` (debug mode only), `ScoreBadge`, `GuidanceBanner`,
-  `CameraTopBar`, `BottomControlBar`, and `CameraErrorOverlay` for camera init failures.
+  `CameraTopBar` (shows the current shooting mode as a small chip when it isn't Auto — tap it to open
+  Settings), `BottomControlBar`, and `CameraErrorOverlay` for camera init failures.
 * **review** — `ReviewScreen`. Shows the captured photo (Coil) next to the score, strengths,
-  improvements and scene chip from the `CompositionResult` computed at capture time. Keep pops back
-  to camera; Retake deletes the photo via `CaptureRepository` first.
+  improvements, scene chip and — when the shot was coached under a non-Auto shooting mode — a
+  "`<Mode>` mode" chip (from `CompositionResult.intent`), all from the `CompositionResult` computed at
+  capture time. Keep pops back to camera; Retake deletes the photo via `CaptureRepository` first.
 * **settings** — `SettingsScreen` + `SettingsViewModel`, backed by `SettingsRepository` (DataStore).
+  "Shooting mode" is the first section on the screen: a chip selector over every `SceneIntent`
+  (Auto/Portrait/Group/Landscape/Architecture/Object), since it's the setting people change most.
 
 ## State flow
 
@@ -30,7 +34,7 @@ CameraPermissionGate
 FrameAnalysisSource.frames (vision)
         │  (skipped entirely if guidanceEnabled == false)
         ▼
-CompositionCoach.process(frame, guidanceLevel)   ── every frame, keeps the smoother warm
+CompositionCoach.process(frame, guidanceLevel, sceneIntent)   ── every frame, keeps the smoother warm
         ▼
 SmoothedComposition  ── sampled to ~10 Hz (kotlinx.coroutines sample())
         ▼
@@ -38,6 +42,27 @@ CameraUiState (StateFlow)  ── pure `withX(...)` reducer functions, see Camer
         ▼
 CameraScreen (collectAsStateWithLifecycle) ── ScoreBadge / GuidanceBanner / overlays redraw
 ```
+
+* **Shooting mode (`SceneIntent`)** tells the engine what the photographer says they're shooting;
+  `CameraViewModel` reads it off `CoachSettings.sceneIntent` and forwards it to both
+  `CompositionCoach.process(...)` (live preview) and `.evaluateOnce(...)` (capture-time review
+  evaluation). Changing it in Settings calls `coach.reset()` on the next settings emission — same
+  reasoning as the lens-switch reset — so smoothed score/recommendations from the old mode don't
+  linger under the new one. The reset is skipped on the very first settings emission (app/process
+  start) so restoring a persisted non-Auto mode doesn't reset a coach that never ran anything yet.
+* **`awaitingSubject` UI state**: when `SmoothedComposition.awaitingSubject` is true (declared intent
+  needs a subject — e.g. PORTRAIT — that isn't in frame yet), `displayScore` is the last meaningful
+  score the engine held, not a live one, so the UI must not present it as current:
+  * `ScoreBadge(awaitingSubject = true)` renders that held number at `GuidanceFormatter.badgeAlpha`
+    (40%) with no tier colour (plain white), and shoot-ready styling ("— SHOOT", the pulse, the green
+    tier) never shows regardless of `isShootReady`.
+  * `GuidanceBanner(awaitingSubject = true)` ignores the normal primary/reason/secondary layout and
+    instead shows the single find-subject recommendation's `title` as a small line
+    (`GuidanceFormatter.awaitingSubjectTitleLine`, e.g. "Looking for a face") with its `instruction` as
+    the headline (`awaitingSubjectHeadline`, e.g. "Move closer to your subject") — no directional
+    glyph, since that recommendation carries no direction.
+  * Both are pure `GuidanceFormatter` helpers, unit-tested on the JVM without needing the real engine
+    to ever actually return `awaitingSubject = true` (see Known limitations below).
 
 * `CameraViewModel` never touches a `Context` beyond what `AppContainer` (built from
   `Application`) already holds; it does not store a `PreviewView`, `Activity`, or `CameraController`.
@@ -106,10 +131,12 @@ Other binding details:
 | `pose_detection_enabled` | bool | `true` | Forwarded to `frameSource.setPoseDetectionEnabled` |
 | `battery_saver` | bool | `false` | 200ms analysis interval instead of 100ms |
 | `debug_mode` | bool | `false` | Shows `DebugOverlay` + `DebugGeometryOverlay` + the DEBUG chip |
+| `scene_intent` | string (`SceneIntent` name) | `AUTO` | Shooting mode: AUTO / PORTRAIT / GROUP_PORTRAIT / LANDSCAPE / ARCHITECTURE / OBJECT |
 
-An unrecognized or missing `guidance_level` value falls back to `BALANCED` rather than crashing
-(`GuidanceLevelCodec`, unit-tested in `CoachSettingsTest`) — this is the intended way to evolve the
-schema, not a bug to "fix" by renaming keys in place.
+An unrecognized or missing `guidance_level` value falls back to `BALANCED`, and an unrecognized,
+missing, or legacy `scene_intent` value falls back to `AUTO`, rather than crashing
+(`GuidanceLevelCodec` / `SceneIntentCodec`, unit-tested in `CoachSettingsTest`) — this is the intended
+way to evolve the schema, not a bug to "fix" by renaming keys in place.
 
 ## Debug mode guide
 
@@ -119,7 +146,8 @@ Enable **Settings → Debug mode**. Two extra layers appear on the camera screen
   plus face eye/nose points and in-frame pose landmarks. This is the *only* place bounding
   boxes/regions are drawn; `CompositionOverlay` never draws them, debug or not.
 * `DebugOverlay` — a collapsible, scrollable panel (tap the "DEBUG ▾/▸" header) listing: scene type +
-  confidence, raw vs. smoothed score, engine time, FPS, last analysis latency and sampling interval,
+  confidence + the declared shooting mode (`Intent:`), raw vs. smoothed score, engine time, FPS, last
+  analysis latency and sampling interval,
   every `CompositionMetric` (category/score/confidence/severity/applicable), every recommendation id
   with priority/confidence/direction, per-detector timings (`FrameAnalysis.detectorTimings`), subject
   count, and — when the engine populates it — the optimizer's current score, improvement and
@@ -140,6 +168,14 @@ Enable **Settings → Debug mode**. Two extra layers appear on the camera screen
   in `:app` once both stubs are replaced — only re-verify the overlay geometry assumptions
   (`OverlayGeometry.TargetPoint`/`Line` placement, `Severity` on the `HORIZON` metric) once real data
   is flowing.
+* **`SceneIntent` is plumbed through but not yet honoured by the engine in this worktree** —
+  `CompositionEngine.evaluate(frame, level, intent)` accepts it but always returns
+  `awaitingSubject = false` (see the STATUS note on that method). `:app` reads `settings.sceneIntent`,
+  forwards it to `process`/`evaluateOnce`, resets the coach on a mode change, and renders every
+  `awaitingSubject` UI path (`ScoreBadge`, `GuidanceBanner`) — those are exercised via `@Preview`s and
+  the `GuidanceFormatter`/`CameraUiState` unit tests with a hand-built `SmoothedComposition`, not via a
+  live engine result, since the live engine in this worktree never sets the flag. No `:app` changes
+  should be needed once `:composition` honours the intent for real.
 * **Legacy storage permission (API 26-28):** `CameraScreen` requests `WRITE_EXTERNAL_STORAGE` lazily,
   right before the first capture, only on API ≤ 28. API 29+ never needs it (scoped storage via
   `MediaStore` + `RELATIVE_PATH`).

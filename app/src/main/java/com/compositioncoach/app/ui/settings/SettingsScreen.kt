@@ -1,5 +1,6 @@
 package com.compositioncoach.app.ui.settings
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,9 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -25,15 +28,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.compositioncoach.app.R
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.settings.description
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.app.settings.label
 import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.SceneIntent
 
 /** All coaching and privacy-relevant preferences, backed live by [SettingsViewModel]. */
 @Composable
@@ -49,6 +55,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
         onPoseDetectionChange = viewModel::setPoseDetectionEnabled,
         onBatterySaverChange = viewModel::setBatterySaver,
         onDebugModeChange = viewModel::setDebugMode,
+        onSceneIntentChange = viewModel::setSceneIntent,
     )
 }
 
@@ -64,6 +71,7 @@ private fun SettingsContent(
     onPoseDetectionChange: (Boolean) -> Unit,
     onBatterySaverChange: (Boolean) -> Unit,
     onDebugModeChange: (Boolean) -> Unit,
+    onSceneIntentChange: (SceneIntent) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -78,6 +86,39 @@ private fun SettingsContent(
         },
     ) { padding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
+            item {
+                Text(
+                    "Shooting mode",
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp),
+                )
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SceneIntent.entries.forEach { intent ->
+                        FilterChip(
+                            selected = settings.sceneIntent == intent,
+                            onClick = { onSceneIntentChange(intent) },
+                            label = { Text(intent.label) },
+                        )
+                    }
+                }
+            }
+            item {
+                Text(
+                    text = stringResource(R.string.shooting_mode_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 4.dp),
+                )
+            }
+            item { HorizontalDivider() }
             item { SwitchRow("Composition guidance", settings.guidanceEnabled, onGuidanceEnabledChange) }
             item { SwitchRow("Show score", settings.showScore, onShowScoreChange) }
             item { SwitchRow("Rule-of-thirds grid", settings.showThirdsGrid, onShowThirdsGridChange) }
@@ -145,7 +186,7 @@ private fun GuidanceLevelRow(level: GuidanceLevel, selected: Boolean, onClick: (
 private fun SettingsScreenPreview() {
     CompositionCoachTheme {
         SettingsContent(
-            settings = CoachSettings(guidanceLevel = GuidanceLevel.COACH, debugMode = true),
+            settings = CoachSettings(guidanceLevel = GuidanceLevel.COACH, debugMode = true, sceneIntent = SceneIntent.PORTRAIT),
             onBack = {},
             onGuidanceEnabledChange = {},
             onShowScoreChange = {},
@@ -154,6 +195,7 @@ private fun SettingsScreenPreview() {
             onPoseDetectionChange = {},
             onBatterySaverChange = {},
             onDebugModeChange = {},
+            onSceneIntentChange = {},
         )
     }
 }

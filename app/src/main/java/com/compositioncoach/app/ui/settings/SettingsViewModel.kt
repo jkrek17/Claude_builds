@@ -7,6 +7,7 @@ import com.compositioncoach.app.di.AppContainer
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.settings.SettingsRepository
 import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.SceneIntent
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -28,6 +29,7 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setPoseDetectionEnabled(enabled: Boolean) = launch { repository.setPoseDetectionEnabled(enabled) }
     fun setBatterySaver(enabled: Boolean) = launch { repository.setBatterySaver(enabled) }
     fun setDebugMode(enabled: Boolean) = launch { repository.setDebugMode(enabled) }
+    fun setSceneIntent(intent: SceneIntent) = launch { repository.setSceneIntent(intent) }
 
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

@@ -13,6 +13,7 @@ import com.compositioncoach.app.di.ReviewEntry
 import com.compositioncoach.composition.model.CompositionResult
 import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.SmoothedComposition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -65,12 +66,20 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     private var frameCountInWindow = 0
     @Volatile private var currentFps = 0f
 
+    /** Null until the first settings emission; used to reset smoothing only on an actual mode change, not on startup. */
+    private var lastSceneIntent: SceneIntent? = null
+
     init {
         viewModelScope.launch {
             container.settingsRepository.settings.collect { settings ->
                 _uiState.update { it.withSettings(settings) }
                 frameSource?.setPoseDetectionEnabled(settings.poseDetectionEnabled)
                 frameSource?.setTargetIntervalMs(settings.analysisIntervalMs)
+                // Shooting mode changed: reset the smoother so advice/scoring from the old mode doesn't linger.
+                if (lastSceneIntent != null && lastSceneIntent != settings.sceneIntent) {
+                    coach.reset()
+                }
+                lastSceneIntent = settings.sceneIntent
             }
         }
         observeFrames()
@@ -83,7 +92,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
             .map { frame ->
                 val settings = _uiState.value.settings
                 val composition = if (settings.guidanceEnabled) {
-                    coach.process(frame, settings.guidanceLevel)
+                    coach.process(frame, settings.guidanceLevel, settings.sceneIntent)
                 } else {
                     SmoothedComposition.EMPTY
                 }
@@ -182,7 +191,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 val uri = container.captureRepository.capture(capture, isFrontCamera)
                 val frame = lastFrame
                 val result = if (frame != null) {
-                    coach.evaluateOnce(frame, GuidanceLevel.COACH)
+                    coach.evaluateOnce(frame, GuidanceLevel.COACH, _uiState.value.settings.sceneIntent)
                 } else {
                     CompositionResult.empty()
                 }

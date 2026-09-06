@@ -7,4 +7,6 @@
         suggest framing, but needs the camera to see it first. Nothing ever leaves your phone.</string>
     <string name="permission_allow_camera">Allow camera</string>
     <string name="permission_open_settings">Open settings</string>
+
+    <string name="shooting_mode_description">Tell the coach what you\'re shooting. Auto detects it from the scene.</string>
 </resources>
