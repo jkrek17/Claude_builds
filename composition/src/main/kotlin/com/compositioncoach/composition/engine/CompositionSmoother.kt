@@ -73,6 +73,13 @@ data class SmoothingConfig(
  *    Secondary lines (COACH mode) ride along unsmoothed; a flicker there is far less disruptive.
  *  - Shoot-ready needs a sustained high score and no high-severity issue, and turns off at a lower score
  *    than it turned on at.
+ *  - While [CompositionResult.awaitingSubject] is true (a declared shooting mode is still waiting for its
+ *    subject to appear — see [IntentSubjectCoach]) all of the above is suspended: the meaningless `0`
+ *    score is never fed into the EMA (the displayed number just holds at its last real value), shoot-ready
+ *    is forced off, and the "find your subject" recommendation is shown immediately — it is a mode
+ *    message describing what the coach is doing right now, not competing framing advice that needs to
+ *    earn its place through the usual confirmation delay. Normal smoothing resumes, from a clean
+ *    recommendation slate, the moment a frame with a real subject comes back.
  *
  * All timing is driven by [CompositionResult.timestampNanos]; see [SmoothingConfig.nominalUpdateIntervalMs]
  * for the fallback when timestamps do not advance. Time between updates is capped so a pause (app in the
@@ -97,8 +104,33 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
     private var shootReady: Boolean = false
     private var aboveEnterMs: Long = 0
 
+    private var wasAwaitingSubject: Boolean = false
+
     fun update(result: CompositionResult): SmoothedComposition {
         val dtMs = elapsedSince(result.timestampNanos)
+
+        if (result.awaitingSubject) {
+            wasAwaitingSubject = true
+            showAwaitingHeadlineImmediately(result.recommendations.firstOrNull())
+            shootReady = false
+            aboveEnterMs = 0
+            return SmoothedComposition(
+                displayScore = displayedScore,
+                activeRecommendations = result.recommendations,
+                isShootReady = false,
+                scene = result.scene,
+                primarySubject = result.primarySubject,
+                raw = result,
+                awaitingSubject = true,
+            )
+        }
+        if (wasAwaitingSubject) {
+            // The subject reappeared: drop the "find subject" mode message and its confirmation state right
+            // away rather than making the resumed advice out-wait recommendationMinHoldMs as if it were an
+            // ordinary challenger.
+            promote(null)
+            wasAwaitingSubject = false
+        }
 
         val score = smoothScore(result, dtMs)
         updateDisplayedScore(score, dtMs)
@@ -114,7 +146,13 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
             scene = result.scene,
             primarySubject = result.primarySubject,
             raw = result,
+            awaitingSubject = false,
         )
+    }
+
+    /** Shows the mode message as the headline at once — no confirmation delay, see the class kdoc. */
+    private fun showAwaitingHeadlineImmediately(recommendation: Recommendation?) {
+        if (current?.id != recommendation?.id) promote(recommendation) else current = recommendation
     }
 
     fun reset() {
@@ -131,6 +169,7 @@ class CompositionSmoother(private val config: SmoothingConfig = SmoothingConfig(
         candidateMs = 0
         shootReady = false
         aboveEnterMs = 0
+        wasAwaitingSubject = false
     }
 
     // --- time ---------------------------------------------------------------------------------------

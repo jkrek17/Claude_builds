@@ -7,6 +7,7 @@ import com.compositioncoach.composition.model.DetectedFace
 import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.ImageStatistics
 import com.compositioncoach.composition.model.SceneClassification
+import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.SceneType
 
 /**
@@ -31,6 +32,12 @@ import com.compositioncoach.composition.model.SceneType
  * [SceneClassification.isSymmetricScene] is computed independently of the type above (a symmetric scene
  * can be architecture, but could equally be a centred portrait), so [SubjectPlacementAnalyzer] and
  * [SymmetryAnalyzer] can both consult it.
+ *
+ * **Declared intent.** When the photographer picks a shooting mode ([SceneIntent] other than `AUTO`),
+ * [CompositionEngine] does not call [classify] at all — the type is simply the one they declared. It
+ * still needs the same derived flags a detected scene would have (symmetry, visual horizon, close-up
+ * face), so it calls [forcedClassification], which reuses the exact same per-flag heuristics ([symmetryOf],
+ * [visualHorizonOf], [closeUpFaceOf]) that [classify] itself is built from below.
  */
 object SceneClassifier {
     const val CLOSE_UP_FACE_HEIGHT = 0.35f
@@ -44,7 +51,7 @@ object SceneClassifier {
     fun classify(frame: FrameAnalysis): SceneClassification {
         val faces = frame.faces
         val stats = frame.stats
-        val isSymmetric = stats != null && stats.horizontalSymmetry >= SYMMETRY_THRESHOLD
+        val isSymmetric = symmetryOf(stats)
 
         if (faces.size == 1) {
             return portraitOf(faces[0], isSymmetric)
@@ -61,13 +68,41 @@ object SceneClassifier {
         return SceneClassification(SceneType.GENERAL, confidence = 0.4f, isSymmetricScene = isSymmetric)
     }
 
+    /**
+     * Builds the [SceneClassification] for a photographer-declared [type] (any [SceneIntent] other than
+     * `AUTO`): the type itself is a given, but [SceneClassification.isSymmetricScene], [SceneClassification.hasHorizon]
+     * and [SceneClassification.isCloseUpPortrait] are still read off the frame, exactly as [classify] would derive
+     * them, so every downstream analyzer that consults those flags behaves the same either way.
+     */
+    fun forcedClassification(frame: FrameAnalysis, type: SceneType): SceneClassification = SceneClassification(
+        type = type,
+        confidence = 1f,
+        isSymmetricScene = symmetryOf(frame.stats),
+        hasHorizon = visualHorizonOf(frame.stats),
+        isCloseUpPortrait = closeUpFaceOf(frame.faces),
+    )
+
+    /** Strong left-right mirror symmetry, independent of what (if anything) that implies about scene type. */
+    fun symmetryOf(stats: ImageStatistics?): Boolean = stats != null && stats.horizontalSymmetry >= SYMMETRY_THRESHOLD
+
+    /** A visually plausible horizon: either a device/vision-reported angle, or a strong horizontal line over a brighter sky. */
+    fun visualHorizonOf(stats: ImageStatistics?): Boolean {
+        if (stats == null) return false
+        val reportedHorizon = stats.estimatedHorizonAngleDegrees != null
+        val lineHorizon = stats.strongHorizontalLine(HORIZON_LINE_MIN_STRENGTH) != null && stats.hasBrighterTopThanBottom()
+        return reportedHorizon || lineHorizon
+    }
+
+    /** True when the largest of [faces] is tight enough to read as a head-and-shoulders close-up crop. */
+    fun closeUpFaceOf(faces: List<DetectedFace>): Boolean =
+        faces.maxByOrNull { it.bounds.height }?.let { it.bounds.height > CLOSE_UP_FACE_HEIGHT } ?: false
+
     private fun portraitOf(face: DetectedFace, isSymmetric: Boolean): SceneClassification {
-        val closeUp = face.bounds.height > CLOSE_UP_FACE_HEIGHT
         return SceneClassification(
             type = SceneType.PORTRAIT,
             confidence = 0.9f * face.confidence.coerceIn(0.3f, 1f),
             isSymmetricScene = isSymmetric,
-            isCloseUpPortrait = closeUp,
+            isCloseUpPortrait = closeUpFaceOf(listOf(face)),
         )
     }
 
@@ -81,9 +116,8 @@ object SceneClassifier {
     }
 
     private fun landscapeOf(stats: ImageStatistics, isSymmetric: Boolean): SceneClassification? {
+        if (!visualHorizonOf(stats)) return null
         val reportedHorizon = stats.estimatedHorizonAngleDegrees != null
-        val lineHorizon = stats.strongHorizontalLine(HORIZON_LINE_MIN_STRENGTH) != null && stats.hasBrighterTopThanBottom()
-        if (!reportedHorizon && !lineHorizon) return null
         val confidence = if (reportedHorizon) 0.85f else 0.6f
         return SceneClassification(SceneType.LANDSCAPE, confidence, isSymmetricScene = isSymmetric, hasHorizon = true)
     }

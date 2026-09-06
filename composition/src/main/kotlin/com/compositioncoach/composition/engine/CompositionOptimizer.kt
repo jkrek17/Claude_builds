@@ -10,6 +10,7 @@ import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.OptimizationResult
 import com.compositioncoach.composition.model.ReframeVector
 import com.compositioncoach.composition.model.SceneClassification
+import com.compositioncoach.composition.model.SceneIntent
 
 /**
  * A cheap "what if?" search: simulates a handful of nearby framings (pan left/right, tilt up/down, zoom
@@ -30,20 +31,26 @@ import com.compositioncoach.composition.model.SceneClassification
 class CompositionOptimizer(
     private val analyzers: List<CompositionAnalyzer>,
 ) {
-    fun optimize(frame: FrameAnalysis, scene: SceneClassification, currentScore: Float, level: GuidanceLevel): OptimizationResult {
+    fun optimize(
+        frame: FrameAnalysis,
+        scene: SceneClassification,
+        currentScore: Float,
+        level: GuidanceLevel,
+        intent: SceneIntent = SceneIntent.AUTO,
+    ): OptimizationResult {
         val candidates = mutableListOf(FramingCandidate("current", ReframeVector.ZERO, currentScore))
         for ((label, vector) in MOVES) {
-            val predicted = predictScore(frame, scene, vector, level)
+            val predicted = predictScore(frame, scene, vector, level, intent)
             candidates += FramingCandidate(label, vector, predicted)
         }
         val best = candidates.maxByOrNull { it.predictedScore }
         return OptimizationResult(currentScore, candidates, best)
     }
 
-    private fun predictScore(frame: FrameAnalysis, scene: SceneClassification, vector: ReframeVector, level: GuidanceLevel): Float {
+    private fun predictScore(frame: FrameAnalysis, scene: SceneClassification, vector: ReframeVector, level: GuidanceLevel, intent: SceneIntent): Float {
         val transformed = FrameTransform.transform(frame, vector)
-        val resolution = SubjectResolver.resolve(transformed)
-        val context = AnalysisContext(transformed, scene, resolution.subjects, resolution.primary, level)
+        val resolution = SubjectResolver.resolve(transformed, intent)
+        val context = AnalysisContext(transformed, scene, resolution.subjects, resolution.primary, level, intent)
         val metrics: List<CompositionMetric> = analyzers.mapNotNull { analyzer ->
             runCatching { analyzer.analyze(context) }.getOrNull()
         }

@@ -118,6 +118,27 @@ object SyntheticFrames {
         )
     }
 
+    /**
+     * A compact, centred square of elevated edge density against a quieter background — a plausible
+     * "object on a table" signal for [StatsHeuristics.compactHighEdgeRegion]. Tune [hotEdge] relative to
+     * [backgroundEdge] to land the resulting contrast ratio wherever a test needs it (e.g. above
+     * [SubjectResolver]'s OBJECT-intent threshold but below its default one).
+     */
+    fun centralSalientRegion(hotEdge: Float, backgroundEdge: Float = 0.05f, gridWidth: Int = 20, gridHeight: Int = 20): ImageStatistics {
+        val luminance = FloatArray(gridWidth * gridHeight) { 0.5f }
+        val edge = FloatArray(gridWidth * gridHeight) { backgroundEdge }
+        val c0 = (gridWidth * 0.35f).toInt()
+        val c1 = (gridWidth * 0.65f).toInt()
+        val r0 = (gridHeight * 0.35f).toInt()
+        val r1 = (gridHeight * 0.65f).toInt()
+        for (r in r0..r1) for (c in c0..c1) edge[r * gridWidth + c] = hotEdge
+        return ImageStatistics(
+            gridWidth, gridHeight, luminance, edge,
+            horizontalSymmetry = 0.3f, verticalSymmetry = 0.3f,
+            meanLuminance = 0.5f, contrast = 0.3f,
+        )
+    }
+
     /** A frame statistics grid with a narrow high-edge-density vertical band directly above [face]. */
     fun withVerticalBandAbove(face: DetectedFace, gridWidth: Int = 20, gridHeight: Int = 20, bandEdge: Float = 0.7f, backgroundEdge: Float = 0.03f): ImageStatistics {
         val luminance = FloatArray(gridWidth * gridHeight) { 0.5f }

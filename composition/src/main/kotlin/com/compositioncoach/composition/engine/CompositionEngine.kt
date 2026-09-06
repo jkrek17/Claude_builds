@@ -20,6 +20,7 @@ import com.compositioncoach.composition.model.CompositionResult
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.MetricCategory
 import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.OptimizationResult
 import com.compositioncoach.composition.model.Recommendation
@@ -40,13 +41,17 @@ import com.compositioncoach.composition.model.Severity
 class CompositionEngine(
     private val analyzers: List<CompositionAnalyzer>,
     private val sceneClassifier: (FrameAnalysis) -> SceneClassification = SceneClassifier::classify,
-    private val subjectResolver: (FrameAnalysis) -> SubjectResolution = SubjectResolver::resolve,
+    private val subjectResolver: (FrameAnalysis, SceneIntent) -> SubjectResolution = SubjectResolver::resolve,
     private val recommendationEngine: RecommendationEngine = RecommendationEngine(),
     private val optimizer: CompositionOptimizer = CompositionOptimizer(analyzers),
 ) {
     /**
-     * @param intent the photographer's declared shooting mode. STATUS: plumbed through but not yet honoured;
-     *   the :composition owner implements intent override + "awaiting subject" coaching.
+     * @param intent the photographer's declared shooting mode (Settings > Shooting mode). [SceneIntent.AUTO]
+     *   leaves everything to [SceneClassifier]; any other value overrides the detected scene type (see
+     *   [SceneClassifier.forcedClassification]), changes which detections count as subjects (see
+     *   [SubjectResolver]'s per-intent rules), and — for PORTRAIT/GROUP_PORTRAIT/OBJECT — coaches the
+     *   photographer *toward* the intent when no qualifying subject is in frame yet (see
+     *   [IntentSubjectCoach], [CompositionResult.awaitingSubject]).
      */
     fun evaluate(frame: FrameAnalysis, level: GuidanceLevel = GuidanceLevel.BALANCED, intent: SceneIntent = SceneIntent.AUTO): CompositionResult {
         return runCatching { evaluateInternal(frame, level, intent) }.getOrElse { CompositionResult.empty(frame.timestampNanos) }
@@ -56,18 +61,26 @@ class CompositionEngine(
         val startNanos = System.nanoTime()
 
         // Background faces (someone at the next table) must not hijack the scene type or the subject.
-        val frame = SubjectFilter.dropIncidentalFaces(rawFrame)
-        val scene = sceneClassifier(frame)
-        val resolution = subjectResolver(frame)
-        val context = AnalysisContext(frame, scene, resolution.subjects, resolution.primary, level)
+        // PORTRAIT/GROUP_PORTRAIT relax this threshold (see SubjectFilter) since the photographer has
+        // already told us there is a person to shoot.
+        val frame = SubjectFilter.dropIncidentalFaces(rawFrame, intent)
+        val forcedType = intent.forcedSceneType()
+        val scene = if (forcedType == null) sceneClassifier(frame) else SceneClassifier.forcedClassification(frame, forcedType)
+        val resolution = subjectResolver(frame, intent)
+        val context = AnalysisContext(frame, scene, resolution.subjects, resolution.primary, level, intent)
 
         val metrics: List<CompositionMetric> = analyzers.mapNotNull { analyzer ->
             runCatching { analyzer.analyze(context) }.getOrNull()
         }
 
+        val awaiting = IntentSubjectCoach.awaitingSubjectRecommendation(intent, rawFrame, resolution)
+        if (awaiting != null) {
+            return awaitingSubjectResult(frame, scene, metrics, resolution, awaiting, intent, startNanos)
+        }
+
         val rawScore = ScoreAggregator.aggregate(metrics, scene)
         val ranked = recommendationEngine.rank(metrics, level)
-        val optimization = runCatching { optimizer.optimize(frame, scene, rawScore, level) }.getOrNull()
+        val optimization = runCatching { optimizer.optimize(frame, scene, rawScore, level, intent) }.getOrNull()
         val finalRecommendations = applyOptimizerInsight(ranked, optimization)
 
         val isShootReady = rawScore >= SHOOT_READY_SCORE &&
@@ -88,8 +101,39 @@ class CompositionEngine(
             optimization = optimization,
             weights = ScoreWeights.forScene(scene.type),
             engineTimeMs = (System.nanoTime() - startNanos) / 1_000_000,
+            intent = intent,
         )
     }
+
+    /**
+     * The declared intent needs a subject ([IntentSubjectCoach]) that is not in frame yet. The score is
+     * meaningless here (0, per [CompositionResult.awaitingSubject]'s contract) and only the horizon metric
+     * survives — it is the one piece of ordinary advice still useful while the photographer searches for
+     * their subject (nobody wants to find the person only to discover the phone was tilted the whole time).
+     */
+    private fun awaitingSubjectResult(
+        frame: FrameAnalysis,
+        scene: SceneClassification,
+        metrics: List<CompositionMetric>,
+        resolution: SubjectResolution,
+        recommendation: Recommendation,
+        intent: SceneIntent,
+        startNanos: Long,
+    ): CompositionResult = CompositionResult(
+        timestampNanos = frame.timestampNanos,
+        score = 0,
+        rawScore = 0f,
+        scene = scene,
+        metrics = metrics.filter { it.category == MetricCategory.HORIZON },
+        recommendations = listOf(recommendation),
+        subjects = resolution.subjects,
+        primarySubject = resolution.primary,
+        isShootReady = false,
+        weights = ScoreWeights.forScene(scene.type),
+        engineTimeMs = (System.nanoTime() - startNanos) / 1_000_000,
+        intent = intent,
+        awaitingSubject = true,
+    )
 
     /**
      * Uses the optimizer's best predicted candidate two ways: (a) when it beats the current framing by a

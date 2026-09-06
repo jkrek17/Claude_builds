@@ -18,7 +18,12 @@ import com.compositioncoach.composition.model.Severity
  * The one thing it does flag is a subject that has become so small relative to the frame
  * ([TINY_SUBJECT_AREA], under ~3% of the frame's area) that it reads as lost rather than deliberately
  * small — unless the scene is a [SceneType.LANDSCAPE], where a tiny figure against a big sky/vista is a
- * classic, intentional composition and should not be second-guessed.
+ * classic, intentional composition and should not be second-guessed. This check is keyed off
+ * [SceneClassification.type][com.compositioncoach.composition.model.SceneClassification.type], so a
+ * declared [com.compositioncoach.composition.model.SceneIntent.LANDSCAPE] gets the same protection for
+ * free — the engine forces the scene type before any analyzer runs (see
+ * [com.compositioncoach.composition.engine.CompositionEngine]), and this analyzer never needs to know
+ * whether that came from detection or from the photographer.
  */
 class NegativeSpaceAnalyzer : CompositionAnalyzer {
     override val name: String = "NegativeSpaceAnalyzer"
