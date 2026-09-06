@@ -145,3 +145,17 @@ smoke test without touching real signing material.
 R8's shrinking/keep-rule warnings, if any, land in
 `app/build/outputs/mapping/release/missing_rules.txt` and `app/build/outputs/mapping/release/mapping.txt`
 after a release build — check `missing_rules.txt` for anything unexpected after adding a new dependency.
+
+## Sharing test builds without a Play account
+
+Two ways to let testers download without a GitHub login while this repository stays private:
+
+1. **Public releases mirror (built in).** Create an empty public repository (e.g. `composition-coach-releases`),
+   copy `docs/TESTERS.md` into it as `TESTERS.md`, create a fine-grained personal access token with
+   *Contents: read and write* on that repository, and add two secrets to this repository:
+   `CC_RELEASES_REPO` (`owner/composition-coach-releases`) and `CC_RELEASES_TOKEN`. Every push then
+   refreshes a `latest` release there with the debug APKs. Share
+   `https://github.com/owner/composition-coach-releases/releases/latest`.
+2. **Play Console internal testing.** The proper route once you have a developer account: upload the
+   AAB from the `release` job to an internal testing track and add tester emails. No sideloading, no
+   Play Protect prompt, automatic updates. Steps above under "Cutting a release".

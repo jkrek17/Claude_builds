@@ -14,6 +14,8 @@ jobs:
     name: Test and build debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      HAS_MIRROR: ${{ secrets.CC_RELEASES_REPO != '' && secrets.CC_RELEASES_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -66,6 +68,24 @@ jobs:
             --prerelease \
             --title "Latest debug build" \
             --notes "Debug APK built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Download CompositionCoach-debug.apk, open it on your phone, allow the install, and launch Composition Coach."
+
+      # Optional: mirror the debug APK to a separate public "releases" repository so testers can download
+      # without a GitHub login while this repo stays private. Activates when both secrets exist:
+      #   CC_RELEASES_REPO  = "owner/repo" of the public repository
+      #   CC_RELEASES_TOKEN = a fine-grained PAT with Contents: read/write on that repository
+      - name: Mirror APK to public releases repo
+        if: ${{ github.event_name == 'push' && env.HAS_MIRROR == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.CC_RELEASES_TOKEN }}
+          MIRROR_REPO: ${{ secrets.CC_RELEASES_REPO }}
+        run: |
+          set -eu
+          TAG="latest"
+          gh release delete "$TAG" --yes --cleanup-tag --repo "$MIRROR_REPO" || true
+          gh release create "$TAG" CompositionCoach-debug.apk CompositionCoach-debug-arm32.apk \
+            --repo "$MIRROR_REPO" \
+            --title "Composition Coach (test build)" \
+            --notes "Test build ${GITHUB_SHA::7}. Most phones: download CompositionCoach-debug.apk, open it, allow the install. See TESTERS.md for install steps and what to report."
 
       - name: Upload test reports
         if: always()
