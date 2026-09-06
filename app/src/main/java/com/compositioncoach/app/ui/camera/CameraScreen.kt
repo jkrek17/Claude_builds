@@ -128,6 +128,13 @@ fun CameraScreen(
         onDispose { cameraController.shutdown() }
     }
 
+    // ImageCapture.targetRotation is a live CameraX property (no rebind needed, unlike capture mode): keep
+    // it following the phone's actual physical rotation so a saved photo's EXIF orientation is correct
+    // regardless of how the phone was held when the shutter fired — see CameraController.setCaptureRotationDegrees.
+    LaunchedEffect(uiState.deviceRotationDegrees) {
+        cameraController.setCaptureRotationDegrees(uiState.deviceRotationDegrees)
+    }
+
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
@@ -200,8 +207,10 @@ fun CameraScreen(
                     focusTapOffset?.let { offset -> key(focusTapId) { FocusRingOverlay(tapOffset = offset) } }
 
                     if (uiState.settings.showThirdsGrid) ThirdsGridOverlay()
-                    CompositionOverlay(uiState.composition)
-                    if (uiState.settings.debugMode) DebugGeometryOverlay(uiState.composition, uiState.debugFrame)
+                    CompositionOverlay(uiState.composition, deviceRotationDegrees = uiState.deviceRotationDegrees)
+                    if (uiState.settings.debugMode) {
+                        DebugGeometryOverlay(uiState.composition, uiState.debugFrame, deviceRotationDegrees = uiState.deviceRotationDegrees)
+                    }
 
                     CameraTopBar(
                         showDebugChip = uiState.settings.debugMode,
@@ -210,6 +219,7 @@ fun CameraScreen(
                         hasFlashUnit = uiState.hasFlashUnit,
                         onFlashClick = { viewModel.onFlashModeChanged(cameraController.cycleFlashMode()) },
                         onSettingsClick = onOpenSettings,
+                        deviceRotationDegrees = uiState.deviceRotationDegrees,
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
 
@@ -219,6 +229,7 @@ fun CameraScreen(
                         hasScene = hasScene,
                         showScore = uiState.settings.showScore,
                         awaitingSubject = uiState.composition.awaitingSubject,
+                        deviceRotationDegrees = uiState.deviceRotationDegrees,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 60.dp).alpha(postCaptureFadeAlpha),
                     )
 
@@ -235,6 +246,7 @@ fun CameraScreen(
                         displayScore = uiState.composition.displayScore,
                         isShootReady = uiState.composition.isShootReady,
                         hasScene = hasScene,
+                        deviceRotationDegrees = uiState.deviceRotationDegrees,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 144.dp).alpha(postCaptureFadeAlpha),
                     )
 
@@ -281,6 +293,7 @@ fun CameraScreen(
                         onShutterClick = onShutterClick,
                         onSwitchLensClick = { viewModel.onSwitchLensRequested() },
                         onOpenGallery = { openGallery(context, uiState.lastPhotoUri ?: lastPhotoUri) },
+                        deviceRotationDegrees = uiState.deviceRotationDegrees,
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )
                 }

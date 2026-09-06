@@ -67,9 +67,14 @@ private val HORIZON_INDICATOR_ANCHOR = NormalizedPoint(0.5f, 0.14f)
  * rounded outline of that region. Detected-subject/object *bounding boxes* remain debug-only (see
  * [DebugGeometryOverlay]); this is the one region outline shown outside debug mode, deliberately restrained
  * (no fill, low alpha) so it reads as a hint, not a debug box.
+ *
+ * All geometry here is `FrameAnalysis`'s physical-up coordinates, not the (never-rotating) preview's own
+ * frame; every point/rect/direction drawn goes through [OverlayMapper] with [deviceRotationDegrees] so it
+ * lands in the right place and points the right way regardless of how the phone is physically held — see
+ * [OverlayMapper]'s class KDoc and the "Arrow semantics" note on [drawDirectionalArrow].
  */
 @Composable
-fun CompositionOverlay(composition: SmoothedComposition, modifier: Modifier = Modifier) {
+fun CompositionOverlay(composition: SmoothedComposition, deviceRotationDegrees: Int = 0, modifier: Modifier = Modifier) {
     val primary = composition.primaryRecommendation
     // The region highlight only makes sense while there is still something to fix, so it never shows in
     // shoot-ready state (per the spec: guidance affordances are never drawn once framing is already good).
@@ -127,55 +132,65 @@ fun CompositionOverlay(composition: SmoothedComposition, modifier: Modifier = Mo
             metrics.asSequence()
                 .flatMap { it.geometry.asSequence() }
                 .filterIsInstance<OverlayGeometry.TargetPoint>()
-                .forEach { drawTargetRing(it.point) }
+                .forEach { drawTargetRing(it.point, deviceRotationDegrees) }
         }
 
         if (showsRotateGlyph) {
-            drawRotateGlyph(primary!!.direction, HORIZON_INDICATOR_ANCHOR)
+            drawRotateGlyph(primary!!.direction, HORIZON_INDICATOR_ANCHOR, deviceRotationDegrees)
         } else if (levelAlpha.value > 0f && horizonLine != null) {
-            drawLevelIndicator(horizonLine, levelColor, levelAlpha.value)
+            drawLevelIndicator(horizonLine, levelColor, levelAlpha.value, deviceRotationDegrees)
         }
 
         if (showsArrow) {
             val anchor = composition.primarySubject?.anchorPoint ?: FALLBACK_ANCHOR
-            drawDirectionalArrow(primary!!.direction, anchor, pulse * ARROW_PULSE_DISTANCE.toPx())
+            drawDirectionalArrow(primary!!.direction, anchor, pulse * ARROW_PULSE_DISTANCE.toPx(), deviceRotationDegrees)
         }
 
         // Drawn last so it never sits under the arrow/target ring; regionAlpha (animated above) is what
         // actually fades it in/out, so drawing with 0 alpha here after the headline moves on is harmless.
-        if (regionAlpha > 0f) lastRegion?.let { drawRegionHighlight(it, regionAlpha) }
+        if (regionAlpha > 0f) lastRegion?.let { drawRegionHighlight(it, regionAlpha, deviceRotationDegrees) }
     }
 }
 
-private fun DrawScope.px(p: NormalizedPoint): Offset = Offset(p.x * size.width, p.y * size.height)
+/** Every physical-up point drawn on this overlay goes through [OverlayMapper] so rotation is never skipped. */
+private fun DrawScope.px(p: NormalizedPoint, deviceRotationDegrees: Int): Offset {
+    val (x, y) = OverlayMapper.toPx(p, deviceRotationDegrees, size.width, size.height)
+    return Offset(x, y)
+}
 
 /**
  * A restrained rounded outline over a recommendation's [OverlayGeometry]-adjacent `region` (background
  * collisions, edge tension) while it is the headline: 1dp stroke, 45% white, no fill, per the spec — never
  * more prominent than that, since the arrow/ring already carry the actionable guidance.
  */
-private fun DrawScope.drawRegionHighlight(region: NormalizedRect, alpha: Float) {
+private fun DrawScope.drawRegionHighlight(region: NormalizedRect, alpha: Float, deviceRotationDegrees: Int) {
     if (alpha <= 0f) return
-    val topLeft = Offset(region.left * size.width, region.top * size.height)
-    val rectSize = androidx.compose.ui.geometry.Size(region.width * size.width, region.height * size.height)
+    val px = OverlayMapper.toPxRect(region, deviceRotationDegrees, size.width, size.height)
     drawRoundRect(
         color = Color.White.copy(alpha = REGION_STROKE_ALPHA * alpha),
-        topLeft = topLeft,
-        size = rectSize,
+        topLeft = Offset(px.left, px.top),
+        size = androidx.compose.ui.geometry.Size(px.width, px.height),
         cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx()),
         style = Stroke(width = 1.dp.toPx()),
     )
 }
 
 /** 18dp ring (9dp radius), 1.5dp stroke, 70% white — restrained on purpose, the arrow carries the advice. */
-private fun DrawScope.drawTargetRing(point: NormalizedPoint) {
-    val center = px(point)
+private fun DrawScope.drawTargetRing(point: NormalizedPoint, deviceRotationDegrees: Int) {
+    val center = px(point, deviceRotationDegrees)
     drawCircle(color = Color.White.copy(alpha = 0.7f), radius = 9.dp.toPx(), center = center, style = Stroke(width = 1.5.dp.toPx()))
 }
 
-private fun DrawScope.drawLevelIndicator(line: OverlayGeometry.Line, color: Color, alpha: Float) {
-    val angle = Math.toDegrees(atan2((line.end.y - line.start.y).toDouble(), (line.end.x - line.start.x).toDouble())).toFloat()
-    val center = px(HORIZON_INDICATOR_ANCHOR)
+/**
+ * The angle is derived from the horizon *line*'s two endpoints mapped through [OverlayMapper] (rather
+ * than rotating the raw physical-space angle number directly) so a 90/180/270-degree device rotation is
+ * automatically folded in exactly the same way every other point on this overlay is rotated.
+ */
+private fun DrawScope.drawLevelIndicator(line: OverlayGeometry.Line, color: Color, alpha: Float, deviceRotationDegrees: Int) {
+    val start = px(line.start, deviceRotationDegrees)
+    val end = px(line.end, deviceRotationDegrees)
+    val angle = Math.toDegrees(atan2((end.y - start.y).toDouble(), (end.x - start.x).toDouble())).toFloat()
+    val center = px(HORIZON_INDICATOR_ANCHOR, deviceRotationDegrees)
     val halfLength = 22.dp.toPx()
     rotate(degrees = angle, pivot = center) {
         drawLine(
@@ -199,19 +214,26 @@ private fun DrawScope.drawLevelIndicator(line: OverlayGeometry.Line, color: Colo
  * points right, matching `ReframeVector`'s "dx > 0 = pan right" convention, so the arrow always agrees
  * with which way the photographer should actually move the phone. White with a thin dark outline so it
  * reads over any background; [pulsePx] gently translates it along its own direction, 0..4dp.
+ *
+ * ### Arrow semantics under device rotation
+ * [direction] is physical-up ("move toward the physical right"); when the phone is held rotated, the
+ * *on-screen* arrow must be rotated by [deviceRotationDegrees] so it still visually points the physically
+ * correct way — [OverlayMapper.rotateVectorToDisplay] does that (a direction, not a point: no
+ * translation), same rotation every other element on this overlay goes through.
  */
-private fun DrawScope.drawDirectionalArrow(direction: Direction, anchor: NormalizedPoint, pulsePx: Float) {
-    val base = px(anchor)
+private fun DrawScope.drawDirectionalArrow(direction: Direction, anchor: NormalizedPoint, pulsePx: Float, deviceRotationDegrees: Int) {
+    val base = px(anchor, deviceRotationDegrees)
     val length = 28.dp.toPx()
     val stroke = 3.dp.toPx()
-    val (dx, dy) = when (direction) {
+    val (rawDx, rawDy) = when (direction) {
         Direction.LEFT -> -1f to 0f
         Direction.RIGHT -> 1f to 0f
         Direction.UP -> 0f to -1f
         Direction.DOWN -> 0f to 1f
         Direction.CLOSER, Direction.BACK, Direction.ROTATE_CLOCKWISE, Direction.ROTATE_COUNTER_CLOCKWISE, Direction.NONE -> 0f to 0f
     }
-    if (dx == 0f && dy == 0f) return
+    if (rawDx == 0f && rawDy == 0f) return
+    val (dx, dy) = OverlayMapper.rotateVectorToDisplay(rawDx, rawDy, deviceRotationDegrees)
     val center = Offset(base.x + dx * pulsePx, base.y + dy * pulsePx)
     val tip = Offset(center.x + dx * length, center.y + dy * length)
     val angle = atan2(dy, dx)
@@ -232,8 +254,8 @@ private fun DrawScope.drawDirectionalArrow(direction: Direction, anchor: Normali
     drawLine(color = fill, start = tip, end = rightWing, strokeWidth = stroke)
 }
 
-private fun DrawScope.drawRotateGlyph(direction: Direction, anchor: NormalizedPoint) {
-    val center = px(anchor)
+private fun DrawScope.drawRotateGlyph(direction: Direction, anchor: NormalizedPoint, deviceRotationDegrees: Int) {
+    val center = px(anchor, deviceRotationDegrees)
     val color = Color.White.copy(alpha = 0.9f)
     val radius = 16.dp.toPx()
     val sweep = if (direction == Direction.ROTATE_CLOCKWISE) 250f else -250f

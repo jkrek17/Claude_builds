@@ -33,40 +33,56 @@ private const val MASK_MAX_ALPHA = 0.35f
  * may be a superset of the boxes that actually became a subject, see `:vision`'s `ObjectMapper`), and the
  * subject mask as a faint heat layer drawn *behind* everything else. Only mounted when debug mode is on —
  * [CompositionOverlay] never draws boxes, regions or the mask, debug or not.
+ *
+ * Like [CompositionOverlay], everything here is `FrameAnalysis`'s physical-up coordinates; every
+ * point/rect drawn goes through [OverlayMapper] with [deviceRotationDegrees] so debug geometry lines up
+ * with the live overlay above it regardless of how the phone is physically held.
  */
 @Composable
-fun DebugGeometryOverlay(composition: SmoothedComposition, debugFrame: DebugFrameData, modifier: Modifier = Modifier) {
+fun DebugGeometryOverlay(
+    composition: SmoothedComposition,
+    debugFrame: DebugFrameData,
+    deviceRotationDegrees: Int = 0,
+    modifier: Modifier = Modifier,
+) {
     Canvas(modifier = modifier.fillMaxSize()) {
-        debugFrame.subjectMask?.let { drawMaskHeat(it) }
-        debugFrame.objects.forEach { drawObjectBox(it) }
-        composition.raw.subjects.forEach { subject -> drawSubject(subject) }
+        debugFrame.subjectMask?.let { drawMaskHeat(it, deviceRotationDegrees) }
+        debugFrame.objects.forEach { drawObjectBox(it, deviceRotationDegrees) }
+        composition.raw.subjects.forEach { subject -> drawSubject(subject, deviceRotationDegrees) }
     }
 }
 
-/** Foreground-probability heat: each mask cell tinted green, alpha proportional to probability, capped low. */
-private fun DrawScope.drawMaskHeat(mask: SubjectMask) {
-    val cellWidth = size.width / mask.gridWidth
-    val cellHeight = size.height / mask.gridHeight
+/**
+ * Foreground-probability heat: each mask cell tinted green, alpha proportional to probability, capped
+ * low. Each cell's own normalized rect (not just its center) is rotated via [OverlayMapper.toPxRect] —
+ * rotation by a multiple of 90 degrees keeps the cell axis-aligned, just possibly with width/height
+ * swapped, which `toPxRect` already accounts for.
+ */
+private fun DrawScope.drawMaskHeat(mask: SubjectMask, deviceRotationDegrees: Int) {
+    val cellW = 1f / mask.gridWidth
+    val cellH = 1f / mask.gridHeight
     for (row in 0 until mask.gridHeight) {
         for (col in 0 until mask.gridWidth) {
             val probability = mask.at(col, row)
             if (probability <= 0f) continue
+            val cellRect = NormalizedRect(col * cellW, row * cellH, (col + 1) * cellW, (row + 1) * cellH)
+            val px = OverlayMapper.toPxRect(cellRect, deviceRotationDegrees, size.width, size.height)
             drawRect(
                 color = Color(0xFF34D399).copy(alpha = (probability * MASK_MAX_ALPHA).coerceAtMost(MASK_MAX_ALPHA)),
-                topLeft = Offset(col * cellWidth, row * cellHeight),
-                size = androidx.compose.ui.geometry.Size(cellWidth, cellHeight),
+                topLeft = Offset(px.left, px.top),
+                size = androidx.compose.ui.geometry.Size(px.width, px.height),
             )
         }
     }
 }
 
-private fun DrawScope.drawObjectBox(obj: DetectedObject) {
-    drawRectOutline(obj.bounds, OBJECT_BOX_COLOR, 1.5.dp.toPx(), dashed = true)
+private fun DrawScope.drawObjectBox(obj: DetectedObject, deviceRotationDegrees: Int) {
+    val px = drawRectOutline(obj.bounds, OBJECT_BOX_COLOR, 1.5.dp.toPx(), deviceRotationDegrees, dashed = true)
     val label = "${obj.category.name.lowercase()} ${(obj.confidence * 100).toInt()}%"
     drawContext.canvas.nativeCanvas.drawText(
         label,
-        obj.bounds.left * size.width,
-        (obj.bounds.top * size.height - 4.dp.toPx()).coerceAtLeast(10.dp.toPx()),
+        minOf(px.left, px.right),
+        (minOf(px.top, px.bottom) - 4.dp.toPx()).coerceAtLeast(10.dp.toPx()),
         android.graphics.Paint().apply {
             color = android.graphics.Color.argb(230, 127, 216, 255)
             textSize = 10.sp.toPx()
@@ -75,33 +91,41 @@ private fun DrawScope.drawObjectBox(obj: DetectedObject) {
     )
 }
 
-private fun DrawScope.drawSubject(subject: DetectedSubject) {
+private fun DrawScope.drawSubject(subject: DetectedSubject, deviceRotationDegrees: Int) {
     val color = if (subject.isPrimary) Color(0xFF34D399) else Color(0xFFFFC857).copy(alpha = 0.7f)
-    drawRectOutline(subject.bounds, color, if (subject.isPrimary) 2.5.dp.toPx() else 1.5.dp.toPx())
+    drawRectOutline(subject.bounds, color, if (subject.isPrimary) 2.5.dp.toPx() else 1.5.dp.toPx(), deviceRotationDegrees)
 
     subject.face?.let { face ->
-        face.leftEye?.let { drawDot(it, color) }
-        face.rightEye?.let { drawDot(it, color) }
-        face.noseBase?.let { drawDot(it, color) }
+        face.leftEye?.let { drawDot(it, color, deviceRotationDegrees) }
+        face.rightEye?.let { drawDot(it, color, deviceRotationDegrees) }
+        face.noseBase?.let { drawDot(it, color, deviceRotationDegrees) }
     }
     subject.body?.landmarks?.values?.forEach { landmark ->
-        if (landmark.inFrameLikelihood >= 0.5f) drawDot(landmark.position, color.copy(alpha = 0.8f))
+        if (landmark.inFrameLikelihood >= 0.5f) drawDot(landmark.position, color.copy(alpha = 0.8f), deviceRotationDegrees)
     }
 }
 
-private fun DrawScope.drawRectOutline(rect: NormalizedRect, color: Color, strokeWidth: Float, dashed: Boolean = false) {
-    val topLeft = Offset(rect.left * size.width, rect.top * size.height)
-    val rectSize = androidx.compose.ui.geometry.Size((rect.width) * size.width, (rect.height) * size.height)
+/** @return the mapped pixel rect, so callers (e.g. [drawObjectBox]'s label) can anchor off it too. */
+private fun DrawScope.drawRectOutline(
+    rect: NormalizedRect,
+    color: Color,
+    strokeWidth: Float,
+    deviceRotationDegrees: Int,
+    dashed: Boolean = false,
+): FloatRectPx {
+    val px = OverlayMapper.toPxRect(rect, deviceRotationDegrees, size.width, size.height)
     drawRect(
         color = color,
-        topLeft = topLeft,
-        size = rectSize,
+        topLeft = Offset(px.left, px.top),
+        size = androidx.compose.ui.geometry.Size(px.width, px.height),
         style = Stroke(width = strokeWidth, pathEffect = if (dashed) OBJECT_DASH else null),
     )
+    return px
 }
 
-private fun DrawScope.drawDot(point: com.compositioncoach.composition.model.NormalizedPoint, color: Color) {
-    drawCircle(color = color, radius = 3.dp.toPx(), center = Offset(point.x * size.width, point.y * size.height))
+private fun DrawScope.drawDot(point: com.compositioncoach.composition.model.NormalizedPoint, color: Color, deviceRotationDegrees: Int) {
+    val (x, y) = OverlayMapper.toPx(point, deviceRotationDegrees, size.width, size.height)
+    drawCircle(color = color, radius = 3.dp.toPx(), center = Offset(x, y))
 }
 
 @Preview(name = "Object box + mask heat", showBackground = true, backgroundColor = 0xFF202020)

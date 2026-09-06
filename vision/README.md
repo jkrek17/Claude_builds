@@ -11,7 +11,9 @@ FrameAnalysisSource        // contract (unchanged, see vision/.../FrameAnalysisS
 VisionFeatureToggles       // additional settings :app can opt into (object/segmentation toggles)
 VisionPipelineFactory      // .create(context) -> FrameAnalysisSource
 VisionPipeline             // real implementation (also implements VisionFeatureToggles)
-OrientationSensor          // device roll/pitch relative to gravity
+OrientationSensor          // device roll/pitch relative to gravity, plus quantized physical rotation
+DeviceRotationQuantizer    // hysteresis/debounce quantizer, raw roll -> 0/90/180/270 (pure Kotlin)
+UprightRotation            // display-upright rotation -> physically-upright rotation (pure Kotlin)
 FrameCoordinateMapper      // rotation/crop/mirror math (pure Kotlin)
 AdaptiveSampler            // frame-rate throttle (pure Kotlin)
 ImageStatisticsComputer    // luma-plane statistics (pure Kotlin)
@@ -80,9 +82,27 @@ crashing the camera.
 
 ## Coordinate conventions
 
-Two camera-buffer-space coordinate systems are bridged to the single normalized, upright,
-front-mirrored space the rest of the app uses (see `Geometry.kt` in `:composition` for that
-contract) — full derivation and KDoc live in `FrameCoordinateMapper.kt`:
+**Physical-up, not display-up.** `:app` stays portrait-locked (`android:screenOrientation="portrait"`,
+Pixel-Camera-style — see `:app`'s README), so `Display.getRotation()` never itself changes no matter how
+the phone is physically held. Everything below still bridges to the single normalized, upright,
+front-mirrored space `Geometry.kt` in `:composition` documents — but "upright" means *physically* upright
+(as the photographer standing wherever they're pointing the camera actually sees the scene), not merely
+"upright for the app's fixed portrait target rotation". `UprightRotation.computeUprightRotationDegrees`
+(full derivation, checked against all four device rotations, in its own KDoc) corrects
+`imageProxy.imageInfo.rotationDegrees` (which only accounts for the latter) by the phone's actual physical
+rotation — `OrientationSensor.deviceRotationDegrees`, a quantized 0/90/180/270 value from
+`DeviceRotationQuantizer` — before it's used for *anything*: the `FrameCoordinateMapper` built for the
+frame, and the `InputImage` handed to every ML Kit detector. `FrameAnalysis.frameWidth`/`frameHeight`
+follow the same correction, so a landscape hold reports a frame wider than it is tall.
+`FrameAnalysis.deviceRotationDegrees` carries the same quantized value alongside the geometry so `:app` can
+map it back onto the (never-rotating) portrait preview and counter-rotate its Pixel-style chrome — see
+that field's KDoc and `:app`'s README's `OverlayMapper`/rotation sections. This is the fix for the "held in
+landscape, the app doesn't rotate" field report: the *screen* correctly never rotates (same as the stock
+Pixel Camera), but analysis — and therefore headroom/horizon/thirds advice — now reasons in the scene's
+true orientation instead of running along the wrong axis.
+
+Two camera-buffer-space coordinate systems are bridged to that normalized, physically-upright,
+front-mirrored space — full derivation and KDoc live in `FrameCoordinateMapper.kt`:
 
 - **Sensor space**: raw pixel coordinates in the buffer before rotation. `imageProxy.cropRect` and
   `ImageStatisticsComputer`'s own luma sampling work here.
@@ -130,6 +150,16 @@ where `(gx, gy, gz)` is "the direction of up, expressed in the device's own loca
 either off the fused rotation matrix (`TYPE_ROTATION_VECTOR` / `TYPE_GAME_ROTATION_VECTOR`) or
 directly off a low-pass-filtered accelerometer as a last-resort fallback. `isReliable` is false
 within ~25° of straight up/down (roll is numerically undefined there) or when no sensor exists.
+
+That raw `rollDegrees` is also, given the portrait lock above, already the phone's true physical
+rotation from natural portrait — `DeviceRotationQuantizer` buckets it into a stable 0/90/180/270-degree
+band (±25° hysteresis, 400ms debounce so it doesn't flap near a 45° boundary; freezes on the last value
+while `isReliable` is false) exposed as `OrientationSensor.deviceRotationDegrees`. `DeviceOrientation`'s
+own `rollDegrees` is then **re-referenced** onto that same quantized band
+(`referenceRollToDeviceRotation`, a plain signed subtraction) so a level hold reads ~0° in *every*
+physical orientation — e.g. a phone held level in landscape has a raw roll of ~90°, but once
+`deviceRotationDegrees` has settled on 90 the reported `rollDegrees` is ~0°, and the horizon/level
+analyzers never see a phantom ~90° tilt just because the phone is sideways.
 
 ## Detector settings
 
@@ -269,6 +299,10 @@ an empty list or a `null` horizon under low confidence is expected, correct beha
 
 ## Known limitations
 
+- `DeviceRotationQuantizer`'s ±25° hysteresis / 400ms debounce constants (like `OrientationSensor`'s
+  roll/pitch derivation more broadly) are reasoned from first principles and unit-tested in isolation,
+  not tuned against how quickly/jerkily a real hand actually rotates a phone — needs a physical device to
+  confirm the quantized rotation feels responsive without flapping near a 45° hold.
 - Horizon/dominant-line detection is a simple heuristic (row/column gradient tracking), not a real
   vanishing-point or Hough-transform detector; treat it as a soft hint, not ground truth.
 - `OrientationSensor`'s roll/pitch derivation could not be verified against a physical device in

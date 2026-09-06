@@ -1,0 +1,65 @@
+package com.compositioncoach.app.ui.camera
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+
+/**
+ * Pixel-style "controls rotate in place" support: [CameraTopBar]/[BottomControlBar]/[ScoreBadge]/
+ * [GuidanceBanner] icons and text counter-rotate by `-deviceRotationDegrees` so they stay upright to the
+ * person holding the phone, even though the *layout* (and the live preview content itself) never moves —
+ * see `CameraUiState.deviceRotationDegrees` and `app/README.md`'s rotation section for the rest of the
+ * fix. This file is the pure math + the one small Compose helper every rotating control shares.
+ */
+object RotationAnimation {
+    const val ROTATION_ANIM_MS = 250
+
+    /**
+     * The signed angular difference, in `(-180, 180]` degrees, that represents the *shorter* way around
+     * the circle from [fromDegrees] to [toDegrees]. `animateFloatAsState` interpolates linearly between
+     * raw target values, so animating directly from a value like 270 to 0 would visually spin
+     * three-quarters of the way around instead of the 90-degree hop that's actually happening — this is
+     * what [nextUnwrappedRotation] uses to avoid that.
+     */
+    fun shortestSignedDelta(fromDegrees: Float, toDegrees: Float): Float {
+        val raw = (toDegrees - fromDegrees) % 360f
+        val normalized = (raw + 360f) % 360f
+        return if (normalized > 180f) normalized - 360f else normalized
+    }
+
+    /**
+     * Adds [shortestSignedDelta] to [currentUnwrapped], an ever-accumulating (never wrapped mod 360)
+     * angle. Feeding a sequence of quantized device rotations (0/90/180/270) through this repeatedly
+     * produces a running total that always takes the shorter turn at each step — including across the
+     * 270 -> 0 (or 0 -> 270) boundary — so animating from one call's result to the next never spins the
+     * "long way around".
+     */
+    fun nextUnwrappedRotation(currentUnwrapped: Float, newQuantizedDegrees: Int): Float =
+        currentUnwrapped + shortestSignedDelta(currentUnwrapped, newQuantizedDegrees.toFloat())
+}
+
+/**
+ * Remembers an ever-accumulating target angle tracking [deviceRotationDegrees] via
+ * [RotationAnimation.nextUnwrappedRotation] (updated only when it actually changes, via
+ * [LaunchedEffect]), animates it over [RotationAnimation.ROTATION_ANIM_MS], and returns the *negated*
+ * value — the angle Pixel-style chrome should visually rotate by so it counter-rotates against the
+ * device and stays upright. Pass the result straight to `Modifier.rotate(...)`.
+ */
+@Composable
+fun rememberControlCounterRotation(deviceRotationDegrees: Int): Float {
+    var unwrapped by remember { mutableFloatStateOf(deviceRotationDegrees.toFloat()) }
+    LaunchedEffect(deviceRotationDegrees) {
+        unwrapped = RotationAnimation.nextUnwrappedRotation(unwrapped, deviceRotationDegrees)
+    }
+    val animated by animateFloatAsState(
+        targetValue = unwrapped,
+        animationSpec = tween(RotationAnimation.ROTATION_ANIM_MS),
+        label = "controlCounterRotation",
+    )
+    return -animated
+}

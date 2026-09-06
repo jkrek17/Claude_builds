@@ -65,10 +65,18 @@ import kotlin.math.abs
  * frame, not the return from `analyze()`.
  *
  * ## Coordinate handling
- * All detector outputs are converted to the upright, crop-relative, front-camera-mirrored
+ * All detector outputs are converted to the *physically* upright (not just display-upright — see
+ * [UprightRotation]), crop-relative, front-camera-mirrored
  * [com.compositioncoach.composition.model.NormalizedPoint] space via a fresh [FrameCoordinateMapper]
- * built per frame from `imageProxy.cropRect`, `imageProxy.imageInfo.rotationDegrees`, and
- * [setFrontCamera]. See that class's KDoc for the full derivation.
+ * built per frame from `imageProxy.cropRect`, [UprightRotation.computeUprightRotationDegrees] (fed
+ * `imageProxy.imageInfo.rotationDegrees` and [OrientationSensor.deviceRotationDegrees]), and
+ * [setFrontCamera]. The same corrected rotation is what's handed to ML Kit's `InputImage.fromMediaImage`,
+ * so every detector already sees a physically-upright buffer — this is what keeps headroom/horizon/thirds
+ * analysis correct when the phone is held sideways, even though the app (and the live preview) stay
+ * portrait-locked, Pixel-Camera-style. [FrameAnalysis.frameWidth]/`frameHeight` follow suit: they're the
+ * physical-upright size, so a landscape hold reports wider-than-tall. See that class's KDoc for the full
+ * derivation, and [FrameAnalysis.deviceRotationDegrees] for what `:app` does with the device-rotation
+ * value carried alongside this geometry.
  *
  * ## Failure handling
  * Detector failures (ML Kit task failure, a malformed plane, etc.) are caught per-detector; a frame
@@ -205,7 +213,13 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         var objectMs = 0L
         var segmentationMs = 0L
         try {
-            val rotation = imageProxy.imageInfo.rotationDegrees
+            // imageInfo.rotationDegrees only turns the buffer upright for the app's fixed (portrait)
+            // target rotation; UprightRotation corrects that further by the phone's actual physical
+            // rotation so every detector, the mapper, and frameWidth/Height below all agree on
+            // physical-up rather than display-up. See UprightRotation's KDoc for the derivation.
+            val displayUprightRotation = imageProxy.imageInfo.rotationDegrees
+            val deviceRotation = orientationSensor.deviceRotationDegrees
+            val rotation = UprightRotation.computeUprightRotationDegrees(displayUprightRotation, deviceRotation)
             val crop: Rect = imageProxy.cropRect
             val front = isFrontCamera
             val mapper = FrameCoordinateMapper(
@@ -328,6 +342,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                     orientation = orientationSensor.current,
                     isFrontCamera = front,
                     analysisLatencyMs = totalMs,
+                    deviceRotationDegrees = deviceRotation,
                     detectorTimings = mapOf(
                         "faces" to faceMs,
                         "pose" to poseMs,
@@ -354,6 +369,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                         isFrontCamera = isFrontCamera,
                         orientation = orientationSensor.current,
                         analysisLatencyMs = totalMs,
+                        deviceRotationDegrees = orientationSensor.deviceRotationDegrees,
                     ),
                 )
             }

@@ -32,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
@@ -85,11 +86,24 @@ fun ReviewScreen(
 
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                // The saved photo may now be landscape (a device-rotation-aware capture — see
+                // CameraController.setCaptureRotationDegrees) as well as portrait, so the bounding box's own
+                // aspect ratio follows the actual decoded image (via Coil's intrinsicSize) instead of a
+                // hardcoded 3:4 — a fixed portrait-shaped box would letterbox a landscape photo down to a
+                // sliver instead of showing it full-bleed. Falls back to 3:4 (the pre-existing behaviour)
+                // until the image has loaded and reports a real size.
+                val painter = rememberAsyncImagePainter(entry.photoUri)
+                val intrinsic = painter.intrinsicSize
+                val photoAspectRatio = if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) {
+                    intrinsic.width / intrinsic.height
+                } else {
+                    3f / 4f
+                }
                 Image(
-                    painter = rememberAsyncImagePainter(entry.photoUri),
+                    painter = painter,
                     contentDescription = "Captured photo",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(photoAspectRatio),
                 )
             }
 

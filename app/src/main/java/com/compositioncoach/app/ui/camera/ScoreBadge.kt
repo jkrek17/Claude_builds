@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -61,6 +62,9 @@ private const val BUMP_SCALE = 1.1f
  * yet (see [com.compositioncoach.composition.model.SmoothedComposition.awaitingSubject]): [score] is only the
  * last meaningful value the engine is holding, so it renders dimmed with no tier colour and shoot-ready
  * styling never shows — [GuidanceBanner] carries the actual "find your subject" instruction instead.
+ *
+ * [deviceRotationDegrees] rotates the whole badge in place, Pixel-style, so it stays upright to the person
+ * holding the phone (see [rememberControlCounterRotation]) — its position on screen never moves.
  */
 @Composable
 fun ScoreBadge(
@@ -69,9 +73,11 @@ fun ScoreBadge(
     hasScene: Boolean,
     showScore: Boolean,
     awaitingSubject: Boolean = false,
+    deviceRotationDegrees: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     if (!showScore) return
+    val controlRotation = rememberControlCounterRotation(deviceRotationDegrees)
 
     val animatedScore by animateIntAsState(
         targetValue = score,
@@ -116,6 +122,7 @@ fun ScoreBadge(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
+            .rotate(controlRotation)
             .clip(RoundedCornerShape(20.dp))
             .background(Scrim)
             .padding(horizontal = 20.dp, vertical = 10.dp)

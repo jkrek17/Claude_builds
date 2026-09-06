@@ -68,6 +68,14 @@ data class CameraUiState(
      * gallery-shortcut thumbnail button. Null until the first successful capture this process.
      */
     val lastPhotoUri: Uri? = null,
+    /**
+     * The latest `FrameAnalysis.deviceRotationDegrees` (0/90/180/270) — the phone's quantized physical
+     * rotation from natural portrait. Drives the Pixel-style "controls rotate in place" chrome
+     * ([rememberControlCounterRotation]) and [OverlayMapper]'s physical-up-to-display rotation, since the
+     * app itself stays portrait-locked and the preview content never rotates. Defaults to 0 (natural
+     * portrait) until the first frame arrives.
+     */
+    val deviceRotationDegrees: Int = 0,
 )
 
 /**
@@ -136,6 +144,7 @@ fun CameraUiState.withFrameUpdate(
     engineTimeMs: Long,
     detectorTimings: Map<String, Long> = emptyMap(),
     debugFrame: DebugFrameData = DebugFrameData(),
+    deviceRotationDegrees: Int = 0,
 ): CameraUiState = copy(
     composition = composition,
     debugStats = debugStats.copy(
@@ -146,6 +155,7 @@ fun CameraUiState.withFrameUpdate(
         detectorTimings = detectorTimings,
     ),
     debugFrame = debugFrame,
+    deviceRotationDegrees = deviceRotationDegrees,
 )
 
 /** True exactly on the transition into shoot-ready, used to fire the haptic tick once per entry. */
