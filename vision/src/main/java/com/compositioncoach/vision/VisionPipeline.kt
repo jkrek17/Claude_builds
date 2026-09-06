@@ -2,6 +2,7 @@ package com.compositioncoach.vision
 
 import android.content.Context
 import android.graphics.Rect
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.compositioncoach.composition.model.BodyLandmark
@@ -88,6 +89,7 @@ import kotlin.math.abs
  *    [MaskDownsampler] converts a fresh raw mask to a 32x32 [SubjectMask] using the same
  *    [FrameCoordinateMapper] built for this frame's faces/objects.
  */
+@androidx.annotation.OptIn(ExperimentalGetImage::class)
 class VisionPipeline(private val context: Context) : FrameAnalysisSource, VisionFeatureToggles {
 
     private val sampler = AdaptiveSampler()

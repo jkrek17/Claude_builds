@@ -99,7 +99,6 @@ android {
             // from the bundled ML Kit/TFLite native libraries roughly halves the debug APK. The release
             // build type intentionally has no abiFilters: the AAB (bundleRelease) generates per-ABI
             // splits itself, and Play serves each device only what it needs.
-            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         }
         release {
             isMinifyEnabled = true
@@ -118,6 +117,18 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // Per-ABI APKs (about a third of the universal size) for the sideload channels. Opt-in via
+    // `-PabiSplits=true` because AGP cannot build ABI splits and the AAB in the same configuration; CI
+    // passes the property to the assemble steps only and runs bundleRelease separately.
+    splits {
+        abi {
+            isEnable = project.findProperty("abiSplits") == "true"
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"

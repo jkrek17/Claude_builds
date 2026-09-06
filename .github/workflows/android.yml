@@ -38,13 +38,13 @@ jobs:
         run: ./gradlew :app:lintDebug --no-daemon
 
       - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug -PabiSplits=true --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: composition-coach-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -57,10 +57,10 @@ jobs:
         run: |
           set -eu
           TAG="debug-latest"
-          APK="app/build/outputs/apk/debug/app-debug.apk"
-          cp "$APK" CompositionCoach-debug.apk
+          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk CompositionCoach-debug.apk
+          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk CompositionCoach-debug-arm32.apk
           gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
-          gh release create "$TAG" CompositionCoach-debug.apk \
+          gh release create "$TAG" CompositionCoach-debug.apk CompositionCoach-debug-arm32.apk \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --prerelease \
@@ -108,22 +108,23 @@ jobs:
       # Always builds — with a real upload key when the four secrets are set (see docs/RELEASE.md),
       # otherwise falling back to the checked-in debug keystore so this job (and local builds) never
       # break for lack of a Play signing key. Only the "attach to release-latest" step below is gated.
-      - name: Assemble + bundle release
-        env:
-          CC_RELEASE_KEYSTORE_BASE64: ${{ secrets.CC_RELEASE_KEYSTORE_BASE64 }}
-          CC_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.CC_RELEASE_KEYSTORE_PASSWORD }}
-          CC_RELEASE_KEY_ALIAS: ${{ secrets.CC_RELEASE_KEY_ALIAS }}
-          CC_RELEASE_KEY_PASSWORD: ${{ secrets.CC_RELEASE_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon
+      - name: Assemble release APKs (per ABI)
+        run: ./gradlew :app:assembleRelease -PabiSplits=true --no-daemon
 
-      - name: Verify release APK signature
-        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner verify app/build/outputs/apk/release/app-release.apk"
+      - name: Bundle release AAB
+        run: ./gradlew :app:bundleRelease --no-daemon
+
+      - name: Verify release APK signatures
+        run: |
+          for apk in app/build/outputs/apk/release/*.apk; do
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "$apk"
+          done
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: composition-coach-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -135,22 +136,23 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Same rolling-pre-release pattern as debug-latest, but only once there's a real signed build to
-      # publish — with the debug-keystore fallback this APK isn't Play-uploadable, so it's not worth
-      # publishing (or worse, mistaking for a real release) until real signing secrets are configured.
+      # Same rolling-pre-release pattern as debug-latest. Published on every push so the R8-shrunk build
+      # is always sideloadable; the notes say whether it carries the real upload key or the checked-in
+      # debug key (same key as debug-latest, so it installs over those builds).
       - name: Publish rolling release build
-        if: ${{ github.event_name == 'push' && env.HAS_RELEASE_KEY == 'true' }}
+        if: ${{ github.event_name == 'push' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           TAG="release-latest"
-          APK="app/build/outputs/apk/release/app-release.apk"
-          cp "$APK" CompositionCoach-release.apk
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk CompositionCoach-release-arm64.apk
+          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk CompositionCoach-release-arm32.apk
+          if [ "$HAS_RELEASE_KEY" = "true" ]; then KEYNOTE="Signed with the release upload key."; else KEYNOTE="Signed with the checked-in debug key (no release secrets configured yet): fine for testing, not Play-uploadable."; fi
           gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
-          gh release create "$TAG" CompositionCoach-release.apk \
+          gh release create "$TAG" CompositionCoach-release-arm64.apk CompositionCoach-release-arm32.apk \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Latest release build" \
-            --notes "Signed release APK (R8-shrunk) built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Download CompositionCoach-release.apk, open it on your phone, allow the install, and launch Composition Coach. See docs/RELEASE.md for how this is signed and how to cut a Play Store upload."
+            --notes "R8-shrunk release build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. ${KEYNOTE} Most phones: download CompositionCoach-release-arm64.apk, open it, allow the install. See docs/RELEASE.md."
