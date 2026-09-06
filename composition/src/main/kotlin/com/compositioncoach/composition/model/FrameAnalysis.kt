@@ -30,6 +30,10 @@ data class FrameAnalysis(
     val faces: List<DetectedFace> = emptyList(),
     val bodies: List<DetectedBody> = emptyList(),
     val stats: ImageStatistics? = null,
+    /** Prominent non-person objects from an object detector (may be empty when the detector is off). */
+    val objects: List<DetectedObject> = emptyList(),
+    /** Foreground/person probability mask from a segmentation model, when it ran for this frame. */
+    val subjectMask: SubjectMask? = null,
     val orientation: DeviceOrientation? = null,
     val isFrontCamera: Boolean = false,
     val analysisLatencyMs: Long = 0L,

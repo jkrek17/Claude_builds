@@ -65,7 +65,7 @@ data class DetectedBody(
         landmarks[type]?.takeIf { it.inFrameLikelihood >= threshold }
 }
 
-enum class SubjectKind { FACE, PERSON, SALIENT_REGION }
+enum class SubjectKind { FACE, PERSON, OBJECT, SALIENT_REGION }
 
 /**
  * The composition engine's notion of "a thing in the frame worth composing around".
@@ -85,4 +85,23 @@ data class DetectedSubject(
     /** The point the engine should place on a compositional anchor (eyes for people, box center otherwise). */
     val anchorPoint: NormalizedPoint
         get() = face?.let { NormalizedPoint(it.center.x, it.eyeLineY) } ?: bounds.center
+}
+
+/** Coarse object classes, mirroring ML Kit object detection's on-device labels. */
+enum class ObjectCategory { UNKNOWN, FASHION_GOOD, FOOD, HOME_GOOD, PLACE, PLANT }
+
+/**
+ * A prominent non-person object found by an object detector (e.g. a plate, a glass, a product).
+ * Geometry is in normalized upright-frame coordinates (see [NormalizedPoint]).
+ *
+ * @param trackingId stable across frames while the detector tracks the same object, when available.
+ */
+data class DetectedObject(
+    val id: Int,
+    val bounds: NormalizedRect,
+    val category: ObjectCategory = ObjectCategory.UNKNOWN,
+    val confidence: Float = 1f,
+    val trackingId: Int? = null,
+) {
+    val center: NormalizedPoint get() = bounds.center
 }
