@@ -1,9 +1,9 @@
 # :composition
 
-Pure Kotlin/JVM module: turns one `FrameAnalysis` (faces, bodies, image statistics, device orientation)
-into a `CompositionResult` — a 0..100 score, ranked photographer-facing advice, and a temporally smoothed
-`SmoothedComposition` for the live preview. No Android dependencies; every analyzer and engine class is
-unit-testable on the plain JVM.
+Pure Kotlin/JVM module: turns one `FrameAnalysis` (faces, bodies, non-person objects, a foreground subject
+mask, image statistics, device orientation) into a `CompositionResult` — a 0..100 score, ranked
+photographer-facing advice, and a temporally smoothed `SmoothedComposition` for the live preview. No
+Android dependencies; every analyzer and engine class is unit-testable on the plain JVM.
 
 ## Architecture
 
@@ -84,20 +84,65 @@ next, in case the vertical sign was intended to mirror the horizontal one exactl
 | `SubjectPlacementAnalyzer` | SUBJECT_PLACEMENT | centred tolerance 5%, placement dead zone 5%, portrait eye-line targets the lower-third row (upper part of frame) |
 | `HeadroomAnalyzer` | HEADROOM | ideal headroom 3-15% (narrows as face grows), tight ≤2%, excessive >25%, close-ups exempt from the tight side |
 | `LookingRoomAnalyzer` | LOOKING_ROOM | yaw fallback threshold 12°, needs ≥1 face-width of room, outer-35%-of-frame gate, skipped for 2+ faces / GROUP_PORTRAIT |
-| `EdgeTensionAnalyzer` | EDGE_TENSION | 4% edge margin, also checks wrist/ankle/foot landmarks ≥0.5 in-frame likelihood; for GROUP_PORTRAIT, any partially cut face is HIGH severity regardless of which subject is primary |
-| `CroppingAnalyzer` | CROPPING | 3% joint-to-edge margin on ankle/knee/hip/wrist/elbow + head-top; body required |
-| `BackgroundDistractionAnalyzer` | BACKGROUND_DISTRACTION | column-above-head edge ratio ≥1.6x background, ring ratio ≥1.4x, brightness contrast ≥0.22 |
-| `SubjectSeparationAnalyzer` | SUBJECT_SEPARATION | flags when both luminance and edge-density separation from a background ring fall below ~0.35 |
-| `BalanceAnalyzer` | BALANCE | flags visual-weight centroid >14% off-centre when not explained by the primary subject |
+| `EdgeTensionAnalyzer` | EDGE_TENSION | 4% edge margin, also checks wrist/ankle/foot landmarks ≥0.5 in-frame likelihood; for GROUP_PORTRAIT, any partially cut face is HIGH severity regardless of which subject is primary; with no body but a [subject mask](#objects-and-the-subject-mask), the subject box is widened to `mask.bounds()` before measuring edge distance |
+| `CroppingAnalyzer` | CROPPING | 3% joint-to-edge margin on ankle/knee/hip/wrist/elbow + head-top; needs a body — or, with no body but a mask reaching the bottom edge while the face is high and small (a full-body shot plausibly intended), a LOW-severity "Step back slightly" guess at a waist/knee cut |
+| `BackgroundDistractionAnalyzer` | BACKGROUND_DISTRACTION | no mask: column-above-head edge ratio ≥1.6x background, ring ratio ≥1.4x, brightness contrast ≥0.22. With a mask: edge energy in the band above `mask.bounds()` (excluding mask cells) vs. the frame background, plus a "pole through the head" detector (a ≤2-cell-wide column of high edge density touching the mask top and reaching ≥3 cells above it, with clearly quieter neighbours) |
+| `SubjectSeparationAnalyzer` | SUBJECT_SEPARATION | no mask: flags when both luminance and edge-density separation from a background ring fall below ~0.35 (confidence 0.5). With a mask: same idea but measured against the mask's own silhouette rather than a bounding box (confidence 0.85) |
+| `BalanceAnalyzer` | BALANCE | no mask: flags visual-weight centroid >14% off-centre when not explained by the primary subject. With a mask: flags a subject sitting off to one side (`SUBJECT_OFFSET_THRESHOLD`) when the *other* side has low non-mask edge energy and the subject has no looking room that way — never for symmetric scenes |
 | `SymmetryAnalyzer` | SYMMETRY | applicable only above 0.6 symmetry; flags >4% off-centre when symmetry ≥ that |
-| `NegativeSpaceAnalyzer` | NEGATIVE_SPACE | neutral 0.75 score always; flags only a <3%-of-frame subject outside LANDSCAPE |
-| `LeadingLinesAnalyzer` | LEADING_LINES | EXPERIMENTAL — proximity of a dominant line's infinite extension to the subject/thirds point; never recommends, strength text only |
+| `NegativeSpaceAnalyzer` | NEGATIVE_SPACE | neutral 0.75 score always; flags a subject under 3% of frame area (4% for an OBJECT-kind subject) outside LANDSCAPE |
+| `LeadingLinesAnalyzer` | LEADING_LINES | still low-weight and somewhat exploratory, but no longer silent: a line within 8% of the subject/thirds point → positive strength text; a line clearly leading away (≥20%) → LOW severity "Move so the lines lead toward your subject", only in LANDSCAPE/ARCHITECTURE |
 | `SceneSpecificAnalyzer` | SCENE_SPECIFIC | LANDSCAPE: horizon vs. nearest third row (weaker signal accepted when intent is LANDSCAPE); ARCHITECTURE: converging near-vertical lines (±4° opposite deviation); declared PORTRAIT intent: "move closer" when the face is < 12% of frame height |
 
 All physical instruction strings are centralised in `InstructionText` (direction → plain action) so every
 analyzer that just needs "move that way" says it identically; a few analyzers (`HeadroomAnalyzer`,
 `CroppingAnalyzer`, `BackgroundDistractionAnalyzer`, `SceneSpecificAnalyzer`'s architecture case) use their
 own literal, more specific phrasing per the module brief (e.g. "Move closer to crop above the knees").
+
+## Objects and the subject mask
+
+`:vision` sends two additional signals this module now uses: `FrameAnalysis.objects` (a
+`DetectedObject` per prominent non-person item — a plate, a glass, a product — every frame) and
+`FrameAnalysis.subjectMask` (a coarse foreground-probability grid, only computed while a person is in
+frame, and possibly a few frames stale — see `detectorTimings["mask_age"]`). Field testing showed the
+previous faces-or-nothing model let an incidental background face steal a shot that was actually about a
+pint glass on the table; both signals close different halves of that gap.
+
+**Objects as subjects** (`SubjectResolver`, `SubjectFilter` unaffected — this is additive, not a
+replacement for face filtering):
+- A `DetectedObject` becomes a `SubjectKind.OBJECT` `DetectedSubject` once it clears a size floor: 3% of
+  frame area under `AUTO`/`SceneIntent.OBJECT`, 15% under `SceneIntent.LANDSCAPE`/`ARCHITECTURE` (a small
+  object is rarely *the* subject of a landscape), and objects are excluded entirely under
+  `SceneIntent.PORTRAIT`/`GROUP_PORTRAIT` (the photographer told us there is a person to shoot).
+- Salience is **multiplicative** (area × centrality × confidence, all 0..1) rather than the weighted sum
+  used for people — an object only scores well when it is large, central, *and* confidently detected, not
+  merely one of the three — plus a +0.15 bonus for categories people deliberately photograph (FOOD,
+  HOME_GOOD, FASHION_GOOD, PLANT) and a −0.2 penalty for PLACE (a location tag on incidental background).
+- **Choosing the primary subject across kinds** (`SubjectResolver.choosePrimary`): a person whose face is
+  ≥8% of frame height (`DOMINANT_FACE_HEIGHT`) unconditionally outranks every object; below that size, the
+  single most salient subject of *any* kind wins. This is exactly how a pint glass beats a stranger's face
+  in the background, once that background face has already been dropped as incidental by `SubjectFilter`.
+- In `AUTO` scene classification, `SceneClassifier` now checks `frame.objects` for a qualifying detection
+  (≥3% area, ≥0.5 confidence) *before* the older stats-only heuristics (architecture/landscape/object) —
+  a real detection is a much more direct signal than guessing from an edge-density grid, and this is what
+  turns the pint-on-a-table frame into `SceneType.OBJECT` instead of a shrug `GENERAL`.
+- `SubjectPlacementAnalyzer`: for an OBJECT subject the anchor is always the box centre (no eye-line), and
+  centred framing is valid when the scene is symmetric *or* the object is large (≥25% of frame area,
+  `LARGE_OBJECT_AREA`) — otherwise it snaps to the nearest thirds intersection like any other subject.
+  `NegativeSpaceAnalyzer` uses a slightly higher "too small" floor for objects (4% vs. 3% for a person —
+  an object needs a bit more presence to read as deliberate). Headroom, looking room and cropping remain
+  person-only (they all gate on `DetectedSubject.face`/`.body`, which an object subject never has).
+
+**Mask-driven analyzers** (`SubjectSeparationAnalyzer`, `BackgroundDistractionAnalyzer`, `BalanceAnalyzer`,
+plus a narrower fallback in `EdgeTensionAnalyzer`/`CroppingAnalyzer`): every one of these falls back to its
+original luminance/edge-grid-only heuristic whenever `FrameAnalysis.subjectMask` is null — see each
+analyzer's own kdoc for the precise fallback — so a device/frame with no segmenter output behaves exactly
+as before this module's changes. `MaskHeuristics` (new) holds the shared cell-mapping helpers: the mask and
+the engine's own `ImageStatistics` grid are never assumed to share a resolution, so every helper walks the
+mask's grid and maps each cell to a normalized frame point before sampling the stats grid at that point.
+See the Analyzers table above for what each one does differently with a mask; in short, everything gets
+more precise (silhouette-shaped rather than bounding-box-shaped) and more confident (0.85 vs. 0.5-0.7
+without one).
 
 ## Scene weights
 
@@ -212,21 +257,59 @@ candidate shares its direction.
 
 ## Known limitations
 
-- `LeadingLinesAnalyzer` is explicitly experimental (see its kdoc): proximity-to-a-point is a weak proxy
-  for "this line leads the eye to the subject," and it is weighted low everywhere and never produces a
-  recommendation.
-- `SceneClassifier` and `SubjectResolver`'s "salient region" / "object scene" detection are deliberately
-  conservative heuristics over the downscaled edge-density grid, not real saliency detection — a busy but
-  uniform background (foliage, gravel) is designed to *not* trigger either one, at the cost of sometimes
-  missing genuinely interesting but low-contrast objects.
-- `CompositionOptimizer`'s two approximations (frozen statistics, frozen scene classification across
-  candidates) are documented above and in the class's own kdoc.
+- `LeadingLinesAnalyzer` is still explicitly experimental (see its kdoc): proximity-to-a-point is a weak
+  proxy for "this line leads the eye to the subject." It now produces a (low-severity, low-weight)
+  recommendation in LANDSCAPE/ARCHITECTURE when a line clearly leads away from the subject, but still never
+  does in a portrait/object scene, and its confidence is capped low everywhere.
+- `SceneClassifier` and `SubjectResolver`'s stats-only "salient region" / "object scene" detection (used
+  when there is no object-detector signal at all) are deliberately conservative heuristics over the
+  downscaled edge-density grid, not real saliency detection — a busy but uniform background (foliage,
+  gravel) is designed to *not* trigger either one, at the cost of sometimes missing genuinely interesting
+  but low-contrast objects. This limitation does not apply to a real `DetectedObject` from the object
+  detector, which is trusted directly.
+- `CompositionOptimizer` / `FrameTransform` only re-transform face/body geometry across candidates (see
+  their kdocs) — an OBJECT-kind primary subject is therefore frozen across all six simulated candidates
+  just like `ImageStatistics` is, so the optimizer contributes nothing extra for an object-only frame
+  beyond validating that no face/body-driven move helps. Recomputing object geometry per candidate would
+  need the same kind of transform `FrameTransform` already does for faces/bodies; nothing prevents adding
+  it later, it just wasn't needed for this pass.
+- The pole-through-the-head detector in `BackgroundDistractionAnalyzer` and the mask-based waist/knee-cut
+  guess in `CroppingAnalyzer` are both read off coarse (~32-cell) mask geometry, not a real object detector
+  or confirmed joint position — both are deliberately capped at MEDIUM/LOW severity rather than HIGH for
+  that reason.
 - See the "sign conventions" section above for the one specific spot (`ReframeVector.toMoveSubject`'s
   vertical sign) worth a second look from the model owner.
+
+## Golden scenarios (`GoldenScenariosTest`)
+
+End-to-end fixtures run through the whole `CompositionEngine`, each modelling one situation called out by
+name in the module brief. Every scenario checks the same four things — detected scene, primary subject
+kind, the headline recommendation id (or its absence, or just "is this issue flagged somewhere" when the
+optimizer's own validation logic could legitimately reorder the headline), and a loose score band — loose
+on purpose, so this suite catches a wrong *category* of outcome without becoming brittle against future
+weight tuning.
+
+| Scenario | Scene | Primary subject | Headline (or key signal) |
+|---|---|---|---|
+| Pint on a table, distant background face | OBJECT | OBJECT | no HEADROOM advice at all |
+| Centred close-up portrait | PORTRAIT (close-up) | FACE | no SUBJECT_PLACEMENT advice |
+| Full-body shot cut at the ankles | PORTRAIT | PERSON | `cropping.feet` |
+| Group of three, one face at the frame edge | GROUP_PORTRAIT | PERSON/FACE | `edge.tension.group_cutoff` at HIGH |
+| Landscape, tilted + dead-centre horizon | LANDSCAPE | none | HORIZON + SCENE_SPECIFIC both flagged |
+| Symmetric hallway, off-centre subject | ARCHITECTURE | SALIENT_REGION | `symmetry.offcenter` |
+| Symmetric hallway, centred subject | ARCHITECTURE | SALIENT_REGION | no SYMMETRY advice |
+| Portrait with a pole above the head (mask) | PORTRAIT | FACE | `background.pole` |
+
+New `SyntheticFrames` fixtures backing these: `objectAt` (a `DetectedObject` builder), `maskFromRect` (a
+`SubjectMask` whose cells inside a rect are subject, everywhere else background), `maskWithPoleAbove`,
+`statsWithNarrowPoleAbove` (a narrow high-edge column on the *same* grid resolution as a paired mask, so
+`MaskHeuristics`' cell mapping is exact), `statsWithHorizonStep` (a luminance-only horizon step that won't
+also get mistaken for a compact salient region the way `statsWithHorizonLine`'s edge spike would), and
+`offCenterSalientRegion` (a symmetric-scene fixture with an adjustable off-centre hot patch).
 
 ## Running
 
 ```
-./gradlew :composition:test            # 61 tests, no Android SDK required
+./gradlew :composition:test            # 70 tests, no Android SDK required
 ./gradlew :composition:compileKotlin   # warnings-clean
 ```

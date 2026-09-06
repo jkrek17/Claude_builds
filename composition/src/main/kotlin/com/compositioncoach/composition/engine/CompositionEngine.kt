@@ -97,7 +97,7 @@ class CompositionEngine(
             primarySubject = resolution.primary,
             isShootReady = isShootReady,
             strengths = recommendationEngine.strengths(metrics),
-            improvements = recommendationEngine.improvements(metrics),
+            improvements = recommendationEngine.improvements(metrics, scene),
             optimization = optimization,
             weights = ScoreWeights.forScene(scene.type),
             engineTimeMs = (System.nanoTime() - startNanos) / 1_000_000,

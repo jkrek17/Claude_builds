@@ -4,6 +4,8 @@ import com.compositioncoach.composition.model.CompositionMetric
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.Recommendation
+import com.compositioncoach.composition.model.SceneClassification
+import com.compositioncoach.composition.model.ScoreWeights
 import com.compositioncoach.composition.model.Severity
 
 /**
@@ -31,12 +33,36 @@ class RecommendationEngine {
             .map { it.strength!! }
             .distinct()
 
-    fun improvements(metrics: List<CompositionMetric>): List<String> =
-        metrics.filter { it.applicable && it.issue != null }
-            .sortedBy { it.score }
+    /**
+     * Improvements ordered by expected score gain — [Recommendation.expectedImprovement] when a
+     * recommendation already carries one (rare here; it's usually filled in later by
+     * [CompositionOptimizer]), else a proxy: how far the metric's own score is from ideal, weighted by how
+     * much this category counts toward the overall score for [scene] and bumped for a higher [Severity] —
+     * so fixing a HIGH-severity, heavily-weighted category is always suggested before a LOW-severity,
+     * lightly-weighted one, even though both are simply "the score is low" in isolation. Never repeats text
+     * already shown as a [strengths] line (defensive: in practice an analyzer never sets both `issue` and
+     * `strength` on the same metric, but two different analyzers could coincidentally reuse a string).
+     */
+    fun improvements(metrics: List<CompositionMetric>, scene: SceneClassification): List<String> {
+        val weights = ScoreWeights.forScene(scene.type)
+        val strengthTexts = strengths(metrics).toSet()
+        return metrics.filter { it.applicable && it.issue != null && it.issue !in strengthTexts }
+            .sortedByDescending { estimatedGain(it, weights) }
             .map { it.issue!! }
             .distinct()
             .take(MAX_IMPROVEMENTS)
+    }
+
+    private fun estimatedGain(metric: CompositionMetric, weights: ScoreWeights): Float {
+        metric.recommendation?.expectedImprovement?.let { return it }
+        val weight = weights[metric.category].coerceAtLeast(0f)
+        val severityBoost = when (metric.severity) {
+            Severity.HIGH -> 1.3f
+            Severity.MEDIUM -> 1.1f
+            Severity.LOW, Severity.NONE -> 1f
+        }
+        return weight * (1f - metric.score.coerceIn(0f, 1f)) * severityBoost
+    }
 
     /** Ranks and trims every metric's recommendation according to [level]. */
     fun rank(metrics: List<CompositionMetric>, level: GuidanceLevel): List<Recommendation> {

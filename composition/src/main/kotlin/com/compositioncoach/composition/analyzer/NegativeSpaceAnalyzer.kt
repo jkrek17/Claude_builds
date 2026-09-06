@@ -8,6 +8,7 @@ import com.compositioncoach.composition.model.Recommendation
 import com.compositioncoach.composition.model.ReframeVector
 import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.Severity
+import com.compositioncoach.composition.model.SubjectKind
 
 /**
  * Large areas of plain, empty space ("negative space") around a subject are a legitimate and often
@@ -16,9 +17,11 @@ import com.compositioncoach.composition.model.Severity
  * the space in.
  *
  * The one thing it does flag is a subject that has become so small relative to the frame
- * ([TINY_SUBJECT_AREA], under ~3% of the frame's area) that it reads as lost rather than deliberately
- * small — unless the scene is a [SceneType.LANDSCAPE], where a tiny figure against a big sky/vista is a
- * classic, intentional composition and should not be second-guessed. This check is keyed off
+ * ([TINY_SUBJECT_AREA], under ~3% of the frame's area for a person; [OBJECT_TINY_AREA], under ~4% for a
+ * [SubjectKind.OBJECT] — an object needs a bit more presence than a person to read as deliberate, since
+ * objects rarely fill the frame the way a person's whole body can) that it reads as lost rather than
+ * deliberately small — unless the scene is a [SceneType.LANDSCAPE], where a tiny figure against a big
+ * sky/vista is a classic, intentional composition and should not be second-guessed. This check is keyed off
  * [SceneClassification.type][com.compositioncoach.composition.model.SceneClassification.type], so a
  * declared [com.compositioncoach.composition.model.SceneIntent.LANDSCAPE] gets the same protection for
  * free — the engine forces the scene type before any analyzer runs (see
@@ -35,7 +38,8 @@ class NegativeSpaceAnalyzer : CompositionAnalyzer {
             return CompositionMetric(category, name, score = NEUTRAL_SCORE, confidence = 0.3f, applicable = true)
         }
 
-        val tiny = subject.bounds.area < TINY_SUBJECT_AREA
+        val tinyThreshold = if (subject.kind == SubjectKind.OBJECT) OBJECT_TINY_AREA else TINY_SUBJECT_AREA
+        val tiny = subject.bounds.area < tinyThreshold
         val protectedByScene = context.scene.type == SceneType.LANDSCAPE
 
         val recommendation = if (tiny && !protectedByScene) {
@@ -70,6 +74,7 @@ class NegativeSpaceAnalyzer : CompositionAnalyzer {
 
     companion object {
         const val TINY_SUBJECT_AREA = 0.03f
+        const val OBJECT_TINY_AREA = 0.04f
         const val NEUTRAL_SCORE = 0.75f
         const val TINY_SUBJECT_SCORE = 0.4f
         const val CLOSER_MAGNITUDE = 0.2f

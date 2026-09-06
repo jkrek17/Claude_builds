@@ -6,6 +6,7 @@ import com.compositioncoach.composition.model.BodyLandmarkType
 import com.compositioncoach.composition.model.CompositionMetric
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.MetricCategory
+import com.compositioncoach.composition.model.NormalizedRect
 import com.compositioncoach.composition.model.OverlayGeometry
 import com.compositioncoach.composition.model.Priority
 import com.compositioncoach.composition.model.Recommendation
@@ -34,6 +35,12 @@ import kotlin.math.abs
  * (whether auto-detected or declared) this checks every face in frame, not only the primary one, and treats
  * a partially cut face as [Severity.HIGH] outright — there is no "mild edge tension" in a group photo, only
  * "someone got cut off" or not.
+ *
+ * **No body, but a subject mask**: when the pose detector found no body for the primary subject but a
+ * [com.compositioncoach.composition.model.SubjectMask] is available, the subject's box is widened to the
+ * union with [SubjectMask.bounds] before any edge distance is measured — the mask often shows the body
+ * extends lower (or wider) than a face-only box would suggest, so a person whose legs are cut off at the
+ * bottom of the frame is caught here even though no pose landmarks exist to check directly.
  */
 class EdgeTensionAnalyzer : CompositionAnalyzer {
     override val name: String = "EdgeTensionAnalyzer"
@@ -47,11 +54,16 @@ class EdgeTensionAnalyzer : CompositionAnalyzer {
         val subject = context.primarySubject
             ?: return CompositionMetric(category, name, score = 1f, confidence = 0f, applicable = false)
 
-        val bounds = subject.bounds
         val symmetricTightCrop = context.scene.isCloseUpPortrait &&
-            abs(bounds.distanceToLeftEdge - bounds.distanceToRightEdge) < SYMMETRIC_CROP_TOLERANCE
+            abs(subject.bounds.distanceToLeftEdge - subject.bounds.distanceToRightEdge) < SYMMETRIC_CROP_TOLERANCE
         if (symmetricTightCrop) {
             return CompositionMetric(category, name, score = 1f, confidence = 0.5f, applicable = true, strength = "Intentional tight crop")
+        }
+
+        val bounds = if (subject.body == null) {
+            context.frame.subjectMask?.bounds()?.let { unionOf(subject.bounds, it) } ?: subject.bounds
+        } else {
+            subject.bounds
         }
 
         val distances = linkedMapOf(
@@ -141,6 +153,10 @@ class EdgeTensionAnalyzer : CompositionAnalyzer {
             geometry = listOf(OverlayGeometry.Region(cutFace.bounds, isProblem = true)),
         )
     }
+
+    private fun unionOf(a: NormalizedRect, b: NormalizedRect) = NormalizedRect(
+        minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom),
+    )
 
     companion object {
         const val EDGE_MARGIN = 0.04f
