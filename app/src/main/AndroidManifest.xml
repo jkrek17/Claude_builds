@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -8,10 +9,22 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!--
+      Composition Coach never makes a network call — see README.md and docs/PRIVACY_POLICY.md. The
+      merged manifest otherwise picks up INTERNET/ACCESS_NETWORK_STATE transitively from ML Kit's
+      object-detection artifact (its bundled Firebase/Datatransport telemetry client declares them);
+      that telemetry is never invoked by this app, so the permissions are removed from the final
+      manifest here rather than left in by accident. `verifyNoInternetPermission`
+      (app/build.gradle.kts) fails the build if either ever reappears.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+
     <application
         android:name=".CompositionCoachApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.CompositionCoach">

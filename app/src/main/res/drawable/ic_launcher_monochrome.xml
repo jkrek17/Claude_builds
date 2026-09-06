@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Monochrome layer for Android 13+ themed icons. Android tints this single-color silhouette to match
+  the user's wallpaper/theme, so it must carry no color of its own (android:tint applies at render
+  time) — same rule-of-thirds glyph as ic_launcher_foreground, traced in solid white so every stroke
+  survives the tint. Same 30..78 safe-zone bounds as the foreground (inside the inner 66dp of the
+  108dp canvas: 21..87).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="2.5" android:fillColor="#00000000"
+        android:pathData="M30,30 L78,30 L78,78 L30,78 Z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="2" android:fillColor="#00000000"
+        android:pathData="M46,30 L46,78 M62,30 L62,78 M30,46 L78,46 M30,62 L78,62" />
+    <path android:fillColor="#FFFFFF" android:pathData="M62,46 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+</vector>

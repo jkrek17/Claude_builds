@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,14 +55,24 @@ fun CameraTopBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (sceneIntent != SceneIntent.AUTO) {
+                // The chip's visible padding alone is well under the 48dp touch-target minimum;
+                // minimumInteractiveComponentSize() reserves an at-least-48dp tap area around the small
+                // visible pill without growing how the chip itself looks (same idea IconButton uses
+                // internally, just with an explicit inner Box instead of a fixed .size()).
                 Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color.Black.copy(alpha = 0.35f))
-                        .clickable(onClick = onSettingsClick)
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                        .minimumInteractiveComponentSize()
+                        .clickable(onClick = onSettingsClick),
                 ) {
-                    Text(text = sceneIntent.label, color = Color.White, fontSize = 12.sp)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black.copy(alpha = 0.35f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                    ) {
+                        Text(text = sceneIntent.label, color = Color.White, fontSize = 12.sp)
+                    }
                 }
             }
             IconButton(onClick = onSettingsClick) {

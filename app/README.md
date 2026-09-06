@@ -12,21 +12,28 @@ CameraPermissionGate
   └── (granted) AppNavGraph  [navigation-compose, routes below]
         ├── "camera"   CameraScreen     (start destination)
         ├── "review"   ReviewScreen     (pushed on capture)
-        └── "settings" SettingsScreen   (pushed from the camera screen's gear icon)
+        ├── "settings" SettingsScreen   (pushed from the camera screen's gear icon)
+        └── "privacy"  PrivacyScreen    (pushed from Settings → About → Privacy policy)
 ```
 
 * **camera** — `CameraScreen` + `CameraViewModel`. Full-screen `PreviewView` with Compose overlays:
   `ThirdsGridOverlay`, `CompositionOverlay` (target ring / horizon level / directional arrow),
   `DebugGeometryOverlay` + `DebugOverlay` (debug mode only), `ScoreBadge`, `GuidanceBanner`,
   `CameraTopBar` (shows the current shooting mode as a small chip when it isn't Auto — tap it to open
-  Settings), `BottomControlBar`, and `CameraErrorOverlay` for camera init failures.
+  Settings), `BottomControlBar`, and `CameraErrorOverlay` for camera init failures (shown for any
+  `CameraBindResult.Failure`, including an `IllegalStateException` from CameraX binding — `Retry` clears
+  the error and re-triggers the bind `DisposableEffect`).
+* **privacy** — `PrivacyScreen`. A plain scrolling Compose screen showing `PrivacyPolicyText` (same
+  wording as `docs/PRIVACY_POLICY.md`) — no network fetch, since the app has none.
 * **review** — `ReviewScreen`. Shows the captured photo (Coil) next to the score, strengths,
   improvements, scene chip and — when the shot was coached under a non-Auto shooting mode — a
   "`<Mode>` mode" chip (from `CompositionResult.intent`), all from the `CompositionResult` computed at
   capture time. Keep pops back to camera; Retake deletes the photo via `CaptureRepository` first.
 * **settings** — `SettingsScreen` + `SettingsViewModel`, backed by `SettingsRepository` (DataStore).
   "Shooting mode" is the first section on the screen: a chip selector over every `SceneIntent`
-  (Auto/Portrait/Group/Landscape/Architecture/Object), since it's the setting people change most.
+  (Auto/Portrait/Group/Landscape/Architecture/Object), since it's the setting people change most. The
+  last section is "About": app name, `BuildConfig.VERSION_NAME`/`VERSION_CODE`, the "all analysis runs
+  on your device" line, and a button into `PrivacyScreen`.
 
 ## State flow
 
@@ -153,6 +160,54 @@ Enable **Settings → Debug mode**. Two extra layers appear on the camera screen
   count, and — when the engine populates it — the optimizer's current score, improvement and
   candidate framings.
 * A small "DEBUG" chip appears top-left as a reminder the mode is on even if the panel is collapsed.
+
+## Crash safety
+
+* `CompositionCoachApp.onCreate()` installs a `Thread.setDefaultUncaughtExceptionHandler` that logs the
+  full stack trace under the `CompositionCoachApp` tag and then delegates to whatever handler was
+  previously installed (the platform default, normally) — it does not swallow the crash or change
+  whether the process terminates, it only guarantees the crash is visible in logcat first.
+* `CameraViewModel.observeFrames()` wraps each frame's `coach.process(...)` call in a `try`/`catch`: a
+  detector/engine exception on one frame logs and falls back to the previous composition rather than
+  terminating the flow — coaching keeps running on the next frame. A `CoroutineExceptionHandler`
+  (`frameProcessingExceptionHandler`) is layered on top of that as a last-resort net for anything that
+  still escapes the per-frame `try`/`catch` (e.g. from the FPS tracking in `onEach`).
+* `CameraController.bind()` already catches every `Throwable` (including `IllegalStateException` from
+  `ProcessCameraProvider.bindToLifecycle`) and returns `CameraBindResult.Failure`; `CameraViewModel`
+  turns that into `CameraUiState.cameraError`, which `CameraScreen` renders as `CameraErrorOverlay` with
+  a **Retry** button that clears the error and re-runs the bind `DisposableEffect`.
+
+## Accessibility
+
+* Every `IconButton`/clickable exposes a `contentDescription` (flash mode, switch camera, settings,
+  back, close). The shooting-mode chip in `CameraTopBar` (a `clickable` `Box`, not an `IconButton`) uses
+  `Modifier.minimumInteractiveComponentSize()` so its tap target is still ≥ 48dp even though the visible
+  pill is smaller.
+* `ScoreBadge` collapses its internal `Text`s into one `clearAndSetSemantics { contentDescription = "Composition score $score" }`
+  (or "…, ready to shoot" / the "looking for a subject" text) so TalkBack reads one clear sentence.
+* `GuidanceBanner` does the same for the instruction text, and additionally sets
+  `liveRegion = LiveRegionMode.Polite` on all three of its render paths (hold-framing hint, awaiting-subject,
+  and the normal primary/reason/secondary layout) so TalkBack announces new advice as it changes, unprompted.
+* Text over the live camera preview relies on the same black scrim backgrounds the badge/banner already
+  used (`Color.Black.copy(alpha = 0.3f–0.35f)`) for contrast — unchanged, just confirmed still in place.
+
+## Release build
+
+* `release` build type: `isMinifyEnabled = true`, `isShrinkResources = true`, R8 rules in
+  `app/proguard-rules.pro` (CameraX, ML Kit, DataStore, and a `-keepclassmembers enum` rule for
+  `:composition`'s model enums — `GuidanceLevelCodec`/`SceneIntentCodec` round-trip them through
+  `Enum.valueOf(Class, name)`, the one place in this app that isn't a plain direct call R8 can already
+  see through). No `abiFilters` on `release` (the AAB's own per-ABI splits handle that); `debug` keeps
+  its `arm64-v8a`/`armeabi-v7a` filter.
+* `versionCode`/`versionName` are derived in `app/build.gradle.kts` (git commit count / `"0.9.<code>"`
+  by default, both overridable via env vars) and shown in **Settings → About**
+  (`BuildConfig.VERSION_NAME`/`VERSION_CODE`).
+* `verifyNoInternetPermission` (wired into `check`) fails the build if `android.permission.INTERNET`
+  ever reappears in the merged manifest — it's already there transitively via ML Kit's object-detection
+  artifact and is explicitly stripped with `tools:node="remove"` in `AndroidManifest.xml`.
+* See [docs/RELEASE.md](../docs/RELEASE.md) for signing key setup and the CI release job, and
+  [docs/PRIVACY_POLICY.md](../docs/PRIVACY_POLICY.md) / [docs/PLAY_LISTING.md](../docs/PLAY_LISTING.md)
+  for the Play Store policy/listing material this module's `PrivacyScreen` and About section reflect.
 
 ## Known limitations / what the integrator should know
 

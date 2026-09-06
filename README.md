@@ -26,12 +26,16 @@ No cloud calls, no camera frames leave the phone.
 ## Try it on your phone
 
 You do not need Android Studio to install and test the app. Every push to GitHub builds a debug
-APK with GitHub Actions and publishes it as a rolling pre-release.
+APK with GitHub Actions and publishes it as a rolling pre-release, and (once release signing secrets
+are configured — see [docs/RELEASE.md](docs/RELEASE.md)) a signed, R8-shrunk release APK as a second
+rolling pre-release.
 
 **Easiest: from the Releases page, directly on your phone**
 
 1. On your phone, open https://github.com/jkrek17/Claude_builds/releases/tag/debug-latest
-2. Under **Assets**, tap `CompositionCoach-debug.apk` (about 80 MB).
+   (or, for a signed release build once one exists, .../releases/tag/release-latest — smaller thanks to
+   R8 shrinking, and what an actual Play Store build would look like).
+2. Under **Assets**, tap `CompositionCoach-debug.apk` (about 80 MB) or `CompositionCoach-release.apk`.
 3. When the download finishes, open it. Android will ask you to allow installs from this source
    (Chrome, Files, …). Allow it once and install.
 4. Open **Composition Coach**, grant the camera permission, point the camera at a person.
@@ -39,15 +43,18 @@ APK with GitHub Actions and publishes it as a rolling pre-release.
 **Play Protect warning.** The first install shows "Play Protect hasn't seen an app from this developer
 before". Tap **More details**, then **Install anyway**. If there is no such option, turn off scanning
 temporarily: Play Store → profile picture → Play Protect → gear icon → "Scan apps with Play Protect",
-install, then turn it back on. Builds are signed with the checked-in debug key in `keystore/`, so later
-builds install as updates over earlier ones.
+install, then turn it back on. Debug builds are signed with the checked-in debug key in `keystore/`, so
+later debug builds install as updates over earlier ones; release builds use a real upload key once one
+is configured (see [docs/RELEASE.md](docs/RELEASE.md)) and won't install over a debug build (different
+signature) — uninstall the debug build first if you've been sideloading that.
 
 **Alternative: from a specific CI run** (requires being logged in to GitHub, and the GitHub mobile app
 does not show artifacts, so use a desktop browser)
 
 1. Open the repository's **Actions** tab and click the most recent green **Android CI** run.
 2. On the run's summary page, scroll to the very bottom to the **Artifacts** section and download
-   `composition-coach-debug-apk`. It is a `.zip`; unzip it to get `app-debug.apk`.
+   `composition-coach-debug-apk` (or `composition-coach-release-apk` / `composition-coach-release-aab`
+   from the `release` job). It is a `.zip`; unzip it to get the APK/AAB.
 3. Copy the APK to your phone and install it as above.
 
 Requirements: Android 8.0 (API 26) or newer, Google Play Services (for ML Kit face detection; the
@@ -94,9 +101,19 @@ Turn on **Developer mode** in Settings to see face/body boxes, every metric, tim
 ./gradlew :app:installDebug
 # or
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# build a release APK + AAB (R8-shrunk; signs with the debug keystore unless the four
+# CC_RELEASE_* env vars are set — see docs/RELEASE.md)
+./gradlew :app:assembleRelease :app:bundleRelease
+# -> app/build/outputs/apk/release/app-release.apk
+# -> app/build/outputs/bundle/release/app-release.aab
 ```
 
 Or open the folder in Android Studio (Ladybug or newer), let it sync, and press Run.
+
+See [docs/RELEASE.md](docs/RELEASE.md) for cutting a signed release, the CI release job, and Play
+Console upload steps; [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md) and
+[docs/PLAY_LISTING.md](docs/PLAY_LISTING.md) for the Play Store listing/policy material.
 
 ---
 
@@ -221,9 +238,13 @@ pushed toward a third.
 
 ## Privacy
 
-All analysis is on-device. The app has no network permission and never uploads frames. Photos are
-saved with the normal MediaStore mechanism to `Pictures/CompositionCoach`; overlays are never baked
-into the image.
+All analysis is on-device. The app has no network permission and never uploads frames — enforced by an
+automated Gradle check (`verifyNoInternetPermission`, wired into `./gradlew check`) that fails the build
+if `android.permission.INTERNET` ever reappears in the merged manifest (a transitive ML Kit dependency
+adds it by default; it's explicitly stripped in `app/src/main/AndroidManifest.xml`). Photos are saved
+with the normal MediaStore mechanism to `Pictures/CompositionCoach`; overlays are never baked into the
+image. The full policy is in [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md), also shown in-app at
+**Settings → About → Privacy policy**.
 
 ---
 
@@ -244,7 +265,13 @@ Reports land in `<module>/build/reports/tests/`.
 What has been verified in this environment:
 
 - All three modules compile together and the debug APK assembles.
-- 88 JVM unit tests pass: composition engine (45), vision math and statistics (21), app state and mapping (22).
+- JVM unit tests pass across all three modules, including `:app`'s build-info, privacy-text, and
+  overlay/state coverage.
+- `./gradlew :app:lintDebug` passes with zero errors (`lint { abortOnError = true }`).
+- `./gradlew :app:assembleRelease :app:bundleRelease` succeed, R8-shrunk, with no `missing_rules.txt`
+  warnings; `apksigner verify` passes on the resulting release APK.
+- `verifyNoInternetPermission` passes: the merged manifest (debug and release) has no
+  `android.permission.INTERNET`.
 
 What has **not** been verified yet, because no physical device was available where this was built:
 
@@ -278,4 +305,9 @@ Not yet implemented / next steps:
 - **Depth** from multi-camera / ToF where available for separation.
 - **Per-user tuning** of weights and an in-app "why" explainer in Coach mode.
 - **Landscape orientation** UI (the MVP is portrait-locked).
-- **Release signing and R8** to shrink the APK further (the debug build ships unminified code for arm64 and 32-bit ARM).
+- ~~Release signing and R8 to shrink the APK further~~ — done: `assembleRelease`/`bundleRelease` are
+  R8-shrunk (`isMinifyEnabled`/`isShrinkResources`) and sign with a real upload key when the four
+  `CC_RELEASE_*` secrets are configured (falling back to the debug keystore otherwise so the build never
+  breaks); see [docs/RELEASE.md](docs/RELEASE.md). The remaining Play Store steps that need an account
+  owner's action (screenshots, Data Safety form submission, first Play Console upload) are tracked in
+  [docs/PLAY_LISTING.md](docs/PLAY_LISTING.md) and [docs/RELEASE.md](docs/RELEASE.md).

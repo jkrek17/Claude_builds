@@ -1,5 +1,6 @@
 package com.compositioncoach.app.ui.camera
 
+import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.lifecycle.ViewModel
@@ -15,6 +16,7 @@ import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.SmoothedComposition
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -29,6 +31,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 
 /** One-shot UI events the screen reacts to but that don't belong in persistent state. */
 sealed interface CameraEvent {
@@ -69,6 +72,16 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     /** Null until the first settings emission; used to reset smoothing only on an actual mode change, not on startup. */
     private var lastSceneIntent: SceneIntent? = null
 
+    /**
+     * Last-resort net for the frame-processing pipeline: logs and lets [viewModelScope] carry on rather
+     * than letting an uncaught exception here crash the app (the per-frame `try`/`catch` in
+     * [observeFrames] is the primary defense and is what actually keeps *coaching* alive frame-to-frame;
+     * this only guards the coroutine machinery around it).
+     */
+    private val frameProcessingExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TAG, "Frame processing pipeline failed; camera preview keeps running", throwable)
+    }
+
     init {
         viewModelScope.launch {
             container.settingsRepository.settings.collect { settings ->
@@ -92,7 +105,17 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
             .map { frame ->
                 val settings = _uiState.value.settings
                 val composition = if (settings.guidanceEnabled) {
-                    coach.process(frame, settings.guidanceLevel, settings.sceneIntent)
+                    // A detector/engine exception on one frame must not stop coaching for every frame
+                    // after it: catch here (inside the per-frame map, not around the whole flow) so a
+                    // bad frame is skipped — the previous composition keeps showing — and the flow
+                    // keeps collecting. frameProcessingExceptionHandler below is the last-resort net for
+                    // anything that still escapes this (e.g. from onEach/trackFps).
+                    try {
+                        coach.process(frame, settings.guidanceLevel, settings.sceneIntent)
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "Composition engine threw while scoring a frame; keeping the last result", t)
+                        _uiState.value.composition
+                    }
                 } else {
                     SmoothedComposition.EMPTY
                 }
@@ -101,7 +124,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
             .flowOn(Dispatchers.Default)
             .sample(UI_UPDATE_INTERVAL_MS)
             .onEach(::applyFrameUpdate)
-            .launchIn(viewModelScope)
+            .launchIn(viewModelScope + frameProcessingExceptionHandler)
     }
 
     private fun applyFrameUpdate(update: FrameUpdate) {
@@ -216,6 +239,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     )
 
     companion object {
+        private const val TAG = "CameraViewModel"
         private const val UI_UPDATE_INTERVAL_MS = 100L
         private const val FPS_WINDOW_NANOS = 1_000_000_000L
 

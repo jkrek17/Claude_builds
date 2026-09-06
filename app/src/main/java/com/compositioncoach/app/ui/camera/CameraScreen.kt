@@ -1,10 +1,10 @@
 package com.compositioncoach.app.ui.camera
 
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.WindowManager
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -203,7 +203,9 @@ fun CameraScreen(
 /** Sets `FLAG_KEEP_SCREEN_ON` for as long as this composable stays in composition (i.e. the camera screen is showing). */
 @Composable
 private fun KeepScreenOn() {
-    val activity = LocalContext.current as? Activity
+    // LocalActivity (not a manual `LocalContext.current as? Activity` cast) is the lint-clean way to
+    // reach the hosting Activity from Compose — a Context is not always an Activity.
+    val activity = LocalActivity.current
     DisposableEffect(activity) {
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
