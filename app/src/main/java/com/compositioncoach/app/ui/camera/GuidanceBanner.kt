@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -56,6 +57,9 @@ private val HEADLINE_LINE_HEIGHT = 28.dp
  * recommendation (see [com.compositioncoach.composition.model.SmoothedComposition.awaitingSubject]) and this
  * renders it prominently instead: its title as a small line, its instruction as the headline, no directional
  * icon (the recommendation has no direction to point in).
+ *
+ * [deviceRotationDegrees] rotates the whole banner in place, Pixel-style, so it stays upright to the
+ * person holding the phone (see [rememberControlCounterRotation]) — its position on screen never moves.
  */
 @Composable
 fun GuidanceBanner(
@@ -65,6 +69,7 @@ fun GuidanceBanner(
     displayScore: Int = 0,
     isShootReady: Boolean = false,
     hasScene: Boolean = true,
+    deviceRotationDegrees: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     // LocalWindowInfo.containerSize (px), not Configuration.screenWidthDp, per the accurate-window-size
@@ -72,6 +77,7 @@ fun GuidanceBanner(
     val density = LocalDensity.current
     val screenWidthDp = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
     val maxWidth = screenWidthDp * 0.85f
+    val controlRotation = rememberControlCounterRotation(deviceRotationDegrees)
     val primary = activeRecommendations.firstOrNull()
     if (primary == null) {
         // No advice: when the framing is decent, say so quietly, so advice clearing reads as success
@@ -83,6 +89,7 @@ fun GuidanceBanner(
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 modifier = modifier
+                    .rotate(controlRotation)
                     .widthIn(max = maxWidth)
                     .clip(RoundedCornerShape(16.dp))
                     .background(Scrim)
@@ -101,6 +108,7 @@ fun GuidanceBanner(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = modifier
+                .rotate(controlRotation)
                 .widthIn(max = maxWidth)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Scrim)
@@ -142,6 +150,7 @@ fun GuidanceBanner(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
+            .rotate(controlRotation)
             .widthIn(max = maxWidth)
             .clip(RoundedCornerShape(16.dp))
             .background(Scrim)

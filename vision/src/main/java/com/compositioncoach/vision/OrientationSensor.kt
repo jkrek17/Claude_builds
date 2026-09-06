@@ -72,6 +72,18 @@ import kotlin.math.hypot
  * A simple exponential low-pass filter (`alpha` = [LOW_PASS_ALPHA]) is applied to the raw
  * `(gx, gy, gz)` vector (not to the derived angles, which would need messy wraparound handling)
  * before computing roll/pitch, smoothing sensor jitter frame to frame.
+ *
+ * ### Physical device rotation (the "Pixel style" fix)
+ * The app is portrait-locked, so [Display.getRotation] never itself changes — but the raw `rollDegrees`
+ * computed above already *is* the phone's true physical rotation away from natural portrait (the
+ * `currentDisplayRotation()` remap above is a defensive no-op in practice, since it always reads back
+ * `Surface.ROTATION_0` for a locked activity). [DeviceRotationQuantizer] buckets that continuous roll
+ * into a stable [Surface.ROTATION_0]/`90`/`180`/`270`-degree band ([deviceRotationDegrees]), which
+ * [VisionPipeline] uses (via [UprightRotation]) to analyze every frame in true physical-up coordinates
+ * instead of the fixed portrait-display orientation. [current]'s own `rollDegrees` is then re-referenced
+ * onto that same quantized rotation (see [referenceRollToDeviceRotation]) so a level hold reads ~0
+ * degrees in *every* physical orientation, not just natural portrait — e.g. a phone held level in
+ * landscape (raw roll ~90) reports `rollDegrees` ~0 once [deviceRotationDegrees] has settled on 90.
  */
 class OrientationSensor(private val context: Context) : SensorEventListener {
 
@@ -87,9 +99,18 @@ class OrientationSensor(private val context: Context) : SensorEventListener {
     private var fz = 0f
     private var initialized = false
 
+    private val rotationQuantizer = DeviceRotationQuantizer()
+
     @Volatile
     var current: DeviceOrientation = DeviceOrientation(0f, 0f, isReliable = false)
         private set
+
+    /**
+     * The phone's quantized physical rotation from natural portrait (0/90/180/270), per
+     * [DeviceRotationQuantizer]. Mirrors [DeviceOrientation.deviceRotationDegrees] on [current]; exposed
+     * separately so [VisionPipeline] can read it without unwrapping a nullable [DeviceOrientation].
+     */
+    val deviceRotationDegrees: Int get() = rotationQuantizer.currentRotation
 
     /** Registers the best available sensor. Safe to call again after [stop]. */
     fun start() {
@@ -149,7 +170,12 @@ class OrientationSensor(private val context: Context) : SensorEventListener {
         // i.e. when the "up in device axes" vector has collapsed onto the Z axis (fx, fy both tiny).
         val horizontalMagnitude = hypot(fx.toDouble(), fy.toDouble())
         val nearVertical = Math.abs(pitchDegrees) > RELIABLE_PITCH_LIMIT_DEGREES || horizontalMagnitude < NEAR_VERTICAL_MAGNITUDE
-        current = DeviceOrientation(rollDegrees, pitchDegrees, isReliable = !nearVertical)
+        val isReliable = !nearVertical
+        // SensorEvent.timestamp is elapsed-realtime nanoseconds (monotonic, consistent across sensor
+        // types), so it doubles as the quantizer's debounce clock without an extra syscall per event.
+        val quantizedRotation = rotationQuantizer.update(rollDegrees, isReliable, event.timestamp / 1_000_000L)
+        val physicalRoll = referenceRollToDeviceRotation(rollDegrees, quantizedRotation)
+        current = DeviceOrientation(physicalRoll, pitchDegrees, isReliable = isReliable, deviceRotationDegrees = quantizedRotation)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit

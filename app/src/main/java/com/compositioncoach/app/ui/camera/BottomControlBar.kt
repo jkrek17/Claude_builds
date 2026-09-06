@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -52,6 +53,9 @@ import kotlinx.coroutines.delay
 /**
  * Bottom transparent control row, Pixel-style: a gallery thumbnail (opens the last photo), the shutter
  * (flash/mode/settings live in [CameraTopBar] instead), and the lens switch.
+ *
+ * [deviceRotationDegrees] rotates the thumbnail, shutter and lens-switch icon in place so they stay
+ * upright to the person holding the phone — see [CameraTopBar]'s matching KDoc.
  */
 @Composable
 fun BottomControlBar(
@@ -61,19 +65,26 @@ fun BottomControlBar(
     onShutterClick: () -> Unit,
     onSwitchLensClick: () -> Unit,
     onOpenGallery: () -> Unit,
+    deviceRotationDegrees: Int = 0,
     modifier: Modifier = Modifier,
 ) {
+    val controlRotation = rememberControlCounterRotation(deviceRotationDegrees)
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 24.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GalleryThumbnail(photoUri = lastPhotoUri, onClick = onOpenGallery)
+        GalleryThumbnail(photoUri = lastPhotoUri, onClick = onOpenGallery, rotationDegrees = controlRotation)
 
-        ShutterButton(isCapturing = isCapturing, isShootReady = isShootReady, onClick = onShutterClick)
+        ShutterButton(
+            isCapturing = isCapturing,
+            isShootReady = isShootReady,
+            onClick = onShutterClick,
+            rotationDegrees = controlRotation,
+        )
 
         Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-            IconButton(onClick = onSwitchLensClick, enabled = !isCapturing) {
+            IconButton(onClick = onSwitchLensClick, enabled = !isCapturing, modifier = Modifier.rotate(controlRotation)) {
                 Icon(imageVector = Icons.Filled.Cameraswitch, contentDescription = "Switch camera", tint = OnScrim)
             }
         }
@@ -86,7 +97,7 @@ fun BottomControlBar(
  * supply it isn't wired — see [CameraScreen]/`app/README.md` for the exact source of [photoUri]).
  */
 @Composable
-private fun GalleryThumbnail(photoUri: Uri?, onClick: () -> Unit) {
+private fun GalleryThumbnail(photoUri: Uri?, onClick: () -> Unit, rotationDegrees: Float) {
     Box(
         modifier = Modifier
             .minimumInteractiveComponentSize()
@@ -95,6 +106,7 @@ private fun GalleryThumbnail(photoUri: Uri?, onClick: () -> Unit) {
             .background(Scrim)
             .border(1.dp, OnScrim.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
+            .rotate(rotationDegrees)
             .semantics { contentDescription = "Open last photo" },
         contentAlignment = Alignment.Center,
     ) {
@@ -118,9 +130,11 @@ private const val CAPTURE_FLASH_MS = 60L
  * a capture starts — the two together are what make the shutter feel like it actually fired, the way a
  * dedicated camera's does. The ring animates to [Accent.Ready] with a soft outer glow once [isShootReady],
  * and back to white the instant framing drops out of it. Disabled (dimmed, no ripple) while capturing.
+ * [rotationDegrees] is imperceptible on this plain circular ring but is applied anyway for consistency
+ * with every other control in this row (and in case a future iteration adds a directional glyph to it).
  */
 @Composable
-private fun ShutterButton(isCapturing: Boolean, isShootReady: Boolean, onClick: () -> Unit) {
+private fun ShutterButton(isCapturing: Boolean, isShootReady: Boolean, onClick: () -> Unit, rotationDegrees: Float) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(targetValue = if (pressed) 0.9f else 1f, animationSpec = tween(Motion.PRESS_MS), label = "shutterScale")
@@ -141,7 +155,7 @@ private fun ShutterButton(isCapturing: Boolean, isShootReady: Boolean, onClick: 
         label = "captureFlash",
     )
 
-    Box(modifier = Modifier.size(96.dp).scale(scale), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(96.dp).scale(scale).rotate(rotationDegrees), contentAlignment = Alignment.Center) {
         // Soft outer glow: a few widening, thinning rings rather than a real blur (cheap, and identical
         // on every API level — Modifier.blur needs API 31+ to actually blur).
         if (glowAlpha > 0f) {

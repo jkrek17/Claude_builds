@@ -22,7 +22,8 @@ CameraPermissionGate
   `EmptySceneHint`, `OnboardingCard`, `DebugOverlay`) live inside one shared `Modifier.aspectRatio(3f/4f)`
   `Box`, full width, anchored below the status bar — that shared box, plus `PreviewView` staying
   `FILL_CENTER`, is what keeps `OverlayMapper`'s plain normalized-to-pixel multiply correct (see its class
-  doc); the rest of the screen is plain black, holding `ZoomChip` and `BottomControlBar`.
+  doc, and "Device rotation (Pixel style)" below for the rotation step that now precedes that multiply);
+  the rest of the screen is plain black, holding `ZoomChip` and `BottomControlBar`.
   `CompositionOverlay` draws the target ring / horizon level / directional arrow — the arrow anchors to
   `DetectedSubject.anchorPoint` (already the box centre for an `OBJECT`-kind primary subject), points the
   way the *camera* should move (`Direction.RIGHT` → arrow points right, matching `ReframeVector`'s "dx>0 =
@@ -135,10 +136,12 @@ view hasn't been laid out yet). That single choice is what makes the rest of the
   view to exactly fill the view's pixel bounds, with no letterboxing.
 
 Put together: "fraction of the visible frame" and "fraction of the `PreviewView`'s own width/height"
-are the same number, so `OverlayMapper.toPx(point, viewWidthPx, viewHeightPx)` is a plain
-`point.x * width, point.y * height` — see the class doc on `OverlayMapper` for the full argument and
-what would break it (dropping the shared `ViewPort`, or switching to `FIT_CENTER`, which can
-letterbox). `OverlayMapperTest` covers the four corners + centre + a rect.
+are the same number — *once the frame's own physical-up rotation has been undone*, see "Device rotation
+(Pixel style)" below — so `OverlayMapper.toPx(point, deviceRotationDegrees, viewWidthPx, viewHeightPx)` is
+a rotation followed by a plain `point.x * width, point.y * height`. See the class doc on `OverlayMapper`
+for the full argument and what would break it (dropping the shared `ViewPort`, or switching to
+`FIT_CENTER`, which can letterbox). `OverlayMapperTest` covers the four corners + centre + a rect, at all
+four rotations.
 
 Other binding details:
 
@@ -158,8 +161,10 @@ Other binding details:
   degraded `PerformanceTier`, see below, calls for it). CameraX fixes an `ImageCapture`'s capture mode at
   `Builder.build()` time, so this only takes effect on the *next* bind — a caller that wants it to react
   live should include whatever drives `preferFastCapture` in the rebind `DisposableEffect`'s keys, the
-  same way `lensFacing` already is. JPEG quality is 95; `setTargetRotation` is set from the display
-  rotation on every bind so EXIF orientation matches actual device orientation.
+  same way `lensFacing` already is. JPEG quality is 95; `ImageCapture.setTargetRotation` is set at bind
+  time from the display rotation (always `ROTATION_0` for this portrait-locked app) *and* kept live
+  afterwards from the phone's actual physical rotation — see "Device rotation (Pixel style)" below for
+  why a bind-time-only value isn't enough for correct EXIF.
 * `CameraController.setExposureCompensation(index)` sets exposure compensation, clamped to the bound
   camera's supported range; that range comes back in `CameraBindResult.Success.exposureRange`
   (`android.util.Range<Int>`, both bounds `0` when unsupported) and is mirrored into
@@ -184,6 +189,61 @@ Other binding details:
 * Flash cycles OFF → AUTO → ON and is hidden entirely when `cameraInfo.hasFlashUnit()` is false.
   Tap-to-focus uses `PreviewView.meteringPointFactory` with AE+AF and a 3s auto-cancel; pinch-zoom is
   wired via `detectTransformGestures` (optional per the spec, included).
+
+## Device rotation (Pixel style)
+
+**The field report this fixes:** held in landscape, the app didn't visually rotate — by design, this app
+(like the stock Pixel Camera) stays `android:screenOrientation="portrait"` and the live preview never
+rotates. The actual bug was that *analysis* also silently treated "however the fixed portrait display is
+oriented" as "up", so the horizon analyzer reported a ~90° tilt and portrait-shaped logic (headroom,
+thirds) ran along the wrong axis whenever the phone was genuinely held sideways. The fix has three parts,
+all driven by one value — `FrameAnalysis.deviceRotationDegrees` (0/90/180/270, `Surface.ROTATION_*`
+sense), the phone's quantized *physical* rotation from natural portrait, computed in `:vision` from the
+same gravity vector `OrientationSensor` already reads (see its README for the derivation) and carried
+through as `CameraUiState.deviceRotationDegrees`:
+
+1. **Analysis reasons in true physical-up coordinates.** `:vision` now corrects
+   `imageInfo.rotationDegrees` by `deviceRotationDegrees` (`UprightRotation`, see `:vision`'s README)
+   before building `FrameCoordinateMapper` or handing ML Kit its `InputImage`, so every detector, the luma
+   statistics, the segmentation mask, and the horizon/thirds/headroom logic downstream all see a
+   physically-upright frame — `FrameAnalysis.frameWidth`/`frameHeight` follow suit (a landscape hold
+   reports wider-than-tall). `DeviceOrientation.rollDegrees` is likewise re-referenced onto
+   `deviceRotationDegrees` so a level landscape hold reads ~0°, not ~90°.
+2. **Overlays rotate the *coordinates*, not the canvas.** Since the live preview content itself never
+   rotates but the analysis geometry is now physical-up, `OverlayMapper` (see its class KDoc for the full
+   derivation) rotates every normalized point/rect/direction from `FrameAnalysis`'s physical-up frame onto
+   the preview's own never-rotating frame before the existing plain normalized-to-pixel multiply.
+   `CompositionOverlay` (target ring, level indicator, directional arrow, rotate glyph, region highlight)
+   and `DebugGeometryOverlay` (object boxes, subject boxes/landmarks, mask heat) both go through it,
+   driven by `CameraUiState.deviceRotationDegrees`. The directional arrow/level indicator/rotate glyph
+   specifically rotate the *direction* they point in too (`OverlayMapper.rotateVectorToDisplay`) so they
+   keep pointing the physically-correct way — see "Arrow semantics" on `drawDirectionalArrow`.
+3. **Chrome rotates in place.** Flash, the shooting-mode chip, the settings gear (`CameraTopBar`), the
+   gallery thumbnail, shutter, and lens switch (`BottomControlBar`), plus `ScoreBadge` and
+   `GuidanceBanner`, each counter-rotate by `-deviceRotationDegrees` via `Modifier.rotate(...)` — their
+   position on screen never moves, only their orientation. `rememberControlCounterRotation`
+   (`RotationAnimation.kt`) drives this: it tracks an ever-accumulating (never-wrapped) target angle so
+   `animateFloatAsState`'s 250ms tween always takes the *shorter* turn between two quantized rotations
+   (e.g. 270 -> 0 animates as a +90 hop, not a -270 spin) — see `RotationAnimation.shortestSignedDelta`'s
+   KDoc and `RotationAnimationTest`.
+4. **Capture EXIF follows the physical rotation, not the bind-time display rotation.**
+   `CameraController.setCaptureRotationDegrees(deviceRotationDegrees)` sets `ImageCapture.targetRotation`
+   live (no rebind needed, unlike capture mode) — `CameraScreen` calls it from a
+   `LaunchedEffect(uiState.deviceRotationDegrees)` — so CameraX writes the correct EXIF orientation
+   regardless of how the phone was actually held when the shutter fired. `Preview`'s own `targetRotation`
+   is deliberately left alone (bind-time display rotation only): the live preview content must never
+   rotate. `ReviewScreen`'s photo box now sizes itself off the decoded image's own aspect ratio (via
+   Coil's `intrinsicSize`) instead of a hardcoded portrait 3:4, so a landscape capture is shown full-bleed
+   letterboxed rather than squeezed into a portrait-shaped box.
+
+**What needs a physical device to confirm** (none of this could be hardware-tested in this environment —
+see `:vision`'s README for the same caveat on the underlying sensor math): holding the phone in all four
+orientations and checking the level indicator reads level, headroom/thirds advice still makes sense for a
+person in frame, every chrome icon reads upright, and a saved photo opens upright in the gallery; whether
+250ms is the right animation speed for the chrome counter-rotation to feel responsive without being
+jarring; and whether a rotated `ScoreBadge`/`GuidanceBanner` ever visibly clips in landscape (both were
+laid out assuming a portrait-wide/short shape, and rotating that whole shape 90° in place is inherent to
+the "controls rotate, layout doesn't" approach — Pixel's own equivalent chrome has the same trade-off).
 
 ## Camera/Activity lifecycle (`CameraViewModel`)
 
@@ -413,6 +473,11 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
 * **Front camera capture** sets `ImageCapture.Metadata.isReversedHorizontal = true` so the saved JPEG
   matches what the mirrored preview showed; this does not affect analysis, which is already mirrored
   by the vision layer's normalized-coordinate contract.
+* **Device rotation** (see the dedicated section above): a capture taken in the brief window before the
+  first `FrameAnalysis` arrives (fresh process start, phone already held sideways) uses the default
+  `deviceRotationDegrees = 0` until the first frame updates `CameraUiState`, so its EXIF could reflect
+  natural portrait for that one shot rather than the phone's actual held orientation — a narrow, one-shot
+  window rather than a systemic issue, since every subsequent frame corrects it immediately.
 * Pinch-to-zoom is still not exposed as a settings toggle — it's a direct gesture on the preview — but it
   now drives the `ZoomChip` readout described above.
 * **Needs a physical device to confirm:** `CAPTURE_MODE_MAXIMIZE_QUALITY`'s actual shutter-to-saved-JPEG

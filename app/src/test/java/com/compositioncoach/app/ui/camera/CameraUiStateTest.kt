@@ -119,6 +119,31 @@ class CameraUiStateTest {
         assertEquals(9.5f, updated.debugStats.fps)
         assertEquals(7L, updated.debugStats.engineTimeMs)
         assertEquals(mapOf("face" to 3L), updated.debugStats.detectorTimings)
+        assertEquals("deviceRotationDegrees defaults to 0 when not supplied", 0, updated.deviceRotationDegrees)
+    }
+
+    @Test
+    fun `withFrameUpdate carries the frame's deviceRotationDegrees into CameraUiState`() {
+        val updated = CameraUiState().withFrameUpdate(
+            composition = shootReadyComposition(ready = false),
+            latencyMs = 10L,
+            fps = 8f,
+            samplingIntervalMs = 100L,
+            engineTimeMs = 5L,
+            deviceRotationDegrees = 90,
+        )
+        assertEquals(90, updated.deviceRotationDegrees)
+
+        // A later frame update reporting a different rotation replaces it, same as every other field here.
+        val rotatedBack = updated.withFrameUpdate(
+            composition = shootReadyComposition(ready = false),
+            latencyMs = 10L,
+            fps = 8f,
+            samplingIntervalMs = 100L,
+            engineTimeMs = 5L,
+            deviceRotationDegrees = 0,
+        )
+        assertEquals(0, rotatedBack.deviceRotationDegrees)
     }
 
     @Test

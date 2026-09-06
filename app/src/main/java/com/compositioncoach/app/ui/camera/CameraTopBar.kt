@@ -21,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,10 @@ import com.compositioncoach.composition.model.SceneIntent
  * The translucent control strip over the top of the preview, Pixel-style: flash + a "DEBUG" chip (debug
  * mode only) at the left, the shooting-mode chip (shown only when [sceneIntent] isn't [SceneIntent.AUTO],
  * tapping it opens Settings same as the gear) and the settings gear at the right.
+ *
+ * [deviceRotationDegrees] rotates the flash icon, mode chip and settings gear in place (via
+ * [rememberControlCounterRotation]) so they stay upright to the person holding the phone even though this
+ * strip's own position never moves — see `app/README.md`'s device-rotation section.
  */
 @Composable
 fun CameraTopBar(
@@ -45,8 +50,10 @@ fun CameraTopBar(
     hasFlashUnit: Boolean,
     onFlashClick: () -> Unit,
     onSettingsClick: () -> Unit,
+    deviceRotationDegrees: Int = 0,
     modifier: Modifier = Modifier,
 ) {
+    val controlRotation = rememberControlCounterRotation(deviceRotationDegrees)
     Row(
         modifier = modifier.fillMaxWidth().background(Scrim).padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -54,7 +61,7 @@ fun CameraTopBar(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (hasFlashUnit) {
-                IconButton(onClick = onFlashClick) {
+                IconButton(onClick = onFlashClick, modifier = Modifier.rotate(controlRotation)) {
                     Icon(
                         imageVector = when (flashMode) {
                             FlashMode.OFF -> Icons.Filled.FlashOff
@@ -90,7 +97,8 @@ fun CameraTopBar(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .minimumInteractiveComponentSize()
-                        .clickable(onClick = onSettingsClick),
+                        .clickable(onClick = onSettingsClick)
+                        .rotate(controlRotation),
                 ) {
                     Box(
                         modifier = Modifier
@@ -102,7 +110,7 @@ fun CameraTopBar(
                     }
                 }
             }
-            IconButton(onClick = onSettingsClick) {
+            IconButton(onClick = onSettingsClick, modifier = Modifier.rotate(controlRotation)) {
                 Icon(imageVector = Icons.Filled.Settings, contentDescription = "Settings", tint = OnScrim)
             }
         }

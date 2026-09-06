@@ -235,6 +235,28 @@ class CameraController(private val context: Context) {
         analysisExecutor.shutdown()
     }
 
+    /**
+     * Sets [ImageCapture.targetRotation] to whichever `Surface.ROTATION_*` matches [deviceRotationDegrees]
+     * — the phone's quantized *physical* rotation from natural portrait (see `:vision`'s
+     * `DeviceRotationQuantizer`/`FrameAnalysis.deviceRotationDegrees`), not `previewView.display.rotation`
+     * (which never changes for this portrait-locked app — see [bind]'s `targetRotation`). Unlike the
+     * capture mode, `ImageCapture.targetRotation` is a *live* property CameraX honours without a rebind, so
+     * this is called every time [deviceRotationDegrees] changes (see `CameraScreen`'s
+     * `LaunchedEffect(uiState.deviceRotationDegrees)`) rather than only at bind time — that's what makes
+     * CameraX write the correct EXIF orientation so the saved JPEG is upright in the gallery regardless of
+     * how the phone was actually held when the shutter fired. [Preview]'s own `targetRotation` is
+     * deliberately left alone: the live preview content must never rotate, Pixel-Camera-style — only the
+     * saved photo's metadata needs to reflect the true physical orientation.
+     */
+    fun setCaptureRotationDegrees(deviceRotationDegrees: Int) {
+        imageCapture?.targetRotation = when (deviceRotationDegrees) {
+            90 -> Surface.ROTATION_90
+            180 -> Surface.ROTATION_180
+            270 -> Surface.ROTATION_270
+            else -> Surface.ROTATION_0
+        }
+    }
+
     fun cycleFlashMode(): FlashMode {
         flashMode = when (flashMode) {
             FlashMode.OFF -> FlashMode.AUTO
