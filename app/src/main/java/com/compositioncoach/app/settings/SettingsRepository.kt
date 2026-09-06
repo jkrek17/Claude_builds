@@ -38,6 +38,9 @@ class SettingsRepository(context: Context) {
             prefs[Keys.BATTERY_SAVER] = updated.batterySaver
             prefs[Keys.DEBUG_MODE] = updated.debugMode
             prefs[Keys.SCENE_INTENT] = SceneIntentCodec.encode(updated.sceneIntent)
+            prefs[Keys.DETECT_OBJECTS] = updated.detectObjectsEnabled
+            prefs[Keys.SUBJECT_MASK] = updated.subjectMaskEnabled
+            prefs[Keys.ONBOARDING_SEEN] = updated.onboardingSeen
         }
     }
 
@@ -49,6 +52,9 @@ class SettingsRepository(context: Context) {
     suspend fun setBatterySaver(enabled: Boolean) = update { it.copy(batterySaver = enabled) }
     suspend fun setDebugMode(enabled: Boolean) = update { it.copy(debugMode = enabled) }
     suspend fun setSceneIntent(intent: SceneIntent) = update { it.copy(sceneIntent = intent) }
+    suspend fun setDetectObjectsEnabled(enabled: Boolean) = update { it.copy(detectObjectsEnabled = enabled) }
+    suspend fun setSubjectMaskEnabled(enabled: Boolean) = update { it.copy(subjectMaskEnabled = enabled) }
+    suspend fun setOnboardingSeen(seen: Boolean) = update { it.copy(onboardingSeen = seen) }
 
     private fun Preferences.toCoachSettings() = CoachSettings(
         guidanceEnabled = this[Keys.GUIDANCE_ENABLED] ?: true,
@@ -59,6 +65,9 @@ class SettingsRepository(context: Context) {
         batterySaver = this[Keys.BATTERY_SAVER] ?: false,
         debugMode = this[Keys.DEBUG_MODE] ?: false,
         sceneIntent = SceneIntentCodec.decode(this[Keys.SCENE_INTENT]),
+        detectObjectsEnabled = this[Keys.DETECT_OBJECTS] ?: true,
+        subjectMaskEnabled = this[Keys.SUBJECT_MASK] ?: true,
+        onboardingSeen = this[Keys.ONBOARDING_SEEN] ?: false,
     )
 
     /** Preference key names. Exposed for tests; do not rename in place without a migration. */
@@ -71,5 +80,8 @@ class SettingsRepository(context: Context) {
         val BATTERY_SAVER = booleanPreferencesKey("battery_saver")
         val DEBUG_MODE = booleanPreferencesKey("debug_mode")
         val SCENE_INTENT = stringPreferencesKey("scene_intent")
+        val DETECT_OBJECTS = booleanPreferencesKey("detect_objects")
+        val SUBJECT_MASK = booleanPreferencesKey("subject_mask")
+        val ONBOARDING_SEEN = booleanPreferencesKey("onboarding_seen")
     }
 }

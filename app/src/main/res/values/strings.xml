@@ -9,4 +9,7 @@
     <string name="permission_open_settings">Open settings</string>
 
     <string name="shooting_mode_description">Tell the coach what you\'re shooting. Auto detects it from the scene.</string>
+
+    <string name="onboarding_message">Point at a subject. Follow the arrow. Shoot when it turns green.</string>
+    <string name="onboarding_dismiss">Got it</string>
 </resources>

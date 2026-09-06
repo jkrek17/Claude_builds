@@ -3,7 +3,9 @@ package com.compositioncoach.app.ui.camera
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.settings.CoachSettings
+import com.compositioncoach.composition.model.DetectedObject
 import com.compositioncoach.composition.model.SmoothedComposition
+import com.compositioncoach.composition.model.SubjectMask
 
 /** Rolling stats shown only in debug mode. */
 data class DebugStats(
@@ -12,6 +14,17 @@ data class DebugStats(
     val samplingIntervalMs: Long = CoachSettings.DEFAULT_INTERVAL_MS,
     val engineTimeMs: Long = 0L,
     val detectorTimings: Map<String, Long> = emptyMap(),
+)
+
+/**
+ * Raw per-frame detector output the debug overlays draw directly ([DebugGeometryOverlay]'s object boxes
+ * and mask heat layer) — kept separate from [com.compositioncoach.composition.model.CompositionResult]
+ * because [DetectedObject]/[SubjectMask] describe every detection, not just the ones that became a
+ * [com.compositioncoach.composition.model.DetectedSubject].
+ */
+data class DebugFrameData(
+    val objects: List<DetectedObject> = emptyList(),
+    val subjectMask: SubjectMask? = null,
 )
 
 /** Everything [CameraScreen] needs to render. Owned and reduced by [CameraViewModel]. */
@@ -23,9 +36,12 @@ data class CameraUiState(
     val isCapturing: Boolean = false,
     val settings: CoachSettings = CoachSettings(),
     val debugStats: DebugStats = DebugStats(),
+    val debugFrame: DebugFrameData = DebugFrameData(),
     val analysisUnavailable: Boolean = false,
     val cameraError: String? = null,
     val captureError: String? = null,
+    /** True right after a capture finishes, until [withPostCaptureFadeEnded] — see that function's doc. */
+    val postCaptureFadeActive: Boolean = false,
 )
 
 // The functions below are pure state transforms with no Android dependency, extracted so the
@@ -42,9 +58,19 @@ fun CameraUiState.withFlashMode(mode: FlashMode): CameraUiState = copy(flashMode
 
 fun CameraUiState.withCaptureStarted(): CameraUiState = copy(isCapturing = true, captureError = null)
 
-fun CameraUiState.withCaptureFinished(): CameraUiState = copy(isCapturing = false)
+/**
+ * Capture finished successfully: stops the shutter's disabled state and starts the post-capture fade
+ * (score badge / guidance banner drop to 30% opacity) so the cut to the review screen doesn't read as an
+ * abrupt jump from full-opacity UI. [CameraViewModel] clears [postCaptureFadeActive] again ~1s later via
+ * [withPostCaptureFadeEnded], whether or not navigation actually happened by then.
+ */
+fun CameraUiState.withCaptureFinished(): CameraUiState = copy(isCapturing = false, postCaptureFadeActive = true)
 
-fun CameraUiState.withCaptureError(message: String): CameraUiState = copy(isCapturing = false, captureError = message)
+fun CameraUiState.withCaptureError(message: String): CameraUiState =
+    copy(isCapturing = false, captureError = message, postCaptureFadeActive = false)
+
+/** Ends the post-capture fade window started by [withCaptureFinished]. */
+fun CameraUiState.withPostCaptureFadeEnded(): CameraUiState = copy(postCaptureFadeActive = false)
 
 fun CameraUiState.withFrameUpdate(
     composition: SmoothedComposition,
@@ -53,6 +79,7 @@ fun CameraUiState.withFrameUpdate(
     samplingIntervalMs: Long,
     engineTimeMs: Long,
     detectorTimings: Map<String, Long> = emptyMap(),
+    debugFrame: DebugFrameData = DebugFrameData(),
 ): CameraUiState = copy(
     composition = composition,
     debugStats = debugStats.copy(
@@ -62,6 +89,7 @@ fun CameraUiState.withFrameUpdate(
         engineTimeMs = engineTimeMs,
         detectorTimings = detectorTimings,
     ),
+    debugFrame = debugFrame,
 )
 
 /** True exactly on the transition into shoot-ready, used to fire the haptic tick once per entry. */

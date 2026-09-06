@@ -38,9 +38,12 @@ import com.compositioncoach.app.camera.CaptureRepository
 import com.compositioncoach.app.di.ReviewEntry
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.composition.model.CompositionResult
+import com.compositioncoach.composition.model.DetectedSubject
+import com.compositioncoach.composition.model.NormalizedRect
 import com.compositioncoach.composition.model.SceneClassification
 import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.SceneType
+import com.compositioncoach.composition.model.SubjectKind
 import kotlinx.coroutines.launch
 
 /**
@@ -105,6 +108,9 @@ fun ReviewScreen(
 
 @Composable
 private fun ReviewDetails(result: CompositionResult) {
+    val feedback = ReviewFormatter.trim(result.strengths, result.improvements)
+    val subjectLine = ReviewFormatter.subjectLine(result.primarySubject)
+
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -120,16 +126,25 @@ private fun ReviewDetails(result: CompositionResult) {
             AssistChip(onClick = {}, label = { Text(result.scene.type.name.lowercase().replaceFirstChar { it.uppercase() }) })
         }
 
-        if (result.strengths.isNotEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            Text("Strong:", color = Color.White, style = MaterialTheme.typography.labelLarge)
-            result.strengths.forEach { BulletLine(it, Color(0xFF34D399)) }
+        if (subjectLine != null) {
+            Text(
+                text = subjectLine,
+                color = Color.White.copy(alpha = 0.6f),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
 
-        if (result.improvements.isNotEmpty()) {
+        if (feedback.strengths.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text("Strong:", color = Color.White, style = MaterialTheme.typography.labelLarge)
+            feedback.strengths.forEach { BulletLine(it, Color(0xFF34D399)) }
+        }
+
+        if (feedback.improvements.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             Text("Could improve:", color = Color.White, style = MaterialTheme.typography.labelLarge)
-            result.improvements.forEach { BulletLine(it, Color(0xFFFFC857)) }
+            feedback.improvements.forEach { BulletLine(it, Color(0xFFFFC857)) }
         }
     }
 }
@@ -153,6 +168,27 @@ private fun ReviewDetailsPreview() {
                 strengths = listOf("Level horizon", "Good subject separation"),
                 improvements = listOf("Give a little more headroom", "Move the subject off-center"),
                 intent = SceneIntent.PORTRAIT,
+            ),
+        )
+    }
+}
+
+@Preview(name = "Object subject, trimmed feedback", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun ReviewDetailsObjectSubjectPreview() {
+    CompositionCoachTheme {
+        ReviewDetails(
+            result = CompositionResult.empty().copy(
+                score = 91,
+                scene = SceneClassification(SceneType.OBJECT, confidence = 0.8f),
+                primarySubject = DetectedSubject(
+                    id = 1,
+                    kind = SubjectKind.OBJECT,
+                    bounds = NormalizedRect(0.3f, 0.3f, 0.7f, 0.7f),
+                ),
+                // Five items combined (> ReviewFormatter.TRIM_THRESHOLD): only the first two of each show.
+                strengths = listOf("Well centered", "Good contrast", "Clean background"),
+                improvements = listOf("Move slightly left", "Fill more of the frame"),
             ),
         )
     }

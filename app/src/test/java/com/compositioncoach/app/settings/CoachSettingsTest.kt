@@ -18,6 +18,9 @@ class CoachSettingsTest {
         assertEquals(false, defaults.batterySaver)
         assertEquals(false, defaults.debugMode)
         assertEquals(SceneIntent.AUTO, defaults.sceneIntent)
+        assertEquals(true, defaults.detectObjectsEnabled)
+        assertEquals(true, defaults.subjectMaskEnabled)
+        assertEquals(false, defaults.onboardingSeen)
     }
 
     @Test
@@ -52,5 +55,54 @@ class CoachSettingsTest {
         assertEquals(SceneIntent.AUTO, SceneIntentCodec.decode(null))
         assertEquals(SceneIntent.AUTO, SceneIntentCodec.decode("NOT_A_REAL_INTENT"))
         assertEquals(SceneIntent.AUTO, SceneIntentCodec.decode(""))
+    }
+
+    // --- Detection settings round-trip (detect_objects / subject_mask keys) -----------------------------
+    // SettingsRepository itself needs a real DataStore-backed Context, but its whole job is to persist a
+    // CoachSettings value and read it back verbatim (see SettingsRepository.update/toCoachSettings) — the
+    // property this test actually verifies, on the plain JVM, via `copy()` standing in for a write+read.
+
+    @Test
+    fun `detectObjectsEnabled round-trips through a copy like every other boolean setting`() {
+        val defaultOn = CoachSettings()
+        assertEquals(true, defaultOn.detectObjectsEnabled)
+        val toggledOff = defaultOn.copy(detectObjectsEnabled = false)
+        assertEquals(false, toggledOff.detectObjectsEnabled)
+        assertEquals(true, toggledOff.copy(detectObjectsEnabled = true).detectObjectsEnabled)
+    }
+
+    @Test
+    fun `subjectMaskEnabled round-trips independently of batterySaver`() {
+        val toggledOff = CoachSettings(subjectMaskEnabled = false)
+        assertEquals(false, toggledOff.subjectMaskEnabled)
+        assertEquals(false, toggledOff.batterySaver)
+        assertEquals(true, toggledOff.copy(subjectMaskEnabled = true).subjectMaskEnabled)
+    }
+
+    @Test
+    fun `effectiveSubjectMaskEnabled is forced off by battery saver regardless of the user's own preference`() {
+        assertEquals(true, CoachSettings(subjectMaskEnabled = true, batterySaver = false).effectiveSubjectMaskEnabled)
+        assertEquals(false, CoachSettings(subjectMaskEnabled = true, batterySaver = true).effectiveSubjectMaskEnabled)
+        assertEquals(false, CoachSettings(subjectMaskEnabled = false, batterySaver = false).effectiveSubjectMaskEnabled)
+        assertEquals(false, CoachSettings(subjectMaskEnabled = false, batterySaver = true).effectiveSubjectMaskEnabled)
+    }
+
+    @Test
+    fun `subjectMaskSubtitle explains the battery saver override only when it applies`() {
+        assertEquals(
+            "Better background and separation advice for people; uses more battery",
+            CoachSettings(batterySaver = false).subjectMaskSubtitle(),
+        )
+        assertEquals(
+            "Better background and separation advice for people; off while battery saver is on",
+            CoachSettings(batterySaver = true).subjectMaskSubtitle(),
+        )
+    }
+
+    @Test
+    fun `onboardingSeen round-trips through a copy`() {
+        val seen = CoachSettings().copy(onboardingSeen = true)
+        assertEquals(true, seen.onboardingSeen)
+        assertEquals(false, seen.copy(onboardingSeen = false).onboardingSeen)
     }
 }

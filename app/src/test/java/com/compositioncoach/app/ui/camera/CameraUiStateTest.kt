@@ -78,6 +78,32 @@ class CameraUiStateTest {
     }
 
     @Test
+    fun `withCaptureFinished starts the post-capture fade`() {
+        val state = CameraUiState(postCaptureFadeActive = false).withCaptureStarted()
+        assertFalse(state.postCaptureFadeActive)
+
+        val finished = state.withCaptureFinished()
+        assertTrue(finished.postCaptureFadeActive)
+        assertFalse(finished.isCapturing)
+    }
+
+    @Test
+    fun `withPostCaptureFadeEnded clears the fade without touching other fields`() {
+        val faded = CameraUiState(postCaptureFadeActive = true, flashMode = FlashMode.ON)
+        val ended = faded.withPostCaptureFadeEnded()
+        assertFalse(ended.postCaptureFadeActive)
+        assertEquals(FlashMode.ON, ended.flashMode)
+    }
+
+    @Test
+    fun `a capture error cancels an in-progress post-capture fade`() {
+        val faded = CameraUiState(postCaptureFadeActive = true, isCapturing = true)
+        val failed = faded.withCaptureError("disk full")
+        assertFalse(failed.postCaptureFadeActive)
+        assertFalse(failed.isCapturing)
+    }
+
+    @Test
     fun `withFrameUpdate replaces composition and debug stats together`() {
         val updated = CameraUiState().withFrameUpdate(
             composition = shootReadyComposition(ready = false),

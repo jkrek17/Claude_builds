@@ -1,6 +1,7 @@
 package com.compositioncoach.app.ui.camera
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,8 +22,11 @@ import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +36,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.camera.FlashMode
+import kotlinx.coroutines.delay
 
 /** Bottom transparent control row: flash toggle, large shutter, camera switch — always visible, never a full bar. */
 @Composable
@@ -74,12 +79,33 @@ fun BottomControlBar(
     }
 }
 
-/** A 72dp white-ring shutter with a press-scale animation; disabled (dimmed, no ripple) while capturing. */
+private const val CAPTURE_FLASH_MS = 60L
+
+/**
+ * A 72dp white-ring shutter with a press-scale animation (90% while held) and a brief white flash overlay
+ * the instant a capture starts (the rising edge of [isCapturing]) — the two together are what make the
+ * shutter feel like it actually fired, the way a dedicated camera's does. Disabled (dimmed, no ripple)
+ * while capturing.
+ */
 @Composable
 private fun ShutterButton(isCapturing: Boolean, onClick: () -> Unit) {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(targetValue = if (pressed) 0.9f else 1f, label = "shutterScale")
+
+    var showFlash by remember { mutableStateOf(false) }
+    LaunchedEffect(isCapturing) {
+        if (isCapturing) {
+            showFlash = true
+            delay(CAPTURE_FLASH_MS)
+            showFlash = false
+        }
+    }
+    val flashAlpha by animateFloatAsState(
+        targetValue = if (showFlash) 1f else 0f,
+        animationSpec = tween(CAPTURE_FLASH_MS.toInt() / 2),
+        label = "captureFlash",
+    )
 
     Box(modifier = Modifier.size(72.dp).scale(scale), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.size(72.dp)) {
@@ -101,6 +127,9 @@ private fun ShutterButton(isCapturing: Boolean, onClick: () -> Unit) {
                     onClick = onClick,
                 ),
         )
+        if (flashAlpha > 0f) {
+            Box(modifier = Modifier.size(58.dp).clip(CircleShape).background(Color.White.copy(alpha = flashAlpha)))
+        }
     }
 }
 

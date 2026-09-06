@@ -83,7 +83,12 @@ fun DebugOverlay(composition: SmoothedComposition, debugStats: DebugStats, modif
             if (debugStats.detectorTimings.isEmpty()) {
                 DebugText("(none)")
             } else {
-                debugStats.detectorTimings.forEach { (name, ms) -> DebugText("  $name: ${ms}ms") }
+                // "mask_age" is frames-since-refresh, not a wall-clock time like every other entry here
+                // (see FrameAnalysis.detectorTimings' kdoc) — worth a distinct unit in the label so it
+                // doesn't read as "40ms" when it means "40 frames old".
+                debugStats.detectorTimings.forEach { (name, value) ->
+                    DebugText(if (name == "mask_age") "  $name: $value frames" else "  $name: ${value}ms")
+                }
             }
             DebugText("Subjects: ${raw.subjects.size}  Primary: ${raw.primarySubject?.kind ?: "none"}")
 
@@ -131,7 +136,13 @@ private fun DebugOverlayPreview() {
     CompositionCoachTheme {
         DebugOverlay(
             composition = SmoothedComposition(82, emptyList(), false, raw.scene, null, raw),
-            debugStats = DebugStats(fps = 8.7f, lastLatencyMs = 34L, samplingIntervalMs = 100L, engineTimeMs = 6L, detectorTimings = mapOf("face" to 4L, "pose" to 9L)),
+            debugStats = DebugStats(
+                fps = 8.7f,
+                lastLatencyMs = 34L,
+                samplingIntervalMs = 100L,
+                engineTimeMs = 6L,
+                detectorTimings = mapOf("face" to 4L, "pose" to 9L, "objects" to 11L, "segmentation" to 22L, "mask_age" to 2L),
+            ),
         )
     }
 }

@@ -7,6 +7,8 @@ import com.compositioncoach.app.settings.SettingsRepository
 import com.compositioncoach.composition.engine.CompositionCoach
 import com.compositioncoach.vision.FrameAnalysisSource
 import com.compositioncoach.vision.VisionPipelineFactory
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 
 /**
  * Manual dependency container, one instance per process (see [com.compositioncoach.app.CompositionCoachApp]).
@@ -35,6 +37,20 @@ class AppContainer(private val appContext: Context) {
 
     /** Null when the vision pipeline failed to construct (e.g. the stub in this build). */
     fun frameSourceOrNull(): FrameAnalysisSource? = frameSourceResult.getOrNull()
+
+    /**
+     * Volume-down key presses from [com.compositioncoach.app.MainActivity.onKeyDown], forwarded here so
+     * the camera screen can trigger a capture without the Activity reaching into the ViewModel/Compose
+     * layer directly. `extraBufferCapacity = 1` so a press that lands a frame before the screen's
+     * collector is (re)subscribed (e.g. right after a configuration change) is not silently dropped.
+     */
+    private val _volumeDownEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val volumeDownEvents: SharedFlow<Unit> = _volumeDownEvents
+
+    /** Called from [com.compositioncoach.app.MainActivity.onKeyDown]. */
+    fun onVolumeDownPressed() {
+        _volumeDownEvents.tryEmit(Unit)
+    }
 
     companion object {
         private const val TAG = "AppContainer"

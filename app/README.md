@@ -17,21 +17,33 @@ CameraPermissionGate
 ```
 
 * **camera** — `CameraScreen` + `CameraViewModel`. Full-screen `PreviewView` with Compose overlays:
-  `ThirdsGridOverlay`, `CompositionOverlay` (target ring / horizon level / directional arrow),
-  `DebugGeometryOverlay` + `DebugOverlay` (debug mode only), `ScoreBadge`, `GuidanceBanner`,
-  `CameraTopBar` (shows the current shooting mode as a small chip when it isn't Auto — tap it to open
-  Settings), `BottomControlBar`, and `CameraErrorOverlay` for camera init failures (shown for any
-  `CameraBindResult.Failure`, including an `IllegalStateException` from CameraX binding — `Retry` clears
-  the error and re-triggers the bind `DisposableEffect`).
+  `ThirdsGridOverlay`, `CompositionOverlay` (target ring / horizon level / directional arrow — the arrow
+  anchors to `DetectedSubject.anchorPoint`, which is already the box centre for an `OBJECT`-kind primary
+  subject, no special-casing needed — plus a fading, restrained 1dp/45%-white rounded outline of the
+  headline recommendation's `region`, when it has one and framing isn't shoot-ready yet),
+  `DebugGeometryOverlay` + `DebugOverlay` (debug mode only — see "Debug mode guide" below), `ScoreBadge` and
+  `GuidanceBanner` (both fade to 30% for ~1s right after a capture, see `CameraUiState.postCaptureFadeActive`
+  below), `CameraTopBar` (shows the current shooting mode as a small chip when it isn't Auto — tap it to open
+  Settings), `BottomControlBar` (shutter has a 90%-scale press animation and a brief white capture flash),
+  `ZoomChip` (pinch-zoom ratio, e.g. "1.0×", fades out 1.2s after the last pinch delta), `FocusRingOverlay`
+  (tap-to-focus ring, fades in over 150ms / out after 800ms), `OnboardingCard` (a single dismissible card
+  shown once on first launch, see "Onboarding" below), and `CameraErrorOverlay` for camera init failures
+  (shown for any `CameraBindResult.Failure`, including an `IllegalStateException` from CameraX binding —
+  `Retry` clears the error and re-triggers the bind `DisposableEffect`). Volume-down also fires the shutter
+  (`MainActivity.onKeyDown` → `AppContainer.volumeDownEvents`, a `SharedFlow` the screen collects).
 * **privacy** — `PrivacyScreen`. A plain scrolling Compose screen showing `PrivacyPolicyText` (same
   wording as `docs/PRIVACY_POLICY.md`) — no network fetch, since the app has none.
 * **review** — `ReviewScreen`. Shows the captured photo (Coil) next to the score, strengths,
-  improvements, scene chip and — when the shot was coached under a non-Auto shooting mode — a
-  "`<Mode>` mode" chip (from `CompositionResult.intent`), all from the `CompositionResult` computed at
-  capture time. Keep pops back to camera; Retake deletes the photo via `CaptureRepository` first.
+  improvements, scene chip, a "Subject: object" line when `CompositionResult.primarySubject.kind` is
+  `OBJECT`, and — when the shot was coached under a non-Auto shooting mode — a "`<Mode>` mode" chip (from
+  `CompositionResult.intent`), all from the `CompositionResult` computed at capture time. Strengths and
+  improvements are trimmed to the top two of each once there are more than four combined
+  (`ReviewFormatter.trim`) so the screen stays readable at a glance. Keep pops back to camera; Retake
+  deletes the photo via `CaptureRepository` first.
 * **settings** — `SettingsScreen` + `SettingsViewModel`, backed by `SettingsRepository` (DataStore).
   "Shooting mode" is the first section on the screen: a chip selector over every `SceneIntent`
-  (Auto/Portrait/Group/Landscape/Architecture/Object), since it's the setting people change most. The
+  (Auto/Portrait/Group/Landscape/Architecture/Object), since it's the setting people change most. A
+  "Detection" section ("Detect objects", "Subject mask") controls `VisionFeatureToggles`, see below. The
   last section is "About": app name, `BuildConfig.VERSION_NAME`/`VERSION_CODE`, the "all analysis runs
   on your device" line, and a button into `PrivacyScreen`.
 
@@ -114,10 +126,10 @@ Other binding details:
 * `ImageCapture` uses `CAPTURE_MODE_MINIMIZE_LATENCY` (a live-coaching camera should feel snappy on
   the shutter; see the comment in `CameraController` for the trade-off against
   `MAXIMIZE_QUALITY`), JPEG quality 95.
-* If the vision pipeline is unavailable (the `:vision` stub throws `NotImplementedError`), the
-  `AppContainer` catches it once and logs it; `CameraController.bind()` is called with a `null`
-  analyzer and simply does not add an `ImageAnalysis` use case, so preview + capture keep working and
-  the UI shows a small "Analysis unavailable" note (`CameraUiState.analysisUnavailable`).
+* If the vision pipeline fails to construct for any reason, `AppContainer.frameSourceOrNull()` catches
+  that once and logs it; `CameraController.bind()` is called with a `null` analyzer and simply does not
+  add an `ImageAnalysis` use case, so preview + capture keep working and the UI shows a small "Analysis
+  unavailable" note (`CameraUiState.analysisUnavailable`) — see "Known limitations" below.
 * Lens switching: `CameraViewModel.onSwitchLensRequested()` flips the desired facing in state, which
   re-keys a `DisposableEffect` that re-binds; once bound, `onCameraBindResult` calls
   `frameSource.setFrontCamera(...)` and `coach.reset()` so the smoother doesn't blend across camera
@@ -139,26 +151,65 @@ Other binding details:
 | `battery_saver` | bool | `false` | 200ms analysis interval instead of 100ms |
 | `debug_mode` | bool | `false` | Shows `DebugOverlay` + `DebugGeometryOverlay` + the DEBUG chip |
 | `scene_intent` | string (`SceneIntent` name) | `AUTO` | Shooting mode: AUTO / PORTRAIT / GROUP_PORTRAIT / LANDSCAPE / ARCHITECTURE / OBJECT |
+| `detect_objects` | bool | `true` | Forwarded to `(frameSource as? VisionFeatureToggles)?.setObjectDetectionEnabled` |
+| `subject_mask` | bool | `true` | User's own preference; see `CoachSettings.effectiveSubjectMaskEnabled` below for what's actually applied |
+| `onboarding_seen` | bool | `false` | Whether the first-launch `OnboardingCard` has been dismissed |
 
 An unrecognized or missing `guidance_level` value falls back to `BALANCED`, and an unrecognized,
 missing, or legacy `scene_intent` value falls back to `AUTO`, rather than crashing
 (`GuidanceLevelCodec` / `SceneIntentCodec`, unit-tested in `CoachSettingsTest`) — this is the intended
 way to evolve the schema, not a bug to "fix" by renaming keys in place.
 
+## Detection settings (`VisionFeatureToggles`)
+
+Settings → a new "Detection" group, applied by `CameraViewModel` via `(frameSource as?
+VisionFeatureToggles)` (a safe cast — the interface is `:vision`'s, not part of the `FrameAnalysisSource`
+contract `:app` otherwise depends on) every time settings change, same as the existing
+`pose_detection_enabled` wiring:
+
+* **"Detect objects"** (`detect_objects`, default on) → `setObjectDetectionEnabled`. Subtitle: "Finds
+  plates, drinks, products and other subjects."
+* **"Subject mask"** (`subject_mask`, default on) → `setSegmentationEnabled`, but the toggle actually
+  applied is `CoachSettings.effectiveSubjectMaskEnabled` (`subjectMaskEnabled && !batterySaver`) —
+  segmentation is the most expensive detector `:vision` runs (see its README), so **battery saver forces
+  it off** regardless of the user's own preference. The row shows the effective (forced) value and is
+  disabled while battery saver is on; its subtitle switches from "…; uses more battery" to "…; off while
+  battery saver is on" (`CoachSettings.subjectMaskSubtitle()`) so the override is never silent.
+
+## Onboarding
+
+A single dismissible `OnboardingCard` ("Point at a subject. Follow the arrow. Shoot when it turns
+green." + a "Got it" button) shows at the bottom of the camera screen whenever `onboarding_seen` is
+false — which in practice means once, right after the camera permission is granted, since
+`CameraScreen` only ever composes past `CameraPermissionGate`. Dismissing it persists `onboarding_seen`
+via `CameraViewModel.onOnboardingDismissed()`; there is no other way to bring it back short of clearing
+app data.
+
 ## Debug mode guide
 
 Enable **Settings → Debug mode**. Two extra layers appear on the camera screen:
 
-* `DebugGeometryOverlay` — every `DetectedSubject`'s box (primary subject in green, others in amber),
-  plus face eye/nose points and in-frame pose landmarks. This is the *only* place bounding
-  boxes/regions are drawn; `CompositionOverlay` never draws them, debug or not.
+* `DebugGeometryOverlay` — draws, in this order (mask first so it sits *behind* everything else):
+  1. the subject mask (`FrameAnalysis.subjectMask`, when present) as a faint green heat layer, one cell
+     per mask grid cell, alpha proportional to that cell's probability and capped at 0.35 total;
+  2. every raw `DetectedObject` from `FrameAnalysis.objects` as a dashed box labelled `category
+     confidence%` — this can be a superset of the boxes that actually became a subject, since
+     `:vision`'s `ObjectMapper` filters further (frame-coverage / face-IoU) before anything reaches
+     `DetectedSubject`;
+  3. every `DetectedSubject`'s box (primary subject in green, others in amber), plus face eye/nose points
+     and in-frame pose landmarks.
+
+  This overlay (plus `CompositionOverlay`'s restrained region-highlight outline, see the screen map above)
+  is the *only* place bounding boxes and the mask are drawn; outside debug mode, boxes never appear.
 * `DebugOverlay` — a collapsible, scrollable panel (tap the "DEBUG ▾/▸" header) listing: scene type +
   confidence + the declared shooting mode (`Intent:`), raw vs. smoothed score, engine time, FPS, last
   analysis latency and sampling interval,
   every `CompositionMetric` (category/score/confidence/severity/applicable), every recommendation id
-  with priority/confidence/direction, per-detector timings (`FrameAnalysis.detectorTimings`), subject
-  count, and — when the engine populates it — the optimizer's current score, improvement and
-  candidate framings.
+  with priority/confidence/direction, per-detector timings (`FrameAnalysis.detectorTimings` — a generic
+  map, so `:vision`'s `"objects"`/`"segmentation"`/`"mask_age"` entries show up for free; `"mask_age"` is
+  labelled "N frames" rather than "Nms" since it counts accepted frames since the mask last refreshed,
+  not wall-clock time, see `:vision`'s README), subject count, and — when the engine populates it — the
+  optimizer's current score, improvement and candidate framings.
 * A small "DEBUG" chip appears top-left as a reminder the mode is on even if the panel is collapsed.
 
 ## Crash safety
@@ -211,33 +262,28 @@ Enable **Settings → Debug mode**. Two extra layers appear on the camera screen
 
 ## Known limitations / what the integrator should know
 
-* **The vision pipeline is a stub in this worktree.** `VisionPipelineFactory.create()` throws
-  `NotImplementedError`; `AppContainer.frameSourceOrNull()` catches that once at construction and
-  logs it. Until the real `:vision` pipeline lands, the app runs with a working camera (preview +
-  capture) but `composition` stays `SmoothedComposition.EMPTY` and `analysisUnavailable` stays true —
-  this is expected, not a bug in `:app`.
-* **The composition engine is also a stub.** `CompositionCoach.create()` wires real
-  `CompositionEngine`/`CompositionSmoother` instances, but per the current `:composition` stub they
-  return empty `CompositionResult`s. `:app` is written against the *real* public contracts
-  (`SmoothedComposition`, `CompositionResult`, `Recommendation`, etc.), so no changes should be needed
-  in `:app` once both stubs are replaced — only re-verify the overlay geometry assumptions
-  (`OverlayGeometry.TargetPoint`/`Line` placement, `Severity` on the `HORIZON` metric) once real data
-  is flowing.
-* **`SceneIntent` is plumbed through but not yet honoured by the engine in this worktree** —
-  `CompositionEngine.evaluate(frame, level, intent)` accepts it but always returns
-  `awaitingSubject = false` (see the STATUS note on that method). `:app` reads `settings.sceneIntent`,
-  forwards it to `process`/`evaluateOnce`, resets the coach on a mode change, and renders every
-  `awaitingSubject` UI path (`ScoreBadge`, `GuidanceBanner`) — those are exercised via `@Preview`s and
-  the `GuidanceFormatter`/`CameraUiState` unit tests with a hand-built `SmoothedComposition`, not via a
-  live engine result, since the live engine in this worktree never sets the flag. No `:app` changes
-  should be needed once `:composition` honours the intent for real.
+* **The vision and composition stubs are gone.** `VisionPipelineFactory.create()` now returns a real
+  `VisionPipeline` and `CompositionCoach.create()` a real `CompositionEngine`/`CompositionSmoother` —
+  including object detection and the subject mask (see the Detection settings section above). `:app` was
+  already written against the real public contracts, so no `:app` code changed as a *consequence* of the
+  stubs going away; `analysisUnavailable`/`SmoothedComposition.EMPTY` are now only reached if
+  `VisionPipeline` construction genuinely throws on a given device, not the default path.
+* **`SceneIntent` is honoured by the engine now.** `:app`'s side of this was already exercised via
+  `@Preview`s and the `GuidanceFormatter`/`CameraUiState` unit tests against a hand-built
+  `SmoothedComposition` even before the engine set `awaitingSubject` for real; nothing there needed to
+  change once it started doing so.
 * **Legacy storage permission (API 26-28):** `CameraScreen` requests `WRITE_EXTERNAL_STORAGE` lazily,
   right before the first capture, only on API ≤ 28. API 29+ never needs it (scoped storage via
   `MediaStore` + `RELATIVE_PATH`).
 * **No instrumentation tests** were added (not required); all tests are plain JUnit4 on the JVM
-  (`OverlayMapperTest`, `GuidanceFormatterTest`, `CameraUiStateTest`, `CoachSettingsTest`).
+  (`OverlayMapperTest`, `GuidanceFormatterTest`, `CameraUiStateTest`, `CoachSettingsTest`,
+  `ZoomChipFormatterTest`, `ReviewFormatterTest`). The `detect_objects`/`subject_mask`/`onboarding_seen`
+  settings are covered the same way the existing keys are — `CoachSettingsTest` exercises the pure
+  `CoachSettings`/`effectiveSubjectMaskEnabled` logic on the JVM; `SettingsRepository` itself needs a real
+  DataStore-backed `Context` (no Robolectric in this module), so its read/write plumbing is exercised by
+  the app running, not a JVM test — consistent with how the pre-existing keys were covered.
 * **Front camera capture** sets `ImageCapture.Metadata.isReversedHorizontal = true` so the saved JPEG
   matches what the mirrored preview showed; this does not affect analysis, which is already mirrored
   by the vision layer's normalized-coordinate contract.
-* Pinch-to-zoom is implemented but not exposed in any settings UI (it's a direct gesture on the
-  preview, per the "optional" note in the spec).
+* Pinch-to-zoom is still not exposed as a settings toggle — it's a direct gesture on the preview — but it
+  now drives the `ZoomChip` readout described above.
