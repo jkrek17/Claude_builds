@@ -137,6 +137,18 @@ android {
         abortOnError = true
         warningsAsErrors = false
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric's shadow of android.content.res needs real resources on the classpath (the
+            // launch smoke test inflates the actual manifest/theme/strings), and returning platform
+            // defaults for anything left unmocked keeps unrelated framework calls the launch path
+            // makes (e.g. from CameraX/ML Kit classes touched during construction) from throwing
+            // instead of no-op'ing, the way they would on a real device with no camera/model available.
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -171,6 +183,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
 }
 
 // --- Play policy verification ---------------------------------------------------------------------

@@ -16,6 +16,7 @@ mlkitSegmentationSelfie = "16.0.0-beta6"
 coil = "2.7.0"
 exifinterface = "1.4.1"
 junit = "4.13.2"
+robolectric = "4.14.1"
 
 [libraries]
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -48,6 +49,7 @@ mlkit-segmentation-selfie = { group = "com.google.mlkit", name = "segmentation-s
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 kotlin-test-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit", version.ref = "kotlin" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
