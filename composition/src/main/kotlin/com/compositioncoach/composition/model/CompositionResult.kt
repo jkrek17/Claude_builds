@@ -38,6 +38,14 @@ data class CompositionResult(
     val optimization: OptimizationResult? = null,
     val weights: ScoreWeights,
     val engineTimeMs: Long = 0L,
+    /** The shooting mode this frame was coached under. */
+    val intent: SceneIntent = SceneIntent.AUTO,
+    /**
+     * True when the declared intent needs a subject that is not in frame yet (PORTRAIT/GROUP with no usable face,
+     * OBJECT with no salient region). The score is not meaningful; [recommendations] then carries the single
+     * "find your subject" instruction and the UI should show that instead of a number.
+     */
+    val awaitingSubject: Boolean = false,
 ) {
     companion object {
         fun empty(timestampNanos: Long = 0L) = CompositionResult(
@@ -63,6 +71,8 @@ data class SmoothedComposition(
     val scene: SceneClassification,
     val primarySubject: DetectedSubject?,
     val raw: CompositionResult,
+    /** Mirrors [CompositionResult.awaitingSubject]; while true, [displayScore] is the last meaningful score, held. */
+    val awaitingSubject: Boolean = false,
 ) {
     val primaryRecommendation: Recommendation? get() = activeRecommendations.firstOrNull()
 

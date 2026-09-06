@@ -20,6 +20,7 @@ import com.compositioncoach.composition.model.CompositionResult
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.OptimizationResult
 import com.compositioncoach.composition.model.Recommendation
 import com.compositioncoach.composition.model.SceneClassification
@@ -43,11 +44,15 @@ class CompositionEngine(
     private val recommendationEngine: RecommendationEngine = RecommendationEngine(),
     private val optimizer: CompositionOptimizer = CompositionOptimizer(analyzers),
 ) {
-    fun evaluate(frame: FrameAnalysis, level: GuidanceLevel = GuidanceLevel.BALANCED): CompositionResult {
-        return runCatching { evaluateInternal(frame, level) }.getOrElse { CompositionResult.empty(frame.timestampNanos) }
+    /**
+     * @param intent the photographer's declared shooting mode. STATUS: plumbed through but not yet honoured;
+     *   the :composition owner implements intent override + "awaiting subject" coaching.
+     */
+    fun evaluate(frame: FrameAnalysis, level: GuidanceLevel = GuidanceLevel.BALANCED, intent: SceneIntent = SceneIntent.AUTO): CompositionResult {
+        return runCatching { evaluateInternal(frame, level, intent) }.getOrElse { CompositionResult.empty(frame.timestampNanos) }
     }
 
-    private fun evaluateInternal(rawFrame: FrameAnalysis, level: GuidanceLevel): CompositionResult {
+    private fun evaluateInternal(rawFrame: FrameAnalysis, level: GuidanceLevel, intent: SceneIntent): CompositionResult {
         val startNanos = System.nanoTime()
 
         // Background faces (someone at the next table) must not hijack the scene type or the subject.

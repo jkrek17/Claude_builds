@@ -20,3 +20,27 @@ data class SceneClassification(
 
 /** How chatty the coach is. */
 enum class GuidanceLevel { MINIMAL, BALANCED, COACH }
+
+/**
+ * What the photographer *told us* they are shooting (Settings > Shooting mode). [AUTO] leaves scene detection to
+ * the [SceneClassifier]; any other value overrides the detected [SceneType], selects that scene's score weights,
+ * and lets the engine coach *toward* the intent (e.g. PORTRAIT with no face found -> "Move closer to your subject").
+ */
+enum class SceneIntent(val label: String) {
+    AUTO("Auto"),
+    PORTRAIT("Portrait"),
+    GROUP_PORTRAIT("Group"),
+    LANDSCAPE("Landscape"),
+    ARCHITECTURE("Architecture"),
+    OBJECT("Object / food");
+
+    /** The scene type this intent forces, or null for [AUTO]. */
+    fun forcedSceneType(): SceneType? = when (this) {
+        AUTO -> null
+        PORTRAIT -> SceneType.PORTRAIT
+        GROUP_PORTRAIT -> SceneType.GROUP_PORTRAIT
+        LANDSCAPE -> SceneType.LANDSCAPE
+        ARCHITECTURE -> SceneType.ARCHITECTURE
+        OBJECT -> SceneType.OBJECT
+    }
+}

@@ -6,6 +6,7 @@ import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.MetricCategory
 import com.compositioncoach.composition.model.SceneClassification
+import com.compositioncoach.composition.model.SceneIntent
 
 /**
  * Everything an analyzer may look at for one frame. Built once per frame by the engine and shared by all analyzers.
@@ -19,6 +20,8 @@ data class AnalysisContext(
     val subjects: List<DetectedSubject>,
     val primarySubject: DetectedSubject?,
     val guidanceLevel: GuidanceLevel = GuidanceLevel.BALANCED,
+    /** The photographer's declared shooting mode; [SceneIntent.AUTO] when they left it to detection. */
+    val intent: SceneIntent = SceneIntent.AUTO,
 ) {
     val hasPeople: Boolean get() = frame.faces.isNotEmpty() || frame.bodies.isNotEmpty()
 }
