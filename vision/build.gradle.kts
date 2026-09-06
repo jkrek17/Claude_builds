@@ -31,7 +31,7 @@ dependencies {
     implementation(libs.androidx.camera.core)
     implementation(libs.mlkit.face.detection)
     implementation(libs.mlkit.pose.detection)
-    implementation(libs.mlkit.object.detection)
+    implementation(libs.mlkit.objects)
     implementation(libs.mlkit.segmentation.selfie)
     testImplementation(libs.junit)
     testImplementation(libs.kotlin.test.junit)
