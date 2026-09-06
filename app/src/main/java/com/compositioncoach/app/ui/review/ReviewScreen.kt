@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AssistChip
@@ -38,6 +39,7 @@ import com.compositioncoach.app.di.ReviewEntry
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.composition.model.CompositionResult
 import com.compositioncoach.composition.model.SceneClassification
+import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.SceneType
 import kotlinx.coroutines.launch
 
@@ -111,6 +113,10 @@ private fun ReviewDetails(result: CompositionResult) {
                 style = MaterialTheme.typography.titleLarge,
             )
             Spacer(Modifier.weight(1f))
+            if (result.intent != SceneIntent.AUTO) {
+                AssistChip(onClick = {}, label = { Text("${result.intent.label} mode") })
+                Spacer(Modifier.width(8.dp))
+            }
             AssistChip(onClick = {}, label = { Text(result.scene.type.name.lowercase().replaceFirstChar { it.uppercase() }) })
         }
 
@@ -146,6 +152,7 @@ private fun ReviewDetailsPreview() {
                 scene = SceneClassification(SceneType.PORTRAIT, confidence = 0.9f),
                 strengths = listOf("Level horizon", "Good subject separation"),
                 improvements = listOf("Give a little more headroom", "Move the subject off-center"),
+                intent = SceneIntent.PORTRAIT,
             ),
         )
     }

@@ -33,6 +33,11 @@ import com.compositioncoach.app.ui.theme.scoreColor
  * The always-visible score readout: a large animated number, subtly colour-coded, with a distinct
  * shoot-ready state ("94 — SHOOT" + a gentle pulse). Hidden entirely when [showScore] is off; shows a small
  * "Looking for a subject…" hint instead of a number until [hasScene] is true.
+ *
+ * While [awaitingSubject] is true the engine's declared shooting mode needs a subject that isn't in frame
+ * yet (see [com.compositioncoach.composition.model.SmoothedComposition.awaitingSubject]): [score] is only the
+ * last meaningful value the engine is holding, so it renders dimmed with no tier colour and shoot-ready
+ * styling never shows — [GuidanceBanner] carries the actual "find your subject" instruction instead.
  */
 @Composable
 fun ScoreBadge(
@@ -40,6 +45,7 @@ fun ScoreBadge(
     isShootReady: Boolean,
     hasScene: Boolean,
     showScore: Boolean,
+    awaitingSubject: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     if (!showScore) return
@@ -49,13 +55,19 @@ fun ScoreBadge(
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "score",
     )
+    val effectiveShootReady = isShootReady && !awaitingSubject
     val tier = GuidanceFormatter.scoreTier(score)
-    val targetColor = if (isShootReady) scoreColor(ScoreTier.EXCELLENT) else scoreColor(tier)
+    val targetColor = when {
+        awaitingSubject -> Color.White
+        effectiveShootReady -> scoreColor(ScoreTier.EXCELLENT)
+        else -> scoreColor(tier)
+    }
     val color by animateColorAsState(targetColor, label = "scoreColor")
+    val alpha = GuidanceFormatter.badgeAlpha(awaitingSubject)
 
     val pulse by animateFloatAsState(
-        targetValue = if (isShootReady) 1.06f else 1f,
-        animationSpec = if (isShootReady) {
+        targetValue = if (effectiveShootReady) 1.06f else 1f,
+        animationSpec = if (effectiveShootReady) {
             infiniteRepeatable(tween(700), repeatMode = androidx.compose.animation.core.RepeatMode.Reverse)
         } else {
             tween(200)
@@ -80,12 +92,12 @@ fun ScoreBadge(
             return@Column
         }
         Text(
-            text = if (isShootReady) GuidanceFormatter.shootReadyScoreText(animatedScore) else animatedScore.toString(),
-            color = color,
-            fontSize = if (isShootReady) 34.sp else 44.sp,
+            text = if (effectiveShootReady) GuidanceFormatter.shootReadyScoreText(animatedScore) else animatedScore.toString(),
+            color = color.copy(alpha = alpha),
+            fontSize = if (effectiveShootReady) 34.sp else 44.sp,
             fontWeight = FontWeight.Bold,
         )
-        if (isShootReady) {
+        if (effectiveShootReady) {
             Text(
                 text = GuidanceFormatter.SHOOT_READY_SUBTITLE,
                 color = color.copy(alpha = 0.9f),
@@ -108,6 +120,7 @@ private fun ScoreBadgePreview() {
             ScoreBadge(score = 78, isShootReady = false, hasScene = true, showScore = true)
             ScoreBadge(score = 94, isShootReady = true, hasScene = true, showScore = true)
             ScoreBadge(score = 0, isShootReady = false, hasScene = false, showScore = true)
+            ScoreBadge(score = 78, isShootReady = true, hasScene = true, showScore = true, awaitingSubject = true)
         }
     }
 }

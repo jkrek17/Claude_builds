@@ -33,14 +33,45 @@ private const val MAX_LINES = 3
  * optional COACH-mode reason sits under it, and up to two secondary recommendations follow in smaller
  * type. Never renders more lines than [activeRecommendations] actually has content for, and never more
  * than [MAX_LINES] total.
+ *
+ * While [awaitingSubject] is true, [activeRecommendations] holds exactly the single find-subject
+ * recommendation (see [com.compositioncoach.composition.model.SmoothedComposition.awaitingSubject]) and this
+ * renders it prominently instead: its title as a small line, its instruction as the headline, no directional
+ * glyph (the recommendation has no direction to point in).
  */
 @Composable
 fun GuidanceBanner(
     activeRecommendations: List<Recommendation>,
     guidanceLevel: GuidanceLevel,
+    awaitingSubject: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val primary = activeRecommendations.firstOrNull() ?: return
+
+    if (awaitingSubject) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.Black.copy(alpha = 0.35f))
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+        ) {
+            Text(
+                text = GuidanceFormatter.awaitingSubjectTitleLine(primary),
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = GuidanceFormatter.awaitingSubjectHeadline(primary),
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+            )
+        }
+        return
+    }
+
     val reason = GuidanceFormatter.reasonLine(primary, guidanceLevel)
     val budgetForSecondary = (MAX_LINES - 1 - (if (reason != null) 1 else 0)).coerceAtLeast(0)
     val secondary = activeRecommendations.drop(1).take(budgetForSecondary)
@@ -116,6 +147,28 @@ private fun GuidanceBannerBalancedPreview() {
         GuidanceBanner(
             activeRecommendations = listOf(previewRecommendation("headroom", "Raise camera", "", Direction.UP)),
             guidanceLevel = GuidanceLevel.BALANCED,
+        )
+    }
+}
+
+@Preview(name = "Awaiting subject", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun GuidanceBannerAwaitingSubjectPreview() {
+    CompositionCoachTheme {
+        GuidanceBanner(
+            activeRecommendations = listOf(
+                Recommendation(
+                    id = "intent.no_subject",
+                    category = MetricCategory.SUBJECT_PLACEMENT,
+                    priority = Priority.HIGH,
+                    confidence = 1f,
+                    severity = Severity.HIGH,
+                    title = "Looking for a face",
+                    instruction = "Move closer to your subject",
+                ),
+            ),
+            guidanceLevel = GuidanceLevel.BALANCED,
+            awaitingSubject = true,
         )
     }
 }

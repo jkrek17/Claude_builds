@@ -1,6 +1,7 @@
 package com.compositioncoach.app.settings
 
 import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.SceneIntent
 
 /** User-configurable behavior of the coaching pipeline and overlay UI. Persisted via [SettingsRepository]. */
 data class CoachSettings(
@@ -11,6 +12,8 @@ data class CoachSettings(
     val poseDetectionEnabled: Boolean = true,
     val batterySaver: Boolean = false,
     val debugMode: Boolean = false,
+    /** What the photographer told us they're shooting; forwarded to `CompositionCoach.process`/`evaluateOnce`. */
+    val sceneIntent: SceneIntent = SceneIntent.AUTO,
 ) {
     /** Target interval between vision analyses, see [FrameAnalysisSource.setTargetIntervalMs]. */
     val analysisIntervalMs: Long get() = if (batterySaver) BATTERY_SAVER_INTERVAL_MS else DEFAULT_INTERVAL_MS
@@ -44,4 +47,15 @@ object GuidanceLevelCodec {
 
     fun decode(raw: String?): GuidanceLevel =
         raw?.let { runCatching { GuidanceLevel.valueOf(it) }.getOrNull() } ?: GuidanceLevel.BALANCED
+}
+
+/**
+ * Serializes [SceneIntent] to/from the plain string DataStore stores it as, same rationale as
+ * [GuidanceLevelCodec]: an unknown or legacy value falls back to [SceneIntent.AUTO] rather than crashing.
+ */
+object SceneIntentCodec {
+    fun encode(intent: SceneIntent): String = intent.name
+
+    fun decode(raw: String?): SceneIntent =
+        raw?.let { runCatching { SceneIntent.valueOf(it) }.getOrNull() } ?: SceneIntent.AUTO
 }

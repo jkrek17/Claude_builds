@@ -137,6 +137,7 @@ fun CameraScreen(
 
             CameraTopBar(
                 showDebugChip = uiState.settings.debugMode,
+                sceneIntent = uiState.settings.sceneIntent,
                 onSettingsClick = onOpenSettings,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
@@ -146,12 +147,14 @@ fun CameraScreen(
                 isShootReady = uiState.composition.isShootReady,
                 hasScene = uiState.composition.scene != SceneClassification.UNKNOWN,
                 showScore = uiState.settings.showScore,
+                awaitingSubject = uiState.composition.awaitingSubject,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp),
             )
 
             GuidanceBanner(
                 activeRecommendations = uiState.composition.activeRecommendations,
                 guidanceLevel = uiState.settings.guidanceLevel,
+                awaitingSubject = uiState.composition.awaitingSubject,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 148.dp),
             )
 

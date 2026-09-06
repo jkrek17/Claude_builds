@@ -22,6 +22,16 @@ class CameraUiStateTest {
         raw = CompositionResult.empty(),
     )
 
+    private fun awaitingSubjectComposition() = SmoothedComposition(
+        displayScore = 60,
+        activeRecommendations = emptyList(),
+        isShootReady = false,
+        scene = com.compositioncoach.composition.model.SceneClassification.UNKNOWN,
+        primarySubject = null,
+        raw = CompositionResult.empty(),
+        awaitingSubject = true,
+    )
+
     @Test
     fun `withSettings replaces only the settings field`() {
         val state = CameraUiState()
@@ -82,6 +92,28 @@ class CameraUiStateTest {
         assertEquals(9.5f, updated.debugStats.fps)
         assertEquals(7L, updated.debugStats.engineTimeMs)
         assertEquals(mapOf("face" to 3L), updated.debugStats.detectorTimings)
+    }
+
+    @Test
+    fun `withFrameUpdate carries the composition's awaitingSubject flag through untouched`() {
+        val updated = CameraUiState().withFrameUpdate(
+            composition = awaitingSubjectComposition(),
+            latencyMs = 10L,
+            fps = 8f,
+            samplingIntervalMs = 100L,
+            engineTimeMs = 5L,
+        )
+        assertTrue(updated.composition.awaitingSubject)
+        assertEquals(60, updated.composition.displayScore)
+
+        val notAwaiting = CameraUiState().withFrameUpdate(
+            composition = shootReadyComposition(ready = false),
+            latencyMs = 10L,
+            fps = 8f,
+            samplingIntervalMs = 100L,
+            engineTimeMs = 5L,
+        )
+        assertFalse(notAwaiting.composition.awaitingSubject)
     }
 
     @Test

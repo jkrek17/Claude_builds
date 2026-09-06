@@ -1,6 +1,7 @@
 package com.compositioncoach.app.settings
 
 import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.SceneIntent
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -16,6 +17,7 @@ class CoachSettingsTest {
         assertEquals(true, defaults.poseDetectionEnabled)
         assertEquals(false, defaults.batterySaver)
         assertEquals(false, defaults.debugMode)
+        assertEquals(SceneIntent.AUTO, defaults.sceneIntent)
     }
 
     @Test
@@ -36,5 +38,19 @@ class CoachSettingsTest {
         assertEquals(GuidanceLevel.BALANCED, GuidanceLevelCodec.decode(null))
         assertEquals(GuidanceLevel.BALANCED, GuidanceLevelCodec.decode("NOT_A_REAL_LEVEL"))
         assertEquals(GuidanceLevel.BALANCED, GuidanceLevelCodec.decode(""))
+    }
+
+    @Test
+    fun `SceneIntentCodec round-trips every intent`() {
+        SceneIntent.entries.forEach { intent ->
+            assertEquals(intent, SceneIntentCodec.decode(SceneIntentCodec.encode(intent)))
+        }
+    }
+
+    @Test
+    fun `SceneIntentCodec falls back to AUTO for missing, unrecognized or legacy values`() {
+        assertEquals(SceneIntent.AUTO, SceneIntentCodec.decode(null))
+        assertEquals(SceneIntent.AUTO, SceneIntentCodec.decode("NOT_A_REAL_INTENT"))
+        assertEquals(SceneIntent.AUTO, SceneIntentCodec.decode(""))
     }
 }

@@ -52,4 +52,23 @@ object GuidanceFormatter {
     const val SHOOT_READY_SUBTITLE = "Great framing"
 
     const val NO_SUBJECT_TEXT = "Looking for a subject…"
+
+    /** Alpha applied to [ScoreBadge]'s held score number while [SmoothedComposition.awaitingSubject] is true. */
+    const val AWAITING_SUBJECT_ALPHA = 0.4f
+
+    /** The [ScoreBadge] text alpha for the current awaiting-subject state — full opacity otherwise. */
+    fun badgeAlpha(awaitingSubject: Boolean): Float = if (awaitingSubject) AWAITING_SUBJECT_ALPHA else 1f
+
+    /**
+     * The small line shown above the headline in [GuidanceBanner] while awaiting a subject — the
+     * find-subject recommendation's title (e.g. "Looking for a face").
+     */
+    fun awaitingSubjectTitleLine(recommendation: Recommendation): String = recommendation.title
+
+    /**
+     * The prominent headline shown in [GuidanceBanner] while awaiting a subject — the find-subject
+     * recommendation's instruction (e.g. "Move closer to your subject"). Never combined with a
+     * directional glyph: the recommendation has no direction to point in.
+     */
+    fun awaitingSubjectHeadline(recommendation: Recommendation): String = recommendation.instruction
 }
