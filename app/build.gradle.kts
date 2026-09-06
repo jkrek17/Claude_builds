@@ -55,12 +55,12 @@ if (hasRealReleaseSigning) {
 
 android {
     namespace = "com.compositioncoach.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.compositioncoach.app"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = ccVersionCode
         versionName = ccVersionName
         vectorDrawables { useSupportLibrary = true }
