@@ -54,7 +54,7 @@ class SubjectSeparationAnalyzer : CompositionAnalyzer {
 
     private fun analyzeWithMask(stats: ImageStatistics, mask: SubjectMask): CompositionMetric? {
         val subjectCells = MaskHeuristics.subjectCells(mask)
-        val ring = MaskHeuristics.ringCells(mask, RING_WIDTH_CELLS)
+        val ring = MaskHeuristics.ringCells(mask, RING_WIDTH_CELLS, knownSubjectCells = subjectCells)
         if (subjectCells.isEmpty() || ring.isEmpty()) return null
 
         val subjectLuminance = MaskHeuristics.meanLuminance(mask, stats, subjectCells)
@@ -114,7 +114,11 @@ class SubjectSeparationAnalyzer : CompositionAnalyzer {
         severity = recommendation?.severity ?: Severity.NONE,
         issue = if (recommendation != null) "The subject barely stands out from what's behind it" else null,
         recommendation = recommendation,
-        strength = if (separation >= 0.75f) "Subject stands out clearly from the background" else null,
+        // Gated on `recommendation == null`, not `separation` alone: the mask path's `flagged` (in
+        // analyzeWithMask) can be true from a low luminanceSeparation while edgeSeparation alone is
+        // high enough to push `separation = max(...)` past 0.75, which used to flag "barely stands
+        // out" (issue) and "stands out clearly" (strength) on the same metric at once.
+        strength = if (recommendation == null && separation >= 0.75f) "Subject stands out clearly from the background" else null,
     )
 
     companion object {

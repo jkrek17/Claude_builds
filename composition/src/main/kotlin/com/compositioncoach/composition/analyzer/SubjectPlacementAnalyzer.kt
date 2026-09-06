@@ -107,7 +107,11 @@ class SubjectPlacementAnalyzer : CompositionAnalyzer {
             },
             recommendation = recommendation,
             geometry = listOf(OverlayGeometry.TargetPoint(target, "target"), OverlayGeometry.Arrow(anchor, target)),
-            strength = if (score >= 0.85f) {
+            // Gated on `recommendation == null`, not score alone: PLACEMENT_DEAD_ZONE (0.05) and this
+            // strength band (score >= 0.85, i.e. distance <= 0.075) used to overlap, so a subject
+            // 0.05-0.075 away from its target could carry both an "issue" string (from the still-active
+            // recommendation) and a contradictory "strength" string on the very same metric.
+            strength = if (recommendation == null && score >= 0.85f) {
                 if (centeredIsValidTarget) "Subject is well-centred" else "Subject sits on a strong thirds point"
             } else {
                 null

@@ -56,25 +56,24 @@ consistently everywhere in this module:
 - `ReframeVector.rollDegrees > 0` = rotate the **phone** clockwise.
 - `DeviceOrientation.rollDegrees > 0` = the horizon **appears** rotated clockwise on screen, so the fix is
   a **negative** correction (`rollDegrees = -measuredRoll`), which resolves to `ROTATE_COUNTER_CLOCKWISE`.
-- `ReframeVector.toMoveSubject(from, to)` computes `dx = from.x - to.x`, `dy = from.y - to.y` (see
-  `GeometryTest` for the contract's own x-axis check). All of this module's placement-style analyzers
+- `ReframeVector.toMoveSubject(from, to)` computes `dx = from.x - to.x`, `dy = to.y - from.y` — note the
+  asymmetry: `dx` is *current minus target*, `dy` is *target minus current*. This is not a typo: it falls
+  straight out of `FrameTransform`'s forward simulation (`x -= dx`, `y += dy`, see below) — solving each
+  for the vector that carries a point from `from` to `to` gives `dx = from.x - to.x` but `dy = to.y -
+  from.y`, because `x` and `y` enter the forward transform with opposite signs. `GeometryTest` checks both
+  axes independently (`reframe vector to move subject right of thirds line says move right`, `subject too
+  high/low in frame means raise/lower camera`). All of this module's placement-style analyzers
   (`SubjectPlacementAnalyzer`, `SymmetryAnalyzer`, `BalanceAnalyzer`, the landscape horizon rule in
-  `SceneSpecificAnalyzer`) use this exact formula, so a subject sitting too low/right and a subject
-  sitting too high/left always resolve to the same physical instruction across every analyzer.
+  `SceneSpecificAnalyzer`) must use this exact formula, so a subject sitting too low/right and a subject
+  sitting too high/left always resolve to the same physical instruction across every analyzer — a prior
+  version of the landscape horizon rule got the `dy` term backwards (`horizonY - nearestThird` instead of
+  `nearestThird - horizonY`), which told the photographer to move the camera in exactly the wrong vertical
+  direction for every off-thirds horizon; see the "Quality gate" section below for how the robustness
+  suite now guards against a regression there.
 - `FrameTransform` (used only by `CompositionOptimizer`) implements the *forward* simulation directly from
   the two bullet points above (`x -= dx`, `y += dy`, then scale by `1 + zoom` about the centre) — it does
   not depend on `toMoveSubject` and is the one place in this module you can sanity-check the sign
   convention against a diagram.
-
-**Note for the model owner / other module integrators:** taken completely literally, `dy`'s "camera
-raise ⇒ content shifts down" semantics and `toMoveSubject`'s `dy = from.y - to.y` formula imply that
-moving a subject that is currently too *low* in frame up toward an upper-thirds target resolves to
-`Direction.UP` ("Raise camera"), whereas a strict optical-translation derivation of "raise camera shifts
-content down" would suggest the opposite fix (lower the camera) for that same case. This module always
-just calls `toMoveSubject` + `.primaryDirection()` as directed by the module brief and takes whatever
-`Direction` falls out, rather than re-deriving the sign per analyzer — so the whole module is internally
-consistent, but the two doc-comments in the model layer are worth a second look from whoever owns them
-next, in case the vertical sign was intended to mirror the horizontal one exactly.
 
 ## Analyzers
 
@@ -307,9 +306,54 @@ New `SyntheticFrames` fixtures backing these: `objectAt` (a `DetectedObject` bui
 also get mistaken for a compact salient region the way `statsWithHorizonLine`'s edge spike would), and
 `offCenterSalientRegion` (a symmetric-scene fixture with an adjustable off-centre hot patch).
 
+## Quality gate
+
+`EngineRobustnessTest` fuzzes `CompositionEngine.default().evaluate()` over hundreds of randomly
+generated `FrameAnalysis` inputs (seeded `Random(42)` for reproducibility — 0-4 faces of random
+size/position including partially or fully out of frame, optional bodies with random/missing landmarks,
+0-2 random objects, random stats grids sized 8..32 per axis, an optional `SubjectMask` on a *different*
+grid size than the paired stats grid, random device orientation including unreliable readings, and every
+`GuidanceLevel`/`SceneIntent` combination) and asserts the engine never throws and always honours:
+
+- `score` is in `0..100` and `rawScore` is in `0f..100f` and never `NaN`.
+- Every `CompositionMetric.score` and `.confidence`, and every `Recommendation.confidence`, is in `0f..1f`
+  and never `NaN`.
+- `recommendations.size <= 3`.
+- No two active recommendations point in opposite `Direction`s (LEFT/RIGHT, UP/DOWN, ROTATE_CW/CCW,
+  CLOSER/BACK) at once.
+- Every `Recommendation` carrying a `vector` has `direction == vector.primaryDirection()` or
+  `Direction.NONE` — a recommendation's stated direction can never contradict its own reframe vector.
+- No metric carries both a `strength` and an `issue` string at once — contradictory "this is good" /
+  "this is a problem" messages must never both surface from the same category on the same frame.
+- No metric with `applicable = false` carries a `recommendation`.
+- `awaitingSubject == true` implies exactly one recommendation (the "find your subject" message).
+
+`CompositionSmootherTest`'s fuzz cases feed the smoother random timestamp gaps (0, negative, a few ms,
+several seconds) and assert `displayScore` always stays in `0..100` and never `NaN`, and that a constant
+raw score held for several seconds makes the displayed score settle to within ±1 of it.
+
+`EnginePerformanceTest` runs 200 realistic frames through the full engine (including the optimizer's six
+per-candidate re-simulations) and prints the mean per-frame time — not a pass/fail timing assertion (too
+flaky across machines), just a smoke test that the whole pipeline still runs end-to-end and a number to
+watch when tuning analyzer cost.
+
+Bugs this suite caught and fixed, as a record of why each invariant above exists:
+
+- `SceneSpecificAnalyzer`'s landscape horizon-repositioning advice had the vertical `ReframeVector` sign
+  backwards (`dy = horizonY - nearestThird` instead of `nearestThird - horizonY`), so it told the
+  photographer to move the camera in exactly the wrong direction for every off-thirds horizon.
+- `SubjectPlacementAnalyzer`, `HeadroomAnalyzer`, `LookingRoomAnalyzer`, `EdgeTensionAnalyzer`,
+  `BackgroundDistractionAnalyzer`'s no-mask path, and `SubjectSeparationAnalyzer` each computed their
+  `strength` (or `recommendation`) string from a threshold on `score` independently of whether a
+  `recommendation` (and therefore an `issue` string) was already active for a nearby-but-distinct
+  threshold on the same underlying measurement — in each case a narrow band of inputs could satisfy both
+  conditions at once, showing a positive "strength" line and a contradictory "issue"/recommendation for
+  the same metric on the same frame. Fixed by gating each `strength` on `recommendation == null` rather
+  than re-deriving a second, independently-tuned threshold.
+
 ## Running
 
 ```
-./gradlew :composition:test            # 70 tests, no Android SDK required
+./gradlew :composition:test            # 74 tests, no Android SDK required
 ./gradlew :composition:compileKotlin   # warnings-clean
 ```
