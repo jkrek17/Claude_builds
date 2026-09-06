@@ -11,15 +11,17 @@ import com.compositioncoach.app.di.AppContainer
 import com.compositioncoach.app.ui.camera.CameraScreen
 import com.compositioncoach.app.ui.camera.CameraViewModel
 import com.compositioncoach.app.ui.permissions.CameraPermissionGate
+import com.compositioncoach.app.ui.privacy.PrivacyScreen
 import com.compositioncoach.app.ui.review.ReviewScreen
 import com.compositioncoach.app.ui.settings.SettingsScreen
 import com.compositioncoach.app.ui.settings.SettingsViewModel
 
-/** The three screens the app has: camera (start), the post-capture review, and settings. */
+/** The four screens the app has: camera (start), the post-capture review, settings, and the privacy policy. */
 object Routes {
     const val CAMERA = "camera"
     const val REVIEW = "review"
     const val SETTINGS = "settings"
+    const val PRIVACY = "privacy"
 }
 
 @Composable
@@ -56,7 +58,15 @@ fun AppNavGraph(container: AppContainer) {
 
         composable(Routes.SETTINGS) {
             val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(container))
-            SettingsScreen(viewModel = settingsViewModel, onBack = { navController.popBackStack() })
+            SettingsScreen(
+                viewModel = settingsViewModel,
+                onBack = { navController.popBackStack() },
+                onOpenPrivacyPolicy = { navController.navigate(Routes.PRIVACY) },
+            )
+        }
+
+        composable(Routes.PRIVACY) {
+            PrivacyScreen(onBack = { navController.popBackStack() })
         }
     }
 }

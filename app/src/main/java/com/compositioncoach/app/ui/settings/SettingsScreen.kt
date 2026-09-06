@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -22,6 +24,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.compositioncoach.app.BuildConfig
 import com.compositioncoach.app.R
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.settings.description
@@ -43,11 +47,12 @@ import com.compositioncoach.composition.model.SceneIntent
 
 /** All coaching and privacy-relevant preferences, backed live by [SettingsViewModel]. */
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
+fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpenPrivacyPolicy: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     SettingsContent(
         settings = settings,
         onBack = onBack,
+        onOpenPrivacyPolicy = onOpenPrivacyPolicy,
         onGuidanceEnabledChange = viewModel::setGuidanceEnabled,
         onShowScoreChange = viewModel::setShowScore,
         onShowThirdsGridChange = viewModel::setShowThirdsGrid,
@@ -64,6 +69,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
 private fun SettingsContent(
     settings: CoachSettings,
     onBack: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
     onGuidanceEnabledChange: (Boolean) -> Unit,
     onShowScoreChange: (Boolean) -> Unit,
     onShowThirdsGridChange: (Boolean) -> Unit,
@@ -138,15 +144,38 @@ private fun SettingsContent(
             item { SwitchRow("Battery saver (slower analysis)", settings.batterySaver, onBatterySaverChange) }
             item { SwitchRow("Debug mode", settings.debugMode, onDebugModeChange) }
             item { HorizontalDivider() }
-            item {
-                Text(
-                    text = "All analysis runs on your device. Camera frames never leave your phone.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth().padding(20.dp),
-                )
-            }
+            item { AboutSection(onOpenPrivacyPolicy = onOpenPrivacyPolicy) }
+        }
+    }
+}
+
+/** App name, version, the "on your device" privacy summary, and a link into the full policy. */
+@Composable
+private fun AboutSection(onOpenPrivacyPolicy: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+        Text(
+            text = "About",
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        Text(
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text(
+            text = "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "All analysis runs on your device. Camera frames never leave your phone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            textAlign = TextAlign.Start,
+        )
+        TextButton(onClick = onOpenPrivacyPolicy, modifier = Modifier.padding(top = 4.dp, start = 0.dp)) {
+            Text("Privacy policy")
         }
     }
 }
@@ -188,6 +217,7 @@ private fun SettingsScreenPreview() {
         SettingsContent(
             settings = CoachSettings(guidanceLevel = GuidanceLevel.COACH, debugMode = true, sceneIntent = SceneIntent.PORTRAIT),
             onBack = {},
+            onOpenPrivacyPolicy = {},
             onGuidanceEnabledChange = {},
             onShowScoreChange = {},
             onShowThirdsGridChange = {},

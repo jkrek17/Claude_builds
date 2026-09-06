@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -75,13 +77,23 @@ fun ScoreBadge(
         label = "pulse",
     )
 
+    // A screen reader should hear one clear sentence for the whole badge ("Composition score 82", or
+    // "Composition score 94, ready to shoot") rather than the individual number/subtitle Text nodes
+    // read separately — clearAndSetSemantics replaces the merged children's own descriptions with this.
+    val accessibilityLabel = when {
+        !hasScene -> GuidanceFormatter.NO_SUBJECT_TEXT
+        effectiveShootReady -> "Composition score $score, ready to shoot"
+        else -> "Composition score $score"
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
             .background(Color.Black.copy(alpha = 0.35f))
             .padding(horizontal = 20.dp, vertical = 10.dp)
-            .scale(pulse),
+            .scale(pulse)
+            .clearAndSetSemantics { contentDescription = accessibilityLabel },
     ) {
         if (!hasScene) {
             Text(

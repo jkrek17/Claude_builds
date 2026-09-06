@@ -15,6 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -62,19 +67,30 @@ fun GuidanceBanner(
                 modifier = modifier
                     .clip(RoundedCornerShape(16.dp))
                     .background(Color.Black.copy(alpha = 0.3f))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    // Announce "framing looks good, hold steady" once when it appears, same as any other
+                    // change in guidance text.
+                    .semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
         return
     }
 
     if (awaitingSubject) {
+        val awaitingDescription =
+            "${GuidanceFormatter.awaitingSubjectTitleLine(primary)}. ${GuidanceFormatter.awaitingSubjectHeadline(primary)}"
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = modifier
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.Black.copy(alpha = 0.35f))
-                .padding(horizontal = 20.dp, vertical = 10.dp),
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+                // TalkBack should hear the "looking for a subject" guidance as one sentence, and hear it
+                // again whenever it changes (e.g. from "Looking for a face" to a different find-subject cue).
+                .clearAndSetSemantics {
+                    contentDescription = awaitingDescription
+                    liveRegion = LiveRegionMode.Polite
+                },
         ) {
             Text(
                 text = GuidanceFormatter.awaitingSubjectTitleLine(primary),
@@ -95,13 +111,26 @@ fun GuidanceBanner(
     val reason = GuidanceFormatter.reasonLine(primary, guidanceLevel)
     val budgetForSecondary = (MAX_LINES - 1 - (if (reason != null) 1 else 0)).coerceAtLeast(0)
     val secondary = activeRecommendations.drop(1).take(budgetForSecondary)
+    // The full guidance sentence TalkBack announces: primary instruction, then the COACH-mode reason
+    // (if shown), then any secondary recommendations — in the same order they're drawn.
+    val guidanceDescription = buildList {
+        add(GuidanceFormatter.primaryLine(primary))
+        reason?.let(::add)
+        secondary.forEach { add(GuidanceFormatter.secondaryLine(it)) }
+    }.joinToString(". ")
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(Color.Black.copy(alpha = 0.35f))
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            // liveRegion = Polite is what makes TalkBack announce new advice as it changes, unprompted,
+            // instead of only when the user explicitly navigates focus to this banner.
+            .clearAndSetSemantics {
+                contentDescription = guidanceDescription
+                liveRegion = LiveRegionMode.Polite
+            },
     ) {
         AnimatedContent(
             targetState = primary,
