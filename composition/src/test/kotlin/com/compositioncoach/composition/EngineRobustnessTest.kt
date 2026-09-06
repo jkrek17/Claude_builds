@@ -233,6 +233,57 @@ class EngineRobustnessTest {
         }
     }
 
+    // --- Smoother display-geometry fuzzing -----------------------------------------------------------
+
+    private fun assertInFrameOrNull(label: String, point: com.compositioncoach.composition.model.NormalizedPoint?) {
+        if (point == null) return
+        assertTrue("$label.x out of 0..1: ${point.x}", !point.x.isNaN() && point.x in 0f..1f)
+        assertTrue("$label.y out of 0..1: ${point.y}", !point.y.isNaN() && point.y in 0f..1f)
+    }
+
+    private fun assertInFrameOrNull(label: String, rect: NormalizedRect?) {
+        if (rect == null) return
+        assertTrue("$label.left out of 0..1: ${rect.left}", !rect.left.isNaN() && rect.left in 0f..1f)
+        assertTrue("$label.top out of 0..1: ${rect.top}", !rect.top.isNaN() && rect.top in 0f..1f)
+        assertTrue("$label.right out of 0..1: ${rect.right}", !rect.right.isNaN() && rect.right in 0f..1f)
+        assertTrue("$label.bottom out of 0..1: ${rect.bottom}", !rect.bottom.isNaN() && rect.bottom in 0f..1f)
+    }
+
+    @Test
+    fun `smoother's display geometry stays inside the frame and secondary lines never duplicate the headline`() {
+        val random = Random(42)
+        val intents = SceneIntent.entries.toTypedArray()
+        val smoother = CompositionSmoother()
+        var t = 0L
+        repeat(300) { iteration ->
+            val frame = randomFrame(random)
+            val level = GuidanceLevel.entries.toTypedArray().random(random)
+            val intent = intents.random(random)
+            val result = engine.evaluate(frame, level, intent)
+            t += 100L * 1_000_000L
+            val smoothed = try {
+                smoother.update(result.copy(timestampNanos = t))
+            } catch (throwable: Throwable) {
+                throw AssertionError("smoother threw on iteration $iteration: $throwable", throwable)
+            }
+
+            assertInFrameOrNull("displayAnchor", smoothed.displayAnchor)
+            assertInFrameOrNull("displayTarget", smoothed.displayTarget)
+            assertInFrameOrNull("displayRegion", smoothed.displayRegion)
+            assertInFrameOrNull("displaySubjectBounds", smoothed.displaySubjectBounds)
+            smoothed.displayHorizon?.let { line ->
+                assertInFrameOrNull("displayHorizon.start", line.start)
+                assertInFrameOrNull("displayHorizon.end", line.end)
+            }
+
+            val ids = smoothed.activeRecommendations.map { it.id }
+            assertTrue(
+                "secondary line duplicates another active line's id on iteration $iteration: $ids",
+                ids.size == ids.distinct().size,
+            )
+        }
+    }
+
     // --- Smoother fuzzing ------------------------------------------------------------------------
 
     private fun resultWith(random: Random, timestampNanos: Long, rawScore: Float, headline: Recommendation?): CompositionResult {

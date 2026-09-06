@@ -35,7 +35,7 @@ CompositionOptimizer.optimize()   -> OptimizationResult (validates/overrides top
 CompositionResult (per-frame, stateless)
      |
      v
-CompositionSmoother.update()      -> SmoothedComposition (EMA score + recommendation hysteresis)
+CompositionSmoother.update()      -> SmoothedComposition (EMA score + advice-slot hysteresis + display geometry)
      |
      v
 CompositionCoach                  <- facade the :app module actually calls
@@ -209,23 +209,56 @@ than 500 ms (app paused, camera switch) count as 500 ms.
 
 | Constant | Default | Meaning |
 |---|---|---|
-| `scoreTimeConstantMs` | 1500 | EMA time constant for the score (63 % of a step change after 1.5 s) |
+| `scoreTimeConstantMs` | 2000 | EMA time constant for the score (63 % of a step change after 2 s) |
 | `scoreTimeConstantOnSubjectChangeMs` | 350 | much faster constant for ~0.6 s after the subject count changes |
-| `displayDeadband` | 2 | the on-screen number does not move until the EMA has drifted ≥ 2 points from it |
-| `displayMinHoldMs` | 700 | minimum time the on-screen number stays put between changes |
+| `displayDeadband` | 3 | the on-screen number does not move until the EMA has drifted ≥ 3 points from it |
+| `displayMinHoldMs` | 1000 | minimum time the on-screen number stays put between changes |
 | `displaySnapDelta` | 10 | a change this large is shown immediately (a real reframe) |
+| `displayRoundTo` | 1 | the displayed score rounds to the nearest multiple of this many points; left at 1 (plain nearest-integer), a one-line tune to e.g. 5 for a coarser, even calmer "70 / 75 / 80"-style readout if field feedback ever asks for it |
 | `recommendationConfirmMs` | 800 | a challenger must be top-ranked continuously this long before replacing the headline |
 | `recommendationMinHoldMs` | 2000 | the headline is protected from replacement until shown this long |
-| `issueGoneMs` | 700 | if the headline's issue has been absent this long it is dropped at once (bypasses the hold) |
+| `recommendationMinShowMs` | 1500 | advice never disappears before it has been on screen this long, even if its issue clears immediately |
+| `issueGoneMs` | 1200 | if the current line's issue has been absent this long (subject still visible) it is dropped |
+| `subjectLostDropMs` | 2500 | subject-related advice survives a subject-missing gap up to this long before it's dropped (a detector blink is not evidence the issue was fixed) |
 | `oppositeDirectionExtraConfirmMs` | 500 | extra confirmation when the challenger is the opposite action (LEFT↔RIGHT, UP↔DOWN, CW↔CCW, CLOSER↔BACK) |
+| `directionFlipHoldMs` | 600 | when the *same* advice id flips to the opposite direction frame-to-frame (subject jittering on top of its target), the previously displayed direction/instruction is held until the new one persists this long |
+| `secondaryRecommendationConfirmMs` | 1200 | like `recommendationConfirmMs`, but for the up-to-two secondary advice lines |
+| `secondaryRecommendationMinHoldMs` | 2500 | like `recommendationMinHoldMs`, but for the secondary lines |
+| `geometryTimeConstantMs` | 400 | EMA time constant for every `display*` overlay geometry field (subject anchor, placement target, headline region, horizon angle) |
+| `geometryHoldMs` | 600 | how long a `display*` geometry field holds its last value through a momentary detector blink before clearing to null |
 | `shootReadyEnterScore` / `shootReadyExitScore` | 88 / 84 | hysteresis band so "shoot ready" doesn't chatter at the boundary |
 | `shootReadyEnterHoldMs` | 400 | the score must stay above the enter threshold this long before SHOOT lights up |
 
 Shoot-ready also requires no applicable metric at `Severity.HIGH` in the latest raw result.
 
-Only the single headline recommendation is smoothed with hysteresis; any secondary recommendations
-(`GuidanceLevel.COACH` can show up to 3) ride along unsmoothed straight from the raw per-frame result,
-since a secondary line flickering is far less disruptive than the main instruction changing every second.
+**Advice slots.** Every displayed advice line — not just the headline — is smoothed by its own `AdviceSlot`
+hysteresis state machine (confirm time, minimum hold/show time, issue-gone/subject-lost dropping, and
+same-id direction-flip suppression). One slot runs the headline; up to two more run the secondary lines
+(`GuidanceLevel.COACH` can show 3 total), each fed the raw ranked list with the ids already claimed by
+higher-priority slots removed, and confirming/holding slightly longer than the headline
+(`secondaryRecommendationConfirmMs` / `secondaryRecommendationMinHoldMs`) since a line read less urgently
+has no reason to churn faster than the headline above it. Nothing unsmoothed reaches the UI any more — a
+secondary line settles down exactly like the headline does — and the smoother actively prevents the same
+id from ever appearing twice across `SmoothedComposition.activeRecommendations` (e.g. a recommendation
+being promoted from secondary to headline drops it from the secondary slot immediately rather than
+waiting out that slot's own confirmation delay).
+
+**Display geometry.** `SmoothedComposition` also carries a time-smoothed counterpart of the raw per-frame
+overlay geometry, so the preview's arrow/ring/highlight/level line hold as steady as the headline and the
+score do — the UI should always draw these, never anything read straight off `SmoothedComposition.raw`:
+
+| Field | Type | Driven by | UI element |
+|---|---|---|---|
+| `displayAnchor` | `NormalizedPoint?` | EMA of the primary subject's `anchorPoint`; resets (snaps) when the primary subject's id/kind changes | the framing **arrow**'s tip |
+| `displayTarget` | `NormalizedPoint?` | EMA of the `SUBJECT_PLACEMENT` analyzer's `TargetPoint`; null unless the headline is placement/looking-room/edge-tension advice and the anchor is outside the placement dead zone | the **target ring** |
+| `displayRegion` | `NormalizedRect?` | EMA of the headline recommendation's `region`; null if none, snaps when the headline id changes | the **region highlight** |
+| `displayHorizon` | `OverlayGeometry.Line?` | EMA of the measured horizon *angle*, then redrawn as a line (linearly blending the two endpoints directly would not track a rotation correctly) | the **level line** |
+| `displaySubjectBounds` | `NormalizedRect?` | EMA of the primary subject's bounding box; same reset behaviour as `displayAnchor` | any UI wanting the whole silhouette |
+
+Every field uses `geometryTimeConstantMs` (~400 ms, faster than the score's constant since geometry should
+visibly track a deliberate reframe quickly — it's per-frame jitter this smooths, not slow drift), holds its
+last value for `geometryHoldMs` (~600 ms) through a momentary detector blink before clearing to null, and is
+clamped into the visible `0..1` frame.
 
 ## Optimizer (`CompositionOptimizer`)
 
@@ -328,6 +361,11 @@ grid size than the paired stats grid, random device orientation including unreli
 - No metric with `applicable = false` carries a `recommendation`.
 - `awaitingSubject == true` implies exactly one recommendation (the "find your subject" message).
 
+A second fuzz pass in the same file runs every random frame's result back through a single persistent
+`CompositionSmoother` and additionally asserts every `SmoothedComposition.display*` geometry field is
+either `null` or within the `0..1` frame, and that no id is ever shown twice across
+`activeRecommendations` (the headline and the up-to-two secondary lines never collide).
+
 `CompositionSmootherTest`'s fuzz cases feed the smoother random timestamp gaps (0, negative, a few ms,
 several seconds) and assert `displayScore` always stays in `0..100` and never `NaN`, and that a constant
 raw score held for several seconds makes the displayed score settle to within ±1 of it.
@@ -354,6 +392,6 @@ Bugs this suite caught and fixed, as a record of why each invariant above exists
 ## Running
 
 ```
-./gradlew :composition:test            # 74 tests, no Android SDK required
+./gradlew :composition:test            # 80 tests, no Android SDK required
 ./gradlew :composition:compileKotlin   # warnings-clean
 ```

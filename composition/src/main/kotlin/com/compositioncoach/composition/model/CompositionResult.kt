@@ -63,6 +63,13 @@ data class CompositionResult(
 /**
  * What the UI actually displays: the temporally smoothed score and the advice that has been stable long enough
  * to act on. [raw] is the latest un-smoothed result for the debug overlay and review screen.
+ *
+ * The `display*` geometry fields are the smoothed counterparts of the raw per-frame overlay geometry (see
+ * [CompositionMetric.geometry] and [Recommendation.region]) — the preview should draw *these*, never
+ * anything read straight off [raw], so the arrow/ring/highlight/level line hold as steady as the headline
+ * advice and the score do. Every one is time-smoothed (EMA, ~400 ms time constant) the same way
+ * [displayScore] is, held for a brief window (~600 ms) when its source momentarily disappears (a detector
+ * blink), and clamped into the visible `0..1` frame; see `composition/README.md`'s Smoothing table.
  */
 data class SmoothedComposition(
     val displayScore: Int,
@@ -73,6 +80,39 @@ data class SmoothedComposition(
     val raw: CompositionResult,
     /** Mirrors [CompositionResult.awaitingSubject]; while true, [displayScore] is the last meaningful score, held. */
     val awaitingSubject: Boolean = false,
+    /**
+     * Smoothed anchor of the primary subject (eyes for a face, box centre otherwise — see
+     * [DetectedSubject.anchorPoint]). Drive the framing **arrow**'s tip from this, not from
+     * `raw.primarySubject?.anchorPoint`. Null when there is no primary subject (after the brief blink hold
+     * expires); resets (snaps, does not blend) the instant the primary subject's id/kind changes.
+     */
+    val displayAnchor: NormalizedPoint? = null,
+    /**
+     * Smoothed target point the coach wants the subject moved to (the `SUBJECT_PLACEMENT` analyzer's
+     * `TargetPoint`, i.e. the nearest thirds intersection or the centre). Drive the **target ring** from
+     * this. Null whenever the current headline recommendation isn't placement/looking-room/edge-tension
+     * advice, or the anchor already sits inside the placement dead zone — a ring floating on screen for
+     * advice that isn't about repositioning the subject would be confusing.
+     */
+    val displayTarget: NormalizedPoint? = null,
+    /**
+     * Smoothed version of the current headline recommendation's [Recommendation.region]. Drive the
+     * **region highlight** from this. Null when the headline carries no region; snaps (no blending) the
+     * instant the headline recommendation itself changes, since blending between two unrelated regions
+     * (e.g. a cropped foot box fading into a background-distraction column) would draw a meaningless
+     * in-between rectangle.
+     */
+    val displayRegion: NormalizedRect? = null,
+    /**
+     * Smoothed horizon line — the EMA is taken on the measured angle, then the line is redrawn from it
+     * (linearly interpolating the two endpoints directly would not track a rotation correctly). Drive the
+     * **level line** from this. Null when no horizon signal is available this frame and none was held over
+     * from a recent blink.
+     */
+    val displayHorizon: OverlayGeometry.Line? = null,
+    /** Smoothed bounding box of the primary subject, for any UI element that wants the whole silhouette
+     * (not just [displayAnchor]'s single point). Same reset-on-subject-change behaviour as [displayAnchor]. */
+    val displaySubjectBounds: NormalizedRect? = null,
 ) {
     val primaryRecommendation: Recommendation? get() = activeRecommendations.firstOrNull()
 

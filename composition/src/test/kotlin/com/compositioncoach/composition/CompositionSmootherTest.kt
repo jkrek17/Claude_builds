@@ -1,13 +1,20 @@
 package com.compositioncoach.composition
 
 import com.compositioncoach.composition.engine.CompositionSmoother
+import com.compositioncoach.composition.model.CompositionMetric
 import com.compositioncoach.composition.model.CompositionResult
+import com.compositioncoach.composition.model.DetectedSubject
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.MetricCategory
+import com.compositioncoach.composition.model.NormalizedPoint
+import com.compositioncoach.composition.model.NormalizedRect
+import com.compositioncoach.composition.model.OverlayGeometry
 import com.compositioncoach.composition.model.Priority
 import com.compositioncoach.composition.model.Recommendation
 import com.compositioncoach.composition.model.Severity
+import com.compositioncoach.composition.model.SubjectKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.math.abs
@@ -105,8 +112,9 @@ class CompositionSmootherTest {
         val smoother = CompositionSmoother()
         repeat(5) { smoother.update(resultWith(null, 40f)) }
         var shown = 40
-        repeat(15) { shown = smoother.update(resultWith(null, 90f)).displayScore } // 1.5 s at nominal rate
-        assertTrue("expected the display to move well toward 90 within 1.5 s, was $shown", shown >= 65)
+        // 2 s at nominal rate: with scoreTimeConstantMs=2000 that's one full time constant, ~63% of the way.
+        repeat(20) { shown = smoother.update(resultWith(null, 90f)).displayScore }
+        assertTrue("expected the display to move well toward 90 within 2 s, was $shown", shown >= 65)
     }
 
     @Test
@@ -169,5 +177,164 @@ class CompositionSmootherTest {
         val afterReset = smoother.update(resultWith(null, 10f))
         assertEquals(10, afterReset.displayScore)
         assertTrue(!afterReset.isShootReady)
+    }
+
+    // --- secondary advice slots --------------------------------------------------------------------
+
+    private fun resultWithAll(recommendations: List<Recommendation>, score: Float): CompositionResult =
+        CompositionResult.empty().copy(
+            rawScore = score,
+            score = Math.round(score),
+            recommendations = recommendations,
+            subjects = listOf(),
+        )
+
+    @Test
+    fun `secondary line does not change on alternating raw secondaries`() {
+        val smoother = CompositionSmoother()
+        val headline = recommendation("headline", Direction.LEFT)
+        val secA = recommendation("secA", Direction.UP)
+        val secB = recommendation("secB", Direction.DOWN)
+
+        val displayedSecondaryIds = mutableListOf<String?>()
+        repeat(30) { i ->
+            val secondary = if (i % 2 == 0) secA else secB
+            val smoothed = smoother.update(resultWithAll(listOf(headline, secondary), 70f))
+            displayedSecondaryIds += smoothed.activeRecommendations.getOrNull(1)?.id
+        }
+
+        // The raw secondary alternated every single frame; the displayed secondary line must not have.
+        val changes = displayedSecondaryIds.zipWithNext().count { (a, b) -> a != b }
+        assertTrue("displayed secondary changed too often: $displayedSecondaryIds", changes < 5)
+    }
+
+    @Test
+    fun `a secondary line never duplicates the headline id while the headline hysteresis catches up`() {
+        val smoother = CompositionSmoother()
+        val a = recommendation("a", Direction.LEFT)
+        val b = recommendation("b", Direction.UP)
+
+        // "a" is the headline, "b" rides as the secondary line.
+        repeat(25) { smoother.update(resultWithAll(listOf(a, b), 70f)) } // past the headline's minimum hold
+
+        // Now "b" overtakes "a" in the raw ranking; once the headline swaps to "b", the secondary slot must
+        // never keep showing "b" too.
+        var smoothed = smoother.update(resultWithAll(listOf(a, b), 70f))
+        repeat(30) {
+            smoothed = smoother.update(resultWithAll(listOf(b, a), 70f))
+            val ids = smoothed.activeRecommendations.map { it.id }
+            assertEquals("duplicate id shown across lines: $ids", ids.size, ids.distinct().size)
+        }
+    }
+
+    // --- display geometry ---------------------------------------------------------------------------
+
+    /** A minimal but realistic result: a primary subject, a SUBJECT_PLACEMENT metric carrying a
+     * [OverlayGeometry.TargetPoint], and a headline recommendation asking to move toward it. */
+    private fun placementResult(anchor: NormalizedPoint?, target: NormalizedPoint, timestampNanos: Long): CompositionResult {
+        val subject = anchor?.let {
+            DetectedSubject(
+                id = 1,
+                kind = SubjectKind.FACE,
+                bounds = NormalizedRect(it.x - 0.05f, it.y - 0.05f, it.x + 0.05f, it.y + 0.05f),
+            )
+        }
+        val rec = recommendation("placement.thirds", Direction.RIGHT)
+        val metric = CompositionMetric(
+            category = MetricCategory.SUBJECT_PLACEMENT,
+            analyzerName = "SubjectPlacementAnalyzer",
+            score = 0.5f,
+            confidence = 0.9f,
+            severity = Severity.LOW,
+            recommendation = rec,
+            geometry = listOf(OverlayGeometry.TargetPoint(target, "target")),
+        )
+        return CompositionResult.empty(timestampNanos).copy(
+            rawScore = 70f,
+            score = 70,
+            recommendations = listOf(rec),
+            metrics = listOf(metric),
+            subjects = listOfNotNull(subject),
+            primarySubject = subject,
+        )
+    }
+
+    @Test
+    fun `display geometry eases toward a new position and holds through a brief blink`() {
+        val smoother = CompositionSmoother()
+        val start = NormalizedPoint(0.3f, 0.3f)
+        val startTarget = NormalizedPoint(0.5f, 0.3f)
+        val moved = NormalizedPoint(0.7f, 0.6f)
+        val movedTarget = NormalizedPoint(0.9f, 0.6f)
+        var t = 0L
+        var last = smoother.update(placementResult(start, startTarget, t))
+        repeat(10) { t += 100L * 1_000_000L; last = smoother.update(placementResult(start, startTarget, t)) }
+        assertTrue("expected anchor settled near $start, was ${last.displayAnchor}", last.displayAnchor!!.distanceTo(start) < 0.02f)
+
+        // Subject jumps to a new position: the display should not snap there instantly (it's an EMA)...
+        t += 100L * 1_000_000L
+        val justAfterJump = smoother.update(placementResult(moved, movedTarget, t))
+        assertTrue(
+            "expected the display to still be easing toward the new anchor, was ${justAfterJump.displayAnchor}",
+            justAfterJump.displayAnchor!!.distanceTo(moved) > 0.05f,
+        )
+        // ...but converges there after several time constants (geometryTimeConstantMs = 400 ms default).
+        repeat(20) { t += 100L * 1_000_000L; last = smoother.update(placementResult(moved, movedTarget, t)) }
+        assertTrue("expected anchor to converge near $moved, was ${last.displayAnchor}", last.displayAnchor!!.distanceTo(moved) < 0.02f)
+        assertTrue(
+            "expected target to converge near $movedTarget, was ${last.displayTarget}",
+            last.displayTarget!!.distanceTo(movedTarget) < 0.02f,
+        )
+
+        // Detector blink: 3 frames with no subject at all must not clear the held display.
+        repeat(3) { t += 100L * 1_000_000L; last = smoother.update(placementResult(null, movedTarget, t)) }
+        val heldAnchor = last.displayAnchor
+        assertNotNull("anchor should be held (non-null) through a brief blink", heldAnchor)
+        assertTrue("anchor should be held near $moved through a brief blink, was $heldAnchor", heldAnchor!!.distanceTo(moved) < 0.02f)
+
+        // Subject reappears: tracking resumes normally.
+        t += 100L * 1_000_000L
+        last = smoother.update(placementResult(moved, movedTarget, t))
+        assertNotNull("anchor should resume tracking once the subject reappears", last.displayAnchor)
+    }
+
+    // --- direction stability --------------------------------------------------------------------------
+
+    @Test
+    fun `direction flip within the same id is suppressed until it persists 600 ms`() {
+        val smoother = CompositionSmoother()
+        val right = recommendation("placement.thirds", Direction.RIGHT)
+        val left = recommendation("placement.thirds", Direction.LEFT)
+
+        // Establish RIGHT as the displayed direction.
+        var shown = smoother.update(resultWith(right, 70f)).primaryRecommendation?.direction
+        repeat(5) { shown = smoother.update(resultWith(right, 70f)).primaryRecommendation?.direction }
+        assertEquals(Direction.RIGHT, shown)
+
+        // The raw advice flips to LEFT (same id, the subject jittering on top of its target) — held at
+        // RIGHT for under 600 ms (nominal 100 ms/update).
+        repeat(5) { shown = smoother.update(resultWith(left, 70f)).primaryRecommendation?.direction } // 0.5 s
+        assertEquals(Direction.RIGHT, shown)
+
+        // Persisted past 600 ms: the flip is now accepted.
+        repeat(2) { shown = smoother.update(resultWith(left, 70f)).primaryRecommendation?.direction } // 0.7 s total
+        assertEquals(Direction.LEFT, shown)
+    }
+
+    // --- score cadence --------------------------------------------------------------------------------
+
+    @Test
+    fun `display score deadband is 3 points`() {
+        val smoother = CompositionSmoother()
+        repeat(10) { smoother.update(resultWith(null, 50f)) } // settle at 50
+
+        // A 2-point drift, even held indefinitely, must stay inside the new deadband of 3.
+        var shown = 50
+        repeat(30) { shown = smoother.update(resultWith(null, 52f)).displayScore }
+        assertEquals("a 2-point drift should stay inside the deadband of 3", 50, shown)
+
+        // A drift that reaches 3 points from what's displayed is eventually shown.
+        repeat(30) { shown = smoother.update(resultWith(null, 53f)).displayScore }
+        assertEquals(53, shown)
     }
 }
