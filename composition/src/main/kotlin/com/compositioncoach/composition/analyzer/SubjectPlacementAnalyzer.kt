@@ -11,6 +11,7 @@ import com.compositioncoach.composition.model.Recommendation
 import com.compositioncoach.composition.model.ReframeVector
 import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.Severity
+import com.compositioncoach.composition.model.SubjectKind
 import kotlin.math.abs
 
 /**
@@ -22,12 +23,16 @@ import kotlin.math.abs
  *     — a centred subject reinforces symmetry rather than fighting it — or when the subject is already
  *     within [CENTERED_TOLERANCE] (~5%) of the horizontal centre *and* this isn't a portrait with a
  *     sideways gaze (a centred face that's visibly looking off to one side still reads as unbalanced, so
- *     that combination falls through to the thirds rule instead).
+ *     that combination falls through to the thirds rule instead). For a [SubjectKind.OBJECT] subject there
+ *     is no gaze to consult, so centred is instead valid when the object is large enough to anchor the
+ *     frame on its own ([LARGE_OBJECT_AREA], ~25% of frame area) — a small object sitting dead centre still
+ *     reads as an accident, but a large one (the pint glass filling a third of the shot) earns it.
  *  2. **Rule of thirds**: the anchor point should land on the nearest of the four thirds intersections,
  *     with two refinements: for portraits the eye-line prefers the *upper* horizontal third (roughly
  *     where a viewer's gaze naturally lands first), and the horizontal third is chosen to leave "looking
  *     room" in the direction the subject is facing (see [RuleOfThirds.preferredIntersection]) rather than
- *     always snapping to the nearer line.
+ *     always snapping to the nearer line. An object subject has no gaze, so it always snaps to the nearer
+ *     thirds intersection on both axes.
  *
  * The score decays linearly with distance from the chosen target (capped at [MAX_MEANINGFUL_DISTANCE]);
  * a [Recommendation] is only produced once the distance exceeds [PLACEMENT_DEAD_ZONE] so that "close
@@ -45,7 +50,11 @@ class SubjectPlacementAnalyzer : CompositionAnalyzer {
         val gaze = subject.face?.gaze ?: GazeDirection.UNKNOWN
         val portraitWithGaze = context.scene.type == SceneType.PORTRAIT && (gaze == GazeDirection.LEFT || gaze == GazeDirection.RIGHT)
         val nearCenterX = abs(anchor.x - 0.5f) <= CENTERED_TOLERANCE
-        val centeredIsValidTarget = context.scene.isSymmetricScene || (nearCenterX && !portraitWithGaze)
+        val centeredIsValidTarget = if (subject.kind == SubjectKind.OBJECT) {
+            context.scene.isSymmetricScene || subject.bounds.area >= LARGE_OBJECT_AREA
+        } else {
+            context.scene.isSymmetricScene || (nearCenterX && !portraitWithGaze)
+        }
 
         val target = if (centeredIsValidTarget) {
             NormalizedPoint(0.5f, anchor.y)
@@ -91,10 +100,18 @@ class SubjectPlacementAnalyzer : CompositionAnalyzer {
             score = score,
             confidence = 0.9f,
             severity = recommendation?.severity ?: Severity.NONE,
-            issue = if (recommendation != null) "Subject placement could be improved" else null,
+            issue = if (recommendation != null) {
+                if (centeredIsValidTarget) "Subject sits off the frame's centre" else "Subject doesn't land on a thirds point"
+            } else {
+                null
+            },
             recommendation = recommendation,
             geometry = listOf(OverlayGeometry.TargetPoint(target, "target"), OverlayGeometry.Arrow(anchor, target)),
-            strength = if (score >= 0.85f) "Well-placed subject" else null,
+            strength = if (score >= 0.85f) {
+                if (centeredIsValidTarget) "Subject is well-centred" else "Subject sits on a strong thirds point"
+            } else {
+                null
+            },
         )
     }
 
@@ -102,5 +119,8 @@ class SubjectPlacementAnalyzer : CompositionAnalyzer {
         const val CENTERED_TOLERANCE = 0.05f
         const val PLACEMENT_DEAD_ZONE = 0.05f
         const val MAX_MEANINGFUL_DISTANCE = 0.5f
+
+        /** An object subject this large (~25% of frame area) can anchor a centred composition on its own. */
+        const val LARGE_OBJECT_AREA = 0.25f
     }
 }

@@ -80,6 +80,8 @@ data class DetectedSubject(
     /** Relative visual importance, 0..1. Larger, more central, more confident subjects rank higher. */
     val salience: Float = 0.5f,
     val isPrimary: Boolean = false,
+    /** The source detection for a [SubjectKind.OBJECT] subject (category, confidence, tracking id), else null. */
+    val detectedObject: DetectedObject? = null,
 ) {
     val center: NormalizedPoint get() = bounds.center
     /** The point the engine should place on a compositional anchor (eyes for people, box center otherwise). */
