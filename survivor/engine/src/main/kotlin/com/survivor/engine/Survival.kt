@@ -78,15 +78,36 @@ object Survival {
         aliveAfterEachWeek(List(n) { f }, strikesAllowedForField)
 
     /**
+     * Per-week variant of [fieldAliveCurve]: instead of `n` identical copies of the flat [fieldAliveCurve]
+     * probability, each week `i` uses its own win probability `fs[i]`. Used when a week's field win
+     * probability is known more precisely than the flat average - e.g. the current week's Yahoo Survival
+     * Football pick-weighted win rate (see [Evaluator]'s `fieldWinProbabilityThisWeek`) - while later weeks
+     * still fall back to the flat average.
+     */
+    fun fieldAliveCurve(fs: List<Double>, strikesAllowedForField: Int = 1): List<Double> =
+        aliveAfterEachWeek(fs, strikesAllowedForField)
+
+    /**
      * `D_0..D_n`: probability that ALL of [poolEntries] `- 1` other entries (each modeled by [fieldAliveCurve])
      * are eliminated by the end of week `k`, for `k = 0..n`. Entries are assumed independent, so
      * `D_k = (1 - a_k)^m` where `a_k` is [fieldAliveCurve]`[k]` (with `a_0 = 1`, nobody has played yet) and
      * `m = poolEntries - 1`. Exposed separately from [poolWinProbability] because [Evaluation.expectedPoolEndWeek]
-     * needs the same increments.
+     * needs the same increments. [fieldWinProbabilities], when non-null and sized `n`, overrides the flat [f]
+     * for the corresponding weeks (see [fieldAliveCurve]); otherwise the flat model is used unchanged.
      */
-    fun otherEntriesEliminatedCdf(n: Int, f: Double, poolEntries: Int, strikesAllowedForField: Int = 1): DoubleArray {
+    fun otherEntriesEliminatedCdf(
+        n: Int,
+        f: Double,
+        poolEntries: Int,
+        strikesAllowedForField: Int = 1,
+        fieldWinProbabilities: List<Double>? = null,
+    ): DoubleArray {
         val m = (poolEntries - 1).coerceAtLeast(0)
-        val a = fieldAliveCurve(n, f, strikesAllowedForField)
+        val a = if (fieldWinProbabilities != null && fieldWinProbabilities.size == n) {
+            fieldAliveCurve(fieldWinProbabilities, strikesAllowedForField)
+        } else {
+            fieldAliveCurve(n, f, strikesAllowedForField)
+        }
         val d = DoubleArray(n + 1)
         // (1 - a_0)^m with a_0 = 1: 0^m, which is 0 for m > 0 and (by convention) 1 for m = 0 - no other entries
         // means "all others eliminated" is vacuously true even before week 1.
@@ -114,14 +135,25 @@ object Survival {
      * awarded by a tiebreaker you'd win with probability `1/(1+K)`, your *expected* share is identical, so the
      * setting is kept only so the UI can explain the assumption; the math here is honest about that and does
      * not branch on it.
+     *
+     * [fieldWinProbabilities], when non-null and sized `ps.size`, overrides the flat [f] for the corresponding
+     * weeks of the field model (e.g. `[fieldWinProbabilityThisWeek] + flat f for later weeks` - see
+     * [Evaluator]); a null or mis-sized list falls back to the flat model exactly as before.
      */
-    fun poolWinProbability(ps: List<Double>, strikesAllowed: Int, poolEntries: Int, f: Double, payoutSplit: Boolean = true): Double {
+    fun poolWinProbability(
+        ps: List<Double>,
+        strikesAllowed: Int,
+        poolEntries: Int,
+        f: Double,
+        payoutSplit: Boolean = true,
+        fieldWinProbabilities: List<Double>? = null,
+    ): Double {
         val n = ps.size
         if (n == 0) return 0.0
         val m = (poolEntries - 1).coerceAtLeast(0)
         val you = aliveAfterEachWeek(ps, strikesAllowed)
-        val a = fieldAliveCurve(n, f)
-        val d = otherEntriesEliminatedCdf(n, f, poolEntries)
+        val a = if (fieldWinProbabilities != null && fieldWinProbabilities.size == n) fieldAliveCurve(fieldWinProbabilities) else fieldAliveCurve(n, f)
+        val d = otherEntriesEliminatedCdf(n, f, poolEntries, fieldWinProbabilities = fieldWinProbabilities)
         var outright = 0.0
         for (k in 1..n) outright += you[k - 1] * (d[k] - d[k - 1])
         val aN = a.last()
@@ -132,8 +164,9 @@ object Survival {
 
     /**
      * Value of a season-path objective for the sequence `ps`, used by both the optimizer's local search and
-     * [Route.objectiveValue]. See [RouteObjective] for what each option maximizes. [poolEntries] and
-     * [fieldWinProbability] are only used by [RouteObjective.POOL_WIN].
+     * [Route.objectiveValue]. See [RouteObjective] for what each option maximizes. [poolEntries],
+     * [fieldWinProbability] and [fieldWinProbabilities] are only used by [RouteObjective.POOL_WIN]; see
+     * [poolWinProbability] for [fieldWinProbabilities].
      */
     fun objectiveValue(
         ps: List<Double>,
@@ -142,6 +175,7 @@ object Survival {
         horizonWeight: Double,
         poolEntries: Int = 50,
         fieldWinProbability: Double = 0.76,
+        fieldWinProbabilities: List<Double>? = null,
     ): Double = when (objective) {
         RouteObjective.SURVIVE_SEASON -> survive(ps, strikesAllowed)
         RouteObjective.EXPECTED_WEEKS_ALIVE -> expectedWeeksAlive(ps, strikesAllowed)
@@ -150,6 +184,6 @@ object Survival {
             val normalizedWeeksAlive = if (n > 0) expectedWeeksAlive(ps, strikesAllowed) / n else 0.0
             (1 - horizonWeight) * survive(ps, strikesAllowed) + horizonWeight * normalizedWeeksAlive
         }
-        RouteObjective.POOL_WIN -> poolWinProbability(ps, strikesAllowed, poolEntries, fieldWinProbability)
+        RouteObjective.POOL_WIN -> poolWinProbability(ps, strikesAllowed, poolEntries, fieldWinProbability, fieldWinProbabilities = fieldWinProbabilities)
     }
 }

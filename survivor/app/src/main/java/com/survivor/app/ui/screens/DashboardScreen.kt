@@ -128,6 +128,12 @@ private fun HeroCard(e: Evaluation, vm: AppViewModel, onNavigate: (String) -> Un
             Stat("Moneyline", Fmt.ml(rec.estimate.teamMoneyline))
             Stat("Source", rec.estimate.source.label, modifier = Modifier.width(140.dp))
         }
+        rec.leverage?.let { lev ->
+            Text(
+                "Yahoo pick share: ${Fmt.pct(lev.pickShare)}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         e.explanation?.headline?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         if (rec.probability < e.settings.minimumAcceptableWinProbability) {
             Text("⚠ Below your ${Fmt.pct(e.settings.minimumAcceptableWinProbability)} minimum acceptable win probability.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -188,6 +194,7 @@ private fun AlternativeRow(alt: TeamWeekEvaluation, reason: String) {
             Column(Modifier.weight(1f)) {
                 Text("#${alt.rank} ${alt.team.abbr}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
                 Text(Fmt.matchup(alt.opponent.abbr, alt.situation.isHome, alt.situation.neutral), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                alt.leverage?.let { lev -> Text("Pick share ${Fmt.pct(lev.pickShare)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             Text(Fmt.pct(alt.probability), style = MaterialTheme.typography.titleSmall)
             TierBadge(alt.grade, alt.tier)

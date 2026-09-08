@@ -226,4 +226,44 @@ class EvaluatorTest {
         // ...and the field takes (weakly) longer, in expectation, to be fully eliminated.
         assertTrue(big.expectedPoolEndWeek!! >= small.expectedPoolEndWeek!! - 1e-9)
     }
+
+    @Test fun `Yahoo pick shares populate leverage on rankings, a manual adjustment overrides them, and fieldWinProbabilityThisWeek is set`() {
+        val baseSeason = TestSeason.build(20)
+        val week1Games = baseSeason.gamesInWeek(1)
+        val teamA = week1Games.first().home
+        val teamB = week1Games.first().away
+        val shares = mapOf(teamA to 0.30, teamB to 0.10)
+        val season = baseSeason.copy(pickShares = mapOf(1 to shares), pickSharesFetchedAtEpochMs = 123L, pickSharesSource = "Yahoo Survival Football (all Yahoo entries)")
+
+        // No shares at all: no leverage anywhere, no field win probability override.
+        val noShares = Evaluator.evaluate(baseSeason, UserState(), now)
+        assertTrue(noShares.rankings.all { it.leverage == null })
+        assertNull(noShares.fieldWinProbabilityThisWeek)
+        assertNull(noShares.ownershipSource)
+        assertNull(noShares.ownershipFetchedAtEpochMs)
+
+        // Yahoo shares present: leverage appears for the teams with a share, and the field model reflects them.
+        val withYahoo = Evaluator.evaluate(season, UserState(), now)
+        val aRow = withYahoo.rankings.first { it.team == teamA }
+        val bRow = withYahoo.rankings.first { it.team == teamB }
+        assertNotNull(aRow.leverage)
+        assertEquals(0.30, aRow.leverage!!.pickShare, 1e-9)
+        assertNotNull(bRow.leverage)
+        assertEquals(0.10, bRow.leverage!!.pickShare, 1e-9)
+        assertNotNull(withYahoo.fieldWinProbabilityThisWeek)
+        assertTrue(withYahoo.fieldWinProbabilityThisWeek!! in 0.0..1.0)
+        assertEquals("Yahoo Survival Football (all Yahoo entries)", withYahoo.ownershipSource)
+        assertEquals(123L, withYahoo.ownershipFetchedAtEpochMs)
+        val expectedField = (0.30 * aRow.probability + 0.10 * bRow.probability) / 0.40
+        assertEquals(expectedField, withYahoo.fieldWinProbabilityThisWeek!!, 1e-9)
+
+        // A manual pick-share adjustment for teamA overrides the Yahoo share, everywhere leverage is computed.
+        val user = UserState(adjustments = listOf(Adjustment(1, teamA, estimatedPickShare = 0.60)))
+        val withOverride = Evaluator.evaluate(season, user, now)
+        val aRowOverridden = withOverride.rankings.first { it.team == teamA }
+        assertEquals(0.60, aRowOverridden.leverage!!.pickShare, 1e-9)
+        assertEquals(0.60, Evaluator.effectivePickShare(season, user, 1, teamA))
+        assertEquals(0.10, Evaluator.effectivePickShare(season, user, 1, teamB))
+        assertNull(Evaluator.effectivePickShare(baseSeason, UserState(), 1, teamA))
+    }
 }

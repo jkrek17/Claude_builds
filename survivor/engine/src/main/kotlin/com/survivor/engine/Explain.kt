@@ -66,6 +66,7 @@ object Explain {
         if (rec.adjustment?.qbPoints != null && rec.adjustment.qbPoints != 0.0) risks += "QB uncertainty flagged"
         if (rec.estimate.adjustmentPoints != 0.0) risks += "manual adjustment of ${fmt(rec.estimate.adjustmentPoints)} points applied"
         if (risks.isNotEmpty()) sb.append(" Risk notes: ${risks.joinToString(", ")}.")
+        rec.leverage?.let { lev -> sb.append(" About ${(lev.pickShare * 100).roundToInt()}% of Yahoo survival entries are on $t this week.") }
         val whySafe = sb.toString()
 
         // 2. Why use it now?  3. What do we give up?
@@ -117,6 +118,9 @@ object Explain {
                 if (a.seasonPathLoss > rec.seasonPathLoss + 1) reasons += "locking it now costs ${String.format(java.util.Locale.US, "%.1f", a.seasonPathLoss)}% of season survival vs ${String.format(java.util.Locale.US, "%.1f", rec.seasonPathLoss)}%"
                 if (a.components.thresholdPenalty > 0) reasons += "below the ${pct(settings.minimumAcceptableWinProbability)} minimum"
                 if (a.components.leverageAdjustment < rec.components.leverageAdjustment - 0.5) reasons += "more heavily owned"
+                if (a.leverage != null && rec.leverage != null && a.leverage.pickShare < rec.leverage.pickShare - 0.05) {
+                    reasons += "far less popular (${pct(a.leverage.pickShare)} vs ${pct(rec.leverage.pickShare)} of entries) - more leverage if it hits"
+                }
                 if (reasons.isEmpty()) reasons += "nearly identical; ${rec.team.abbr} edges it on the combined score"
                 append(reasons.joinToString("; "))
                 a.futureValue.best?.let { b -> if (b.probability > a.probability + 0.03) append(". Best future spot: Week ${b.week} vs ${b.opponent.abbr} (${pct(b.probability)})") }

@@ -206,7 +206,8 @@ each starting the remaining season fresh (zero strikes already used — a full d
 and picking at a flat weekly win probability `ModelSettings.fieldAverageWinProbability` (default 76%) every
 week. This is a deliberate simplification: real entries differ in skill, enter the remaining season with a mix
 of strikes already used, and don't all have the identical schedule access — but it keeps the field a single
-tunable number instead of requiring a model of every other entrant's picks. One other entry's alive-after-week-`k`
+tunable number instead of requiring a model of every other entrant's picks (§8 describes how the *current*
+week's flat `f` is sharpened using real Yahoo pick shares, when known). One other entry's alive-after-week-`k`
 curve, `a_k` (`a_0 = 1`), is `Survival.fieldAliveCurve(n, f)` — the same `aliveAfterEachWeek` math applied to
 `n` copies of `f`.
 
@@ -258,14 +259,39 @@ compared:
 
 ## 8. Ownership and pool equity
 
-With an estimated pick share `o` and the field's average win probability `f` (default 76%):
+**Pick share, automatically.** Every refresh pulls Yahoo Survival Football's public pick-distribution page -
+the real share of ALL Yahoo Survival Football entries picking each team, for the current week, no login
+required (see `docs/DATA_SOURCES.md` "Survivor pick popularity (Yahoo)" and `YahooPickDistributionParser`).
+Fetched shares land on `Season.pickShares` (week → team → share). `Evaluator.effectivePickShare(season, user,
+week, team)` is the pick share used everywhere in the model: a manual `Adjustment.estimatedPickShare` for that
+team-week always wins when set, else Yahoo's fetched share, else null (no estimate at all, leverage disabled
+for that team). A Yahoo fetch failure is non-fatal - the app keeps whatever shares it already had.
+
+**Leverage.** With effective pick share `o` and the field's average win probability `f` (default 76%):
 
 - surviving share of the pool if you advance ≈ `o + (1 − o) · f`
 - **expected pool equity** = `p / (o + (1 − o) · f)` (1.0 = average)
 - **leverage score** = `(equity − 1) · 100`
 
-Strategy presets set the leverage weight: Conservative 0, Balanced 0.3, Contrarian 0.7, Max Pool Equity ranks
-by equity outright. This is a proxy; a pool-size-aware equity model is listed under future improvements.
+`Safety.leverage` computes this from `effectivePickShare`; `TeamWeekEvaluation.leverage` (and its
+`leverageAdjustment` Safety term) reflect it for every team playing the current week, not just ones with a
+manual estimate. Strategy presets set the leverage weight: Conservative 0, Balanced 0.3, Contrarian 0.7, Max
+Pool Equity ranks by equity outright. This is a proxy - it does not know which teams *your specific* pool's
+entries hold, only Yahoo's much larger public pool - so a manual pick share remains available to override it
+per team-week; a pool-size-aware equity model is listed under future improvements.
+
+**Field win probability, refined for the current week.** `RouteObjective.POOL_WIN`'s field model (§6 "Pool-win
+objective") normally uses one flat `f` for every remaining week. When Yahoo (or manual) pick shares are known
+for the *current* week, `Evaluator` instead computes `fieldWinProbabilityThisWeek = Σ share_t · p_t / Σ share_t`
+over the teams playing this week with a known effective share, using their resolved current-week win
+probabilities `p_t` - i.e. the field's actual pick-weighted win rate this week, rather than the flat average.
+`Evaluation.fieldWinProbabilityThisWeek` exposes this (null when no shares are known for the current week).
+`Survival.poolWinProbability`, `Survival.objectiveValue`, `Route.objectiveValue` and `Optimizer.optimize` all
+accept an optional per-week field-win-probability override (`fieldWinProbabilities`, sized to the route/sequence
+in week order) that replaces the flat `f` for the corresponding weeks and falls back to it everywhere else;
+`Evaluator` passes `[fieldWinProbabilityThisWeek] + flat f for every later week` wherever it builds or scores a
+route, so `Evaluation.poolWinProbability` and the season optimizer both use the sharper current-week number
+while every existing caller that omits the override keeps the exact flat-`f` behavior it always had.
 
 ## Formula reference
 

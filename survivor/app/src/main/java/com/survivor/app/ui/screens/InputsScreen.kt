@@ -62,6 +62,11 @@ fun InputsScreen(vm: AppViewModel) {
             OutlinedTextField(apiKey, { apiKey = it }, label = { Text("The Odds API key (optional)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Button(onClick = { vm.setOddsApiKey(apiKey); vm.refreshOdds() }, enabled = apiKey != state.user.oddsApiKey || apiKey.isNotBlank()) { Text("Save key and refresh odds") }
             Text("Lines fetched ${Fmt.age(e.season.oddsFetchedAtEpochMs)} · FPI ${Fmt.age(e.season.fpiFetchedAtEpochMs)} · Consensus ${Fmt.age(e.season.consensusFetchedAtEpochMs)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            HorizontalDivider()
+            val ownership = if (e.ownershipSource != null) "Ownership: ${e.ownershipSource} · fetched ${Fmt.age(e.ownershipFetchedAtEpochMs)}"
+            else "Ownership: no Yahoo pick shares for Week ${e.currentWeek} yet - refresh to fetch them."
+            Text(ownership, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("This is the real share of ALL Yahoo Survival Football entries picking each team, fetched automatically on every refresh. A manual pick share below overrides Yahoo's for that team-week.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         LineMovementCard(state.lineHistory, e.season)
         SectionCard("Weekly inputs · manual adjustments") {
@@ -70,12 +75,16 @@ fun InputsScreen(vm: AppViewModel) {
             val cells = e.grid.mapNotNull { (_, row) -> row[week - 1] }.sortedBy { it.team.abbr }
             cells.forEach { c ->
                 val adj = state.user.adjustment(week, c.team)
+                val yahooShare = e.season.pickShares[week]?.get(c.team)
                 Row(Modifier.fillMaxWidth().clickable { editing = c }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     TeamLogo(c.team, 28.dp)
                     Column(Modifier.weight(1f)) {
                         Text("${c.team.abbr} ${Fmt.matchup(c.opponent.abbr, c.isHome, c.neutral)}", fontWeight = FontWeight.SemiBold)
                         Text("${Fmt.spread(c.teamSpread)} · ${c.source.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (adj != null) Text(describe(adj), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        if (adj?.estimatedPickShare == null && yahooShare != null) {
+                            Text("Yahoo pick share ${Fmt.pct(yahooShare)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                     TierBadge(Fmt.pct(c.probability), Safety.probabilityTier(c.probability))
                 }
@@ -85,7 +94,7 @@ fun InputsScreen(vm: AppViewModel) {
     }
 
     editing?.let { c ->
-        AdjustmentDialog(c, state.user.adjustment(week, c.team), onDismiss = { editing = null }) { vm.setAdjustment(it); editing = null }
+        AdjustmentDialog(c, state.user.adjustment(week, c.team), e.season.pickShares[c.week]?.get(c.team), onDismiss = { editing = null }) { vm.setAdjustment(it); editing = null }
     }
 }
 
@@ -151,7 +160,7 @@ private fun describe(a: Adjustment): String = buildList {
 }.joinToString(" · ")
 
 @Composable
-private fun AdjustmentDialog(cell: GridCell, existing: Adjustment?, onDismiss: () -> Unit, onSave: (Adjustment) -> Unit) {
+private fun AdjustmentDialog(cell: GridCell, existing: Adjustment?, yahooShare: Double? = null, onDismiss: () -> Unit, onSave: (Adjustment) -> Unit) {
     var override by remember { mutableStateOf(existing?.overrideWinProbability?.let { Fmt.num(it * 100) } ?: "") }
     var injury by remember { mutableStateOf(existing?.injuryPoints?.takeIf { it != 0.0 }?.let { Fmt.num(it) } ?: "") }
     var qb by remember { mutableStateOf(existing?.qbPoints?.takeIf { it != 0.0 }?.let { Fmt.num(it) } ?: "") }
@@ -169,7 +178,12 @@ private fun AdjustmentDialog(cell: GridCell, existing: Adjustment?, onDismiss: (
                 OutlinedTextField(injury, { injury = it }, label = { Text("Injury adjustment (points)") }, keyboardOptions = numeric, singleLine = true)
                 OutlinedTextField(qb, { qb = it }, label = { Text("QB adjustment (points; any value flags QB risk)") }, keyboardOptions = numeric, singleLine = true)
                 OutlinedTextField(weather, { weather = it }, label = { Text("Weather adjustment (points)") }, keyboardOptions = numeric, singleLine = true)
-                OutlinedTextField(share, { share = it }, label = { Text("Estimated pool pick share %") }, keyboardOptions = numeric, singleLine = true)
+                OutlinedTextField(
+                    share, { share = it },
+                    label = { Text("Estimated pool pick share % (overrides Yahoo)") },
+                    keyboardOptions = numeric, singleLine = true,
+                    supportingText = { Text(yahooShare?.let { "Yahoo Survival Football: ${Fmt.pct(it)} - leave blank to use it" } ?: "No Yahoo pick share fetched for this team-week yet") },
+                )
                 OutlinedTextField(note, { note = it }, label = { Text("Note") }, singleLine = true)
             }
         },
