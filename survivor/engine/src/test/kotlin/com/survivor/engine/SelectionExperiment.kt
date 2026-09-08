@@ -104,6 +104,18 @@ class SelectionExperiment {
             println("%-42s %7.1f%% %7.1f%% %7.1f%% %7.1f%% %9.2f %7.2f".format(pol.name, surv * 100.0 / seasons, zero * 100.0 / seasons, r10 * 100.0 / seasons, r14 * 100.0 / seasons, weeksAlive.toDouble() / seasons, strikesTot.toDouble() / seasons))
         }
 
+
+        println()
+        println("=== 5. CLOSED-LOOP (engine PolicySimulator, 800 seasons, common random numbers): pool-size-aware policies ===")
+        val cmp = PolicySimulator.simulate(
+            season, UserState(), now,
+            listOf(
+                Policy.Greedy, Policy.Optimized(0.03), Policy.ZeroLoss, Policy.Threshold(0.70, 0.03),
+                Policy.PoolWin(0.03, poolEntries = 10), Policy.PoolWin(0.03, poolEntries = 50), Policy.PoolWin(0.03, poolEntries = 500),
+            ),
+            seasons = 800, seed = 3,
+        )
+        println(cmp.summaryTable())
         println()
         println("=== 4. W1 DECISION UNDER SCENARIOS: how often is each team the unconstrained optimum's W1 pick (200 perturbed tables) ===")
         val counts = HashMap<Team, Int>()

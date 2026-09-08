@@ -1,5 +1,8 @@
 # Model
 
+See also [EVALUATION.md](EVALUATION.md) for the data-science evaluation of the selection process on the real 2026 lines
+and the changes it motivated.
+
 Everything below is implemented in `survivor/engine` and is deterministic: the same data, picks and settings
 always produce the same output. Every number on screen carries its **source** label.
 
