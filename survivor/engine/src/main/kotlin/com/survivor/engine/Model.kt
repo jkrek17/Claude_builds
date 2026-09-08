@@ -117,6 +117,21 @@ data class Adjustment(
     val note: String = "",
 )
 
+/**
+ * Which season-path quantity [Optimizer]'s local search climbs, after the Hungarian start (which always
+ * maximizes P(0 losses) as a good starting point for every objective). A real pool rarely needs the entry to
+ * survive all 18 weeks — it usually ends when everyone else is out — so surviving MORE WEEKS has value even
+ * for an entry that eventually falls.
+ */
+enum class RouteObjective(val label: String, val description: String) {
+    SURVIVE_SEASON("Survive the season", "Maximize P(alive after Week 18)"),
+    EXPECTED_WEEKS_ALIVE("Expected weeks alive", "Maximize the expected number of weeks survived"),
+    BLENDED(
+        "Blended",
+        "Weighted mix of P(survive season) and expected weeks alive: (1 − horizonWeight) · P(survive season) + horizonWeight · expectedWeeksAlive / n",
+    ),
+}
+
 enum class Strategy(val label: String, val description: String) {
     CONSERVATIVE("Conservative", "Maximize your own survival. Ownership is ignored; future value still matters."),
     BALANCED("Balanced", "Survival first, with a modest bonus for lightly-owned picks."),
@@ -158,6 +173,10 @@ data class ModelSettings(
     /** Average win probability of the field's picks, used as the pool-equity proxy when ownership is entered. */
     val fieldAverageWinProbability: Double = 0.76,
     val monteCarloIterations: Int = 20_000,
+    /** Which season-path quantity the optimizer maximizes; see [RouteObjective]. */
+    val routeObjective: RouteObjective = RouteObjective.SURVIVE_SEASON,
+    /** Weight on expected-weeks-alive vs. P(survive season) when [routeObjective] is BLENDED (0..1). */
+    val horizonWeight: Double = 0.5,
 ) {
     fun forStrategy(strategy: Strategy): ModelSettings = copy(
         strategy = strategy,
@@ -193,6 +212,8 @@ data class ModelSettings(
             "ownershipLeverageWeight" to "Safety bonus per unit of leverage when pick share is entered. Set by strategy.",
             "fieldAverageWinProbability" to "Assumed win % of the rest of the pool's picks in the equity proxy.",
             "monteCarloIterations" to "Simulated seasons per strategy in the Monte Carlo tab.",
+            "routeObjective" to "What the season-path optimizer maximizes: survive the whole season, expected weeks alive, or a blend of both.",
+            "horizonWeight" to "Blended objective only: weight on expected weeks alive vs. P(survive season), 0 (survive-season only) to 1 (expected-weeks only).",
         )
     }
 }

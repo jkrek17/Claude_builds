@@ -151,17 +151,45 @@ class EvaluatorTest {
         assertNull(Evaluator.evaluate(season, UserState(), now).recommended!!.leverage)
     }
 
-    @Test fun `strategy comparison produces four simulations with sane numbers`() {
+    @Test fun `strategy comparison produces five simulations with sane numbers`() {
         val season = TestSeason.build(16)
         val results = Strategies.compare(season, UserState(), now, iterations = 2000)
-        assertEquals(4, results.size)
+        assertEquals(5, results.size)
         for (r in results) {
             assertTrue(r.surviveSeason in 0.0..1.0)
             assertTrue(r.reachWeek10 >= r.reachWeek14 && r.reachWeek14 >= r.reachWeek18)
             assertEquals(r.route.steps.size, r.route.teams.size)
+            assertTrue(r.expectedWeeksAlive in 0.0..r.route.steps.size.toDouble())
         }
         val optimized = results.first { it.strategy == Strategies.FUTURE_VALUE }
         val analytic = Survival.survive(optimized.route.probabilities, 1)
         assertEquals(analytic, optimized.surviveSeason, 0.05)
+        assertTrue(results.any { it.strategy == Strategies.EXPECTED_WEEKS })
+    }
+
+    @Test fun `each route objective still produces a valid route with sane expected weeks alive`() {
+        for (objective in RouteObjective.entries) {
+            val season = TestSeason.build(17)
+            val settings = ModelSettings(routeObjective = objective, horizonWeight = 0.5)
+            val e = Evaluator.evaluate(season, UserState(settings = settings), now)
+            assertEquals(e.route.steps.size, e.route.teams.size, "duplicate team for $objective")
+            assertTrue(e.seasonExpectedWeeksAlive in 0.0..e.route.steps.size.toDouble(), "$objective: ${e.seasonExpectedWeeksAlive}")
+        }
+    }
+
+    @Test fun `expected-weeks-alive objective never trails the survive-season route on expected weeks alive`() {
+        for (seed in 1..5) {
+            val season = TestSeason.build(seed)
+            val survive = Evaluator.evaluate(season, UserState(settings = ModelSettings(routeObjective = RouteObjective.SURVIVE_SEASON)), now)
+            val weeks = Evaluator.evaluate(season, UserState(settings = ModelSettings(routeObjective = RouteObjective.EXPECTED_WEEKS_ALIVE)), now)
+            assertTrue(
+                weeks.unconstrainedRoute.expectedWeeksAlive >= survive.unconstrainedRoute.expectedWeeksAlive - 1e-9,
+                "seed=$seed weeks=${weeks.unconstrainedRoute.expectedWeeksAlive} survive=${survive.unconstrainedRoute.expectedWeeksAlive}",
+            )
+            assertTrue(
+                survive.unconstrainedRoute.survival >= weeks.unconstrainedRoute.survival - 1e-9,
+                "seed=$seed survive=${survive.unconstrainedRoute.survival} weeks=${weeks.unconstrainedRoute.survival}",
+            )
+        }
     }
 }

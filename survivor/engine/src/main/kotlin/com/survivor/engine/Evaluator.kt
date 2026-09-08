@@ -107,6 +107,8 @@ data class Evaluation(
     val seasonZeroLoss: Double get() = Survival.zeroLoss(routeRawProbabilities)
     val seasonAtMostOneLoss: Double get() = Survival.zeroLoss(routeRawProbabilities) + Survival.exactlyOneLoss(routeRawProbabilities)
     val seasonSurvival: Double get() = Survival.survive(routeRawProbabilities, strikesAllowed)
+    /** Expected number of the route's remaining weeks the entry gets through alive. */
+    val seasonExpectedWeeksAlive: Double get() = Survival.expectedWeeksAlive(routeRawProbabilities, strikesAllowed)
 }
 
 /**
@@ -166,20 +168,26 @@ object Evaluator {
         // Locked picks for the current and any future week the user has already recorded.
         val locked = user.picks.filter { it.week >= currentWeek }.associate { it.week to it.team }
         val routeCandidates = candidates(currentWeek, usedTeams - locked.values.toSet())
-        val unconstrainedRoute = Optimizer.optimize(routeCandidates, strikesAllowed, locked)
-        fun routeWith(team: Team): Route = if (currentPick != null) unconstrainedRoute else Optimizer.optimize(routeCandidates, strikesAllowed, locked + (currentWeek to team))
+        val unconstrainedRoute = Optimizer.optimize(routeCandidates, strikesAllowed, locked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight)
+        fun routeWith(team: Team): Route = if (currentPick != null) unconstrainedRoute else Optimizer.optimize(routeCandidates, strikesAllowed, locked + (currentWeek to team), objective = settings.routeObjective, horizonWeight = settings.horizonWeight)
+        val unconstrainedObjective = unconstrainedRoute.objectiveValue(settings.routeObjective, settings.horizonWeight)
         fun seasonPathLoss(team: Team): Double {
-            if (unconstrainedRoute.team(currentWeek) == team || unconstrainedRoute.survival <= 0.0) return 0.0
-            return ((1.0 - routeWith(team).survival / unconstrainedRoute.survival) * 100.0).coerceAtLeast(0.0)
+            if (unconstrainedRoute.team(currentWeek) == team || unconstrainedObjective <= 0.0) return 0.0
+            val withTeam = routeWith(team).objectiveValue(settings.routeObjective, settings.horizonWeight)
+            return ((1.0 - withTeam / unconstrainedObjective) * 100.0).coerceAtLeast(0.0)
         }
 
-        // Opportunity cost of using each team this week = relative loss of the future path's survival.
+        // Opportunity cost of using each team this week = relative loss of the future path's objective value.
         val futureWeek = currentWeek + 1
         val futureLocked = locked.filterKeys { it > currentWeek }
-        val pathWith = if (futureWeek <= REGULAR_SEASON_WEEKS) Optimizer.optimize(candidates(futureWeek, usedTeams), strikesAllowed, futureLocked).survival else 1.0
+        val pathWith = if (futureWeek <= REGULAR_SEASON_WEEKS) {
+            Optimizer.optimize(candidates(futureWeek, usedTeams), strikesAllowed, futureLocked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight)
+                .objectiveValue(settings.routeObjective, settings.horizonWeight)
+        } else 1.0
         fun opportunityCost(team: Team): Double {
             if (futureWeek > REGULAR_SEASON_WEEKS || pathWith <= 0.0) return 0.0
-            val without = Optimizer.optimize(candidates(futureWeek, usedTeams + team), strikesAllowed, futureLocked).survival
+            val without = Optimizer.optimize(candidates(futureWeek, usedTeams + team), strikesAllowed, futureLocked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight)
+                .objectiveValue(settings.routeObjective, settings.horizonWeight)
             return ((1.0 - without / pathWith) * 100.0).coerceAtLeast(0.0)
         }
 
@@ -228,7 +236,7 @@ object Evaluator {
                     val g = season.gameFor(t, w)!!
                     val e = estimates.getValue(t).getValue(w)
                     val cost = if (w == currentWeek) ranked.firstOrNull { it.team == t }?.opportunityCost
-                    else plannerOpportunityCost(w, t, route, usedTeams, strikesAllowed, ::candidates)
+                    else plannerOpportunityCost(w, t, route, usedTeams, strikesAllowed, settings.routeObjective, settings.horizonWeight, ::candidates)
                     PlannerRow(w, t, g.opponentOf(t), g.isHome(t), e.teamSpread, e.probability, e.source,
                         if (w == currentWeek) PlannerStatus.RECOMMENDED else PlannerStatus.PROJECTED, null, strikes, futureValue(t, w).best, cost)
                 }
@@ -262,14 +270,18 @@ object Evaluator {
         route: Route,
         usedTeams: Set<Team>,
         strikesAllowed: Int,
+        objective: RouteObjective,
+        horizonWeight: Double,
         candidates: (Int, Set<Team>) -> Map<Int, List<Candidate>>,
     ): Double? {
         val next = week + 1
         if (next > REGULAR_SEASON_WEEKS) return 0.0
         val consumed = usedTeams + route.steps.filter { it.week < week }.map { it.team }
-        val with = Optimizer.optimize(candidates(next, consumed), strikesAllowed, localSearch = false).survival
+        val with = Optimizer.optimize(candidates(next, consumed), strikesAllowed, localSearch = false, objective = objective, horizonWeight = horizonWeight)
+            .objectiveValue(objective, horizonWeight)
         if (with <= 0.0) return null
-        val without = Optimizer.optimize(candidates(next, consumed + team), strikesAllowed, localSearch = false).survival
+        val without = Optimizer.optimize(candidates(next, consumed + team), strikesAllowed, localSearch = false, objective = objective, horizonWeight = horizonWeight)
+            .objectiveValue(objective, horizonWeight)
         return ((1.0 - without / with) * 100.0).coerceAtLeast(0.0)
     }
 }
