@@ -65,12 +65,16 @@ fun RankingsScreen(vm: AppViewModel) {
             WeekSelector(week, { week = it }) { w -> if (w == e.currentWeek) "Wk $w ●" else "Wk $w" }
         }
         SingleChoiceSegmentedButtonRow {
-            SegmentedButton(selected = !tableView, onClick = { tableView = false }, shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)) {
-                Icon(Icons.Filled.ViewAgenda, contentDescription = null, modifier = Modifier.size(16.dp)); Text(" Cards")
-            }
-            SegmentedButton(selected = tableView, onClick = { tableView = true }, shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)) {
-                Icon(Icons.Filled.TableRows, contentDescription = null, modifier = Modifier.size(16.dp)); Text(" Table")
-            }
+            SegmentedButton(
+                selected = !tableView, onClick = { tableView = false }, shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                icon = { SegmentedButtonDefaults.Icon(active = !tableView) { Icon(Icons.Filled.ViewAgenda, contentDescription = null, modifier = Modifier.size(SegmentedButtonDefaults.IconSize)) } },
+                label = { Text("Cards") },
+            )
+            SegmentedButton(
+                selected = tableView, onClick = { tableView = true }, shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                icon = { SegmentedButtonDefaults.Icon(active = tableView) { Icon(Icons.Filled.TableRows, contentDescription = null, modifier = Modifier.size(SegmentedButtonDefaults.IconSize)) } },
+                label = { Text("Table") },
+            )
         }
         if (week == e.currentWeek) {
             Text("Week $week · ${e.rankings.size} available teams, sorted by Survivor Safety Score. Tap for the full breakdown.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
