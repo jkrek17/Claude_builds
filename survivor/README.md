@@ -16,6 +16,7 @@ final score. Manual overrides exist for the rare case where you know something t
 - [Data sources and freshness](docs/DATA_SOURCES.md)
 - [Refreshing data, recording picks, changing assumptions](docs/WORKFLOW.md)
 - [Optimization methodology](docs/MODEL.md#season-optimization)
+- [Evaluation of the selection process on real 2026 lines](docs/EVALUATION.md)
 - [Recommended future improvements](docs/FUTURE.md)
 - [Build from source](#build-from-source)
 - [Project structure](#project-structure)
