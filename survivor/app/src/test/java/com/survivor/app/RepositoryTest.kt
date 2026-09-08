@@ -6,6 +6,7 @@ import com.survivor.app.data.OddsApiClient
 import com.survivor.app.data.RefreshStatus
 import com.survivor.app.data.StateStore
 import com.survivor.app.data.SurvivorRepository
+import com.survivor.app.data.YahooClient
 import com.survivor.engine.Adjustment
 import com.survivor.engine.GameState
 import com.survivor.engine.ModelSettings
@@ -19,12 +20,17 @@ import java.io.IOException
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Serves recorded ESPN fixtures for every URL the clients ask for. */
-private class FakeHttp(private val failPredictor: Boolean = false, private val oddsBody: String? = null) : HttpFetcher {
+/** Serves recorded ESPN, Odds API and Yahoo fixtures for every URL the clients ask for. */
+private class FakeHttp(
+    private val failPredictor: Boolean = false,
+    private val oddsBody: String? = null,
+    private val failYahoo: Boolean = false,
+) : HttpFetcher {
     val calls = mutableListOf<String>()
     private fun res(name: String) = javaClass.classLoader.getResource(name)!!.readText()
     override suspend fun get(url: String): String {
@@ -35,16 +41,19 @@ private class FakeHttp(private val failPredictor: Boolean = false, private val o
             url.contains("/predictor") -> if (failPredictor) throw IOException("boom") else res("espn_predictor.json")
             url.contains("powerindex") -> res("espn_powerindex.json")
             url.contains("the-odds-api") -> oddsBody ?: throw IOException("401")
+            url == YahooClient.URL -> if (failYahoo) throw IOException("yahoo boom") else res("yahoo_pickdistribution.html")
             else -> throw IOException("unexpected $url")
         }
     }
+    // YahooClient fetches with headers; route it through the same logic above.
+    override suspend fun get(url: String, headers: Map<String, String>): String = get(url)
 }
 
 class RepositoryTest {
     private fun repo(http: FakeHttp): Pair<SurvivorRepository, File> {
         val dir = Files.createTempDirectory("survivor").toFile()
         val file = File(dir, "state.json")
-        val r = SurvivorRepository(StateStore(file), EspnClient(http) { 1000L }, OddsApiClient(http) { 1000L }, now = { 1000L }, computeDispatcher = Dispatchers.Unconfined)
+        val r = SurvivorRepository(StateStore(file), EspnClient(http) { 1000L }, OddsApiClient(http) { 1000L }, YahooClient(http), now = { 1000L }, computeDispatcher = Dispatchers.Unconfined)
         return r to file
     }
 
@@ -135,5 +144,37 @@ class RepositoryTest {
         val reloaded = SurvivorRepository(StateStore(file), EspnClient(FakeHttp()), OddsApiClient(FakeHttp()))
         assertEquals(r.lineHistory, reloaded.lineHistory)
         assertEquals(1, reloaded.lineHistory.snapshots.size)
+    }
+
+    @Test fun `a refresh stores Yahoo pick shares for the current week with their source and fetch time`() = runTest {
+        val (r, _) = repo(FakeHttp())
+        r.refreshNflData(includeProjections = false)
+        val status = r.refresh.value as RefreshStatus.Done
+        assertFalse(status.message.contains("unavailable"), "message=${status.message}")
+        val season = assertNotNull(r.season)
+        val week1Shares = assertNotNull(season.pickShares[1])
+        assertTrue(week1Shares.isNotEmpty())
+        assertEquals(Team.LAC, week1Shares.entries.maxByOrNull { it.value }?.key)
+        assertEquals("Yahoo Survival Football (all Yahoo entries)", season.pickSharesSource)
+        assertEquals(1000L, season.pickSharesFetchedAtEpochMs)
+    }
+
+    @Test fun `a Yahoo failure does not fail the refresh and leaves shares empty`() = runTest {
+        val (r, _) = repo(FakeHttp(failYahoo = true))
+        r.refreshNflData(includeProjections = false)
+        val status = r.refresh.value as RefreshStatus.Done
+        assertTrue(status.message.contains("Yahoo pick shares unavailable"), "message=${status.message}")
+        val season = assertNotNull(r.season)
+        assertTrue(season.pickShares.isEmpty())
+        // ESPN data still updated despite the Yahoo failure.
+        assertTrue(season.games.isNotEmpty())
+    }
+
+    @Test fun `refreshOdds fetches Yahoo pick shares too, after merging ESPN data`() = runTest {
+        val (r, _) = repo(FakeHttp())
+        r.refreshNflData(includeProjections = false)
+        r.refreshOdds()
+        assertTrue(r.refresh.value is RefreshStatus.Done)
+        assertTrue(r.season!!.pickShares[1]?.isNotEmpty() == true)
     }
 }

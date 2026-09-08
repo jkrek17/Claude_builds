@@ -8,7 +8,7 @@
 | FPI team ratings and ranks | ESPN power index | `site.web.api.espn.com/apis/fitt/v3/sports/football/nfl/powerindex` | no | Refresh NFL Data |
 | Consensus moneylines across US books | The Odds API v4 | `api.the-odds-api.com/v4/sports/americanfootball_nfl/odds?regions=us&markets=h2h` | yes (free tier: 500 requests/month) | any refresh when a key is saved |
 | Injuries, starting QBs, weather | none automated | — | — | Weekly Inputs (points of spread) |
-| Survivor pick popularity | none automated | — | — | Weekly Inputs (pick share %) |
+| Survivor pick popularity (Yahoo) | Yahoo Survival Football pick-distribution page (public, server-rendered HTML) | `football.fantasysports.yahoo.com/survival/pickdistribution/` | no | Refresh Odds / Refresh NFL Data |
 
 ## Freshness and staleness
 
@@ -42,6 +42,28 @@ fit across them — the measured counterpart to the assumed future-week noise mo
 weeks of data has accumulated tells you whether that assumed noise model over- or under-states real line
 movement.
 
+## Survivor pick popularity (Yahoo)
+
+Every refresh also pulls Yahoo Survival Football's public pick-distribution page for the current week - the
+real share of ALL Yahoo Survival Football entries (not just this app's user) that picked each team, no login
+required. The page is server-rendered HTML (`<table class="ysf-pick-distribution-table">`); `YahooPickDistributionParser`
+(`engine/.../data/YahooPickDistributionParser.kt`) scans it with a regex tag scan (no HTML library) for each
+row's team name and percentage, and separately reads the page's embedded `"current_week":"N"` field to confirm
+which week the shares are for. Yahoo names teams with its own "city-style" display names (mostly matching
+`Team.city` exactly, e.g. "Jacksonville", "Green Bay"; the two-team cities are abbreviated "LA Chargers", "LA
+Rams", "NY Giants", "NY Jets") - `teamFromYahooName` maps all 32. The page also embeds a `pickDistribution` JSON
+blob keyed by week (1-18 plus four playoff rounds) covering the whole season in one payload, but at recording
+time every week past the currently-active one was an empty array - Yahoo simply hasn't published a distribution
+for weeks the field hasn't started picking - so the app only fetches the plain (no `?week=`) URL, which always
+lands on the active week, rather than iterating all 18.
+
+Fetched shares are stored on `Season.pickShares` (week → team → share, 0..1), keyed by week so past weeks'
+shares are kept even after the current week moves on, alongside `pickSharesFetchedAtEpochMs` and
+`pickSharesSource`. The fetch is non-fatal: on failure the app keeps whatever shares it already had and appends
+"Yahoo pick shares unavailable" to the refresh status message rather than failing the whole refresh. A manual
+pick share entered in Weekly Inputs (`Adjustment.estimatedPickShare`) always overrides Yahoo's for that
+team-week - see `Evaluator.effectivePickShare`.
+
 ## Proxies and limitations
 
 - **Home field, rest, travel, divisional** effects are largely already in the market line. The extra Safety
@@ -50,7 +72,9 @@ movement.
   practice for the 2026 season: all 272 games carry both).
 - **Injuries / QB / weather** have no reliable free feed. They are manual point adjustments and are clearly
   labelled as such in the rankings.
-- **Pick popularity** must be entered by hand from your pool's site or a public survivor-ownership page.
+- **Pick popularity** is fetched automatically from Yahoo Survival Football's public pool - a good proxy for
+  the field in most pools, but not necessarily identical to *your specific* pool's picks. A manual pick share
+  in Weekly Inputs overrides it for a team-week when you know your own pool's ownership better.
 - ESPN's endpoints are public but undocumented. The parsers ignore unknown fields and fall back through
   `spread` → `pointSpread.home.close.line` → the `details` string, and `moneyline.*.close.odds` →
   `homeTeamOdds.moneyLine`, to be tolerant of small shape changes. Recorded fixtures from 2026-09-08 are in the

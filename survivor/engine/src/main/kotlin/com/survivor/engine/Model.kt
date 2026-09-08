@@ -80,6 +80,12 @@ data class Season(
     val oddsFetchedAtEpochMs: Long? = null,
     val fpiFetchedAtEpochMs: Long? = null,
     val consensusFetchedAtEpochMs: Long? = null,
+    /** Yahoo Survival Football's public pick-distribution share of ALL Yahoo entries per team, by week.
+     *  Weeks accumulate as they're fetched, so past weeks' shares are kept even after the current week moves
+     *  on. See [pickSharesSource] and `YahooPickDistributionParser`. */
+    val pickShares: Map<Int, Map<Team, Double>> = emptyMap(),
+    val pickSharesFetchedAtEpochMs: Long? = null,
+    val pickSharesSource: String = "",
 ) {
     fun gamesInWeek(week: Int): List<Game> = games.filter { it.week == week }
     fun gameFor(team: Team, week: Int): Game? = games.firstOrNull { it.week == week && it.involves(team) }
@@ -137,10 +143,10 @@ enum class RouteObjective(val label: String, val description: String) {
 }
 
 enum class Strategy(val label: String, val description: String) {
-    CONSERVATIVE("Conservative", "Maximize your own survival. Ownership is ignored; future value still matters."),
-    BALANCED("Balanced", "Survival first, with a modest bonus for lightly-owned picks."),
-    CONTRARIAN("Contrarian", "Accept slightly more risk to fade heavily-owned teams."),
-    MAX_POOL_EQUITY("Max Pool Equity", "Rank by expected pool equity: win probability divided by the share of the pool that survives with you."),
+    CONSERVATIVE("Conservative", "Maximize your own survival. Ownership (fetched automatically from Yahoo Survival Football, or your own manual estimate) is ignored; future value still matters."),
+    BALANCED("Balanced", "Survival first, with a modest bonus for lightly-owned picks. Pick shares come from Yahoo Survival Football automatically; a manual pick share for a team-week overrides Yahoo's."),
+    CONTRARIAN("Contrarian", "Accept slightly more risk to fade heavily-owned teams, using pick shares fetched automatically from Yahoo Survival Football (or your own manual estimate, which overrides Yahoo's)."),
+    MAX_POOL_EQUITY("Max Pool Equity", "Rank by expected pool equity: win probability divided by the share of the pool that survives with you, using pick shares fetched automatically from Yahoo Survival Football (or your own manual estimate, which overrides Yahoo's)."),
 }
 
 @Serializable

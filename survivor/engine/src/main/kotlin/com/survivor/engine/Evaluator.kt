@@ -102,6 +102,14 @@ data class Evaluation(
     val grid: Map<Team, List<GridCell?>>,
     val futureValues: Map<Team, FutureValue>,
     val settings: ModelSettings,
+    /** Pick-share-weighted average win probability of the field's current-week picks, `Σ share_t·p_t / Σ share_t`
+     *  over teams playing this week with a known effective pick share (see `Evaluator.effectivePickShare`).
+     *  Null when no pick shares are known for [currentWeek] at all. Overrides [settings.fieldAverageWinProbability]
+     *  for the current week only in [poolWinProbability] and route optimization; see [Survival.poolWinProbability]. */
+    val fieldWinProbabilityThisWeek: Double? = null,
+    /** Where [fieldWinProbabilityThisWeek] came from (e.g. [Season.pickSharesSource]); null when it's null. */
+    val ownershipSource: String? = null,
+    val ownershipFetchedAtEpochMs: Long? = null,
 ) {
     val strikesAllowed: Int get() = (1 - strikesUsed).coerceAtLeast(0)
     val seasonZeroLoss: Double get() = Survival.zeroLoss(routeRawProbabilities)
@@ -109,10 +117,21 @@ data class Evaluation(
     val seasonSurvival: Double get() = Survival.survive(routeRawProbabilities, strikesAllowed)
     /** Expected number of the route's remaining weeks the entry gets through alive. */
     val seasonExpectedWeeksAlive: Double get() = Survival.expectedWeeksAlive(routeRawProbabilities, strikesAllowed)
+    /** Per-week field win probability aligned to [route]'s weeks: [fieldWinProbabilityThisWeek] for
+     *  [currentWeek] (when known), [settings.fieldAverageWinProbability] elsewhere. Null (flat model,
+     *  unchanged) when [fieldWinProbabilityThisWeek] is null. */
+    private val routeFieldWinProbabilities: List<Double>?
+        get() = fieldWinProbabilityThisWeek?.let { fw ->
+            route.steps.sortedBy { it.week }.map { s -> if (s.week == currentWeek) fw else settings.fieldAverageWinProbability }
+        }
     /** P(win the pool) along [route], undiscounted; see [Survival.poolWinProbability]. Independent of
-     *  [settings.routeObjective] - always reported, regardless of what the optimizer is climbing. */
+     *  [settings.routeObjective] - always reported, regardless of what the optimizer is climbing. Uses
+     *  [fieldWinProbabilityThisWeek] for the current week when known, the flat field average otherwise. */
     val poolWinProbability: Double
-        get() = Survival.poolWinProbability(routeRawProbabilities, strikesAllowed, settings.poolEntries, settings.fieldAverageWinProbability)
+        get() = Survival.poolWinProbability(
+            routeRawProbabilities, strikesAllowed, settings.poolEntries, settings.fieldAverageWinProbability,
+            fieldWinProbabilities = routeFieldWinProbabilities,
+        )
     /** For each week along [route], the expected number of OTHER pool entries still alive after that week
      *  (`m · a_k`; see [Survival.fieldAliveCurve]). Non-increasing by construction. */
     val expectedFieldSurvivors: List<Pair<Int, Double>>
@@ -148,6 +167,13 @@ data class Evaluation(
  * whenever the season data, picks, adjustments or settings change.
  */
 object Evaluator {
+
+    /**
+     * Effective pick share for one team-week: a manual [Adjustment.estimatedPickShare] always wins when set,
+     * else [Season.pickShares] (Yahoo Survival Football), else null (no ownership estimate at all).
+     */
+    fun effectivePickShare(season: Season, user: UserState, week: Int, team: Team): Double? =
+        user.adjustment(week, team)?.estimatedPickShare ?: season.pickShares[week]?.get(team)
 
     fun pickOutcome(season: Season, pick: Pick): PickOutcome {
         val game = season.gameFor(pick.team, pick.week)
@@ -187,6 +213,24 @@ object Evaluator {
         )
         val futureValues = Team.entries.associateWith { futureValue(it, currentWeek) }
 
+        // Field model: this week's pick-weighted field win probability, from effective pick shares (manual
+        // adjustment, else Yahoo) over the teams actually playing this week. Null with no shares at all.
+        val weekGames = season.gamesInWeek(currentWeek)
+        val weekTeams = weekGames.flatMap { g -> listOf(g.home, g.away) }
+        val currentWeekShares = weekTeams.mapNotNull { t -> effectivePickShare(season, user, currentWeek, t)?.let { t to it.coerceIn(0.0, 1.0) } }.toMap()
+        val shareSum = currentWeekShares.values.sum()
+        val fieldWinProbabilityThisWeek: Double? = if (currentWeekShares.isEmpty() || shareSum <= 0.0) null else {
+            val weighted = currentWeekShares.entries.sumOf { (t, share) -> share * (estimates.getValue(t)[currentWeek]?.probability ?: 0.0) }
+            (weighted / shareSum).coerceIn(0.0, 1.0)
+        }
+        val fieldWinProbabilitiesForRoute: Map<Int, Double>? = fieldWinProbabilityThisWeek?.let { mapOf(currentWeek to it) }
+        fun routeFieldProbs(route: Route): List<Double>? = fieldWinProbabilitiesForRoute?.let { m ->
+            route.steps.sortedBy { it.week }.map { s -> m[s.week] ?: settings.fieldAverageWinProbability }
+        }
+        val yahooSharesForWeek = season.pickShares[currentWeek]
+        val ownershipSource = if (!yahooSharesForWeek.isNullOrEmpty()) season.pickSharesSource.ifBlank { null } else null
+        val ownershipFetchedAtEpochMs = if (!yahooSharesForWeek.isNullOrEmpty()) season.pickSharesFetchedAtEpochMs else null
+
         // Candidates for the optimizer: discounted by distance from the current week.
         fun candidates(fromWeek: Int, excluded: Set<Team>): Map<Int, List<Candidate>> =
             (fromWeek..REGULAR_SEASON_WEEKS).associateWith { w ->
@@ -202,16 +246,17 @@ object Evaluator {
         val routeCandidates = candidates(currentWeek, usedTeams - locked.values.toSet())
         val unconstrainedRoute = Optimizer.optimize(
             routeCandidates, strikesAllowed, locked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight,
-            poolEntries = settings.poolEntries, fieldWinProbability = settings.fieldAverageWinProbability,
+            poolEntries = settings.poolEntries, fieldWinProbability = settings.fieldAverageWinProbability, fieldWinProbabilities = fieldWinProbabilitiesForRoute,
         )
         fun routeWith(team: Team): Route = if (currentPick != null) unconstrainedRoute else Optimizer.optimize(
             routeCandidates, strikesAllowed, locked + (currentWeek to team), objective = settings.routeObjective, horizonWeight = settings.horizonWeight,
-            poolEntries = settings.poolEntries, fieldWinProbability = settings.fieldAverageWinProbability,
+            poolEntries = settings.poolEntries, fieldWinProbability = settings.fieldAverageWinProbability, fieldWinProbabilities = fieldWinProbabilitiesForRoute,
         )
-        val unconstrainedObjective = unconstrainedRoute.objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability)
+        val unconstrainedObjective = unconstrainedRoute.objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability, routeFieldProbs(unconstrainedRoute))
         fun seasonPathLoss(team: Team): Double {
             if (unconstrainedRoute.team(currentWeek) == team || unconstrainedObjective <= 0.0) return 0.0
-            val withTeam = routeWith(team).objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability)
+            val withRoute = routeWith(team)
+            val withTeam = withRoute.objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability, routeFieldProbs(withRoute))
             return ((1.0 - withTeam / unconstrainedObjective) * 100.0).coerceAtLeast(0.0)
         }
 
@@ -233,7 +278,6 @@ object Evaluator {
             return ((1.0 - without / pathWith) * 100.0).coerceAtLeast(0.0)
         }
 
-        val weekGames = season.gamesInWeek(currentWeek)
         val evaluated = weekGames.flatMap { g -> listOf(g.home, g.away).map { t -> t to g } }.map { (team, game) ->
             val estimate = estimates.getValue(team).getValue(currentWeek)
             val situation = ScheduleAnalysis.situation(season, team, game)
@@ -242,7 +286,7 @@ object Evaluator {
             val cost = if (used) 0.0 else opportunityCost(team)
             val pathLoss = if (used) 0.0 else seasonPathLoss(team)
             val fv = futureValues.getValue(team)
-            val leverage = Safety.leverage(estimate.probability, adjustment?.estimatedPickShare, settings.fieldAverageWinProbability)
+            val leverage = Safety.leverage(estimate.probability, effectivePickShare(season, user, currentWeek, team), settings.fieldAverageWinProbability)
             val components = Safety.components(estimate, situation, adjustment, cost, pathLoss, fv.premiumSpots, leverage, strikesUsed, settings)
             TeamWeekEvaluation(currentWeek, team, game, game.opponentOf(team), situation, estimate, used, fv, cost, pathLoss, unconstrainedRoute.team(currentWeek) == team, components, leverage, adjustment, rank = 0)
         }
@@ -302,6 +346,7 @@ object Evaluator {
             usedTeams = usedTeams, pickOutcomes = outcomes, currentPick = currentPick,
             rankings = ranked, unavailable = unavailable, recommended = recommended, alternatives = alternatives, explanation = explanation,
             route = route, unconstrainedRoute = unconstrainedRoute, routeRawProbabilities = routeRaw, planner = planner, grid = grid, futureValues = futureValues, settings = settings,
+            fieldWinProbabilityThisWeek = fieldWinProbabilityThisWeek, ownershipSource = ownershipSource, ownershipFetchedAtEpochMs = ownershipFetchedAtEpochMs,
         )
     }
 

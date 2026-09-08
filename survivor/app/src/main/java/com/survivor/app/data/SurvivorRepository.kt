@@ -31,6 +31,9 @@ class SurvivorRepository(
     private val store: StateStore,
     private val espn: EspnClient,
     private val oddsApi: OddsApiClient,
+    /** Yahoo Survival Football's public pick distribution (real ownership data). Defaulted so existing
+     *  callers that only wire up [espn] and [oddsApi] keep compiling. */
+    private val yahoo: YahooClient = YahooClient(OkHttpFetcher()),
     private val now: () -> Long = System::currentTimeMillis,
     private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
@@ -85,6 +88,7 @@ class SurvivorRepository(
             }
             val missing = EspnClient.teamsMissing(updated)
             if (missing.isNotEmpty()) note += ". No games found for ${missing.joinToString { t -> t.abbr }}"
+            note += refreshPickShares()
             recordLineSnapshot()
             _refresh.value = RefreshStatus.Done(note)
         } catch (e: Exception) {
@@ -109,10 +113,40 @@ class SurvivorRepository(
                     .onSuccess { r -> mutate { it.copy(season = r) } }
                     .onFailure { e -> note = "Lines updated; Odds API failed: ${e.message}" }
             }
+            note += refreshPickShares()
             recordLineSnapshot()
             _refresh.value = RefreshStatus.Done(note)
         } catch (e: Exception) {
             _refresh.value = RefreshStatus.Failed(e.message ?: e.toString())
+        }
+    }
+
+    /**
+     * Pulls Yahoo Survival Football's public pick distribution and merges it into the current state's season
+     * for whichever week the page reported (falling back to the inferred current week if the page didn't say),
+     * keeping every other week's previously-fetched shares. Non-fatal: on any failure, or an empty
+     * distribution (a week the field hasn't started picking yet), the season's existing shares are left
+     * untouched and a short status note is returned to append to the caller's refresh message.
+     */
+    private suspend fun refreshPickShares(): String {
+        val before = _state.value.season ?: return ""
+        _refresh.value = RefreshStatus.Running("Yahoo pick shares")
+        return try {
+            val (week, shares) = yahoo.fetchPickDistribution()
+            if (shares.isEmpty()) return ""
+            val targetWeek = week ?: (_state.value.user.weekOverride ?: before.inferCurrentWeek(now()))
+            mutate {
+                it.copy(
+                    season = before.copy(
+                        pickShares = before.pickShares + (targetWeek to shares),
+                        pickSharesFetchedAtEpochMs = now(),
+                        pickSharesSource = "Yahoo Survival Football (all Yahoo entries)",
+                    ),
+                )
+            }
+            ""
+        } catch (e: Exception) {
+            ". Yahoo pick shares unavailable"
         }
     }
 

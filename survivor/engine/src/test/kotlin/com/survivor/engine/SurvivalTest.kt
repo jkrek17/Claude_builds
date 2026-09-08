@@ -164,4 +164,35 @@ class SurvivalTest {
             assertTrue(actual in 0.0..1.0, "poolWinProbability out of range: $actual")
         }
     }
+
+    @Test fun `per-week field win probabilities reproduce the flat result when every entry equals f`() {
+        val f = 0.76
+        val flat = Survival.poolWinProbability(ps, strikesAllowed = 1, poolEntries = 30, f = f)
+        val sameEveryWeek = Survival.poolWinProbability(ps, strikesAllowed = 1, poolEntries = 30, f = f, fieldWinProbabilities = List(ps.size) { f })
+        assertEquals(flat, sameEveryWeek, 1e-12)
+        // objectiveValue and Route.objectiveValue thread the override through the same way.
+        val route = Route(ps.mapIndexed { i, p -> RouteStep(i + 1, Team.entries[i], p) }, strikesAllowed = 1)
+        val viaObjectiveValue = Survival.objectiveValue(ps, 1, RouteObjective.POOL_WIN, 0.5, 30, f, List(ps.size) { f })
+        val viaRoute = route.objectiveValue(RouteObjective.POOL_WIN, 0.5, 30, f, List(ps.size) { f })
+        assertEquals(flat, viaObjectiveValue, 1e-12)
+        assertEquals(flat, viaRoute, 1e-12)
+    }
+
+    @Test fun `a mis-sized or null field win probabilities list falls back to the flat model`() {
+        val f = 0.76
+        val flat = Survival.poolWinProbability(ps, strikesAllowed = 1, poolEntries = 30, f = f)
+        assertEquals(flat, Survival.poolWinProbability(ps, 1, 30, f, fieldWinProbabilities = null), 1e-12)
+        assertEquals(flat, Survival.poolWinProbability(ps, 1, 30, f, fieldWinProbabilities = listOf(f, f)), 1e-12)
+    }
+
+    @Test fun `a higher current-week field win probability raises the pool-win probability`() {
+        val f = 0.76
+        val flat = Survival.poolWinProbability(ps, strikesAllowed = 1, poolEntries = 30, f = f)
+        val strongerField = Survival.poolWinProbability(
+            ps, strikesAllowed = 1, poolEntries = 30, f = f,
+            fieldWinProbabilities = listOf(0.95) + List(ps.size - 1) { f },
+        )
+        // A field that wins its own pick more often this week clears out more slowly, so your pool-win chance drops.
+        assertTrue(strongerField < flat)
+    }
 }

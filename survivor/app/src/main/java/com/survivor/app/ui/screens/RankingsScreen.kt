@@ -126,7 +126,10 @@ private fun CurrentWeekCards(e: Evaluation, onSelect: (TeamWeekEvaluation) -> Un
                         if (r.used) Text("used", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Text(Fmt.matchup(r.opponent.abbr, r.situation.isHome, r.situation.neutral), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (!r.used) Text("${r.futureCostLabel} future cost · path loss ${Fmt.num(r.seasonPathLoss)}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (!r.used) {
+                        val pickShare = r.leverage?.let { " · pick % ${Fmt.pct(it.pickShare)}" } ?: ""
+                        Text("${r.futureCostLabel} future cost · path loss ${Fmt.num(r.seasonPathLoss)}%$pickShare", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(Fmt.pct(r.probability), style = MaterialTheme.typography.titleSmall)
@@ -149,7 +152,7 @@ private fun CurrentWeekTable(e: Evaluation, onSelect: (TeamWeekEvaluation) -> Un
             Col("#", 30.dp), Col("Team", 48.dp), Col("Opp", 64.dp), Col("H/A", 36.dp), Col("Div", 34.dp), Col("Spread", 52.dp, E), Col("ML", 52.dp, E),
             Col("No-vig %", 60.dp, E), Col("Model %", 58.dp, E), Col("FPI %", 52.dp, E), Col("Tm FPI", 52.dp, E), Col("Opp FPI", 56.dp, E),
             Col("Rest ±", 48.dp, E), Col("TZ", 30.dp, E), Col("Inj", 40.dp, E), Col("QB", 40.dp, E), Col("Wx", 40.dp, E),
-            Col("Best future", 82.dp), Col("Fut >75%", 60.dp, E), Col("Opp cost", 62.dp, E), Col("Path loss", 62.dp, E), Col("Used", 40.dp), Col("Safety", 50.dp, E), Col("Grade", 44.dp), Col("Source", 150.dp), Col("Notes", 200.dp),
+            Col("Best future", 82.dp), Col("Fut >75%", 60.dp, E), Col("Opp cost", 62.dp, E), Col("Path loss", 62.dp, E), Col("Pick %", 54.dp, E), Col("Used", 40.dp), Col("Safety", 50.dp, E), Col("Grade", 44.dp), Col("Source", 150.dp), Col("Notes", 200.dp),
         ),
         rows = rows.map { r ->
             listOf(
@@ -160,6 +163,7 @@ private fun CurrentWeekTable(e: Evaluation, onSelect: (TeamWeekEvaluation) -> Un
                 Fmt.signed(r.situation.restAdvantageDays.toDouble()), "${r.situation.timeZonesCrossed}",
                 r.adjustment?.injuryPoints?.let { Fmt.signed(it) } ?: "", r.adjustment?.qbPoints?.let { if (it != 0.0) Fmt.signed(it) else "" } ?: "", r.adjustment?.weatherPoints?.let { if (it != 0.0) Fmt.signed(it) else "" } ?: "",
                 r.futureValue.best?.let { "W${it.week} ${Fmt.pct(it.probability)}" } ?: "none", "${r.futureValue.countAbove(0.75)}", if (r.used) "" else "${Fmt.num(r.opportunityCost)}%", if (r.used) "" else "${Fmt.num(r.seasonPathLoss)}%",
+                r.leverage?.let { Fmt.pct(it.pickShare) } ?: "—",
                 if (r.used) "Yes" else "", if (r.used) "" else Fmt.score(r.safetyScore), if (r.used) "" else r.grade, r.estimate.source.label, notes(r),
             )
         },

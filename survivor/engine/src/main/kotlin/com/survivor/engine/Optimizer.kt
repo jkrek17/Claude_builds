@@ -15,9 +15,16 @@ data class Route(val steps: List<RouteStep>, val strikesAllowed: Int) {
     val survival: Double get() = Survival.survive(probabilities, strikesAllowed)
     /** Expected number of the route's weeks the entry gets through alive. */
     val expectedWeeksAlive: Double get() = Survival.expectedWeeksAlive(probabilities, strikesAllowed)
-    /** Value of [objective] for this route; what the optimizer's local search actually climbs. */
-    fun objectiveValue(objective: RouteObjective, horizonWeight: Double, poolEntries: Int = 50, fieldWinProbability: Double = 0.76): Double =
-        Survival.objectiveValue(probabilities, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
+    /** Value of [objective] for this route; what the optimizer's local search actually climbs.
+     *  [fieldWinProbabilities], when given, must be sized to [steps] (in week order) - see
+     *  [Survival.poolWinProbability]. */
+    fun objectiveValue(
+        objective: RouteObjective,
+        horizonWeight: Double,
+        poolEntries: Int = 50,
+        fieldWinProbability: Double = 0.76,
+        fieldWinProbabilities: List<Double>? = null,
+    ): Double = Survival.objectiveValue(probabilities, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability, fieldWinProbabilities)
     fun team(week: Int): Team? = steps.firstOrNull { it.week == week }?.team
     val teams: Set<Team> get() = steps.map { it.team }.toSet()
 }
@@ -51,6 +58,10 @@ object Optimizer {
         poolEntries: Int = 50,
         /** [RouteObjective.POOL_WIN] only. */
         fieldWinProbability: Double = 0.76,
+        /** [RouteObjective.POOL_WIN] only: per-week override of [fieldWinProbability], keyed by week number,
+         *  for weeks where it's known more precisely (e.g. the current week's Yahoo pick-weighted win rate).
+         *  Weeks not present fall back to [fieldWinProbability]. */
+        fieldWinProbabilities: Map<Int, Double>? = null,
     ): Route {
         val weeks = candidatesByWeek.keys.sorted().filter { w -> locked.containsKey(w) || candidatesByWeek[w].orEmpty().isNotEmpty() }
         if (weeks.isEmpty()) return Route(emptyList(), strikesAllowed)
@@ -83,7 +94,7 @@ object Optimizer {
         }
 
         fun climb(assignment: HashMap<Int, Team>): HashMap<Int, Team> {
-            if (localSearch && freeWeeks.size > 1) improve(assignment, freeWeeks, prob, strikesAllowed, teamIndex.keys, objective, horizonWeight, poolEntries, fieldWinProbability)
+            if (localSearch && freeWeeks.size > 1) improve(assignment, freeWeeks, prob, strikesAllowed, teamIndex.keys, objective, horizonWeight, poolEntries, fieldWinProbability, fieldWinProbabilities)
             return assignment
         }
 
@@ -91,8 +102,8 @@ object Optimizer {
         var assignment = hungarianResult
         if (localSearch && freeWeeks.size > 1) {
             val greedyResult = climb(greedyAssignment(baseAssignment, freeWeeks, prob))
-            val hungarianScore = score(hungarianResult, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
-            val greedyScore = score(greedyResult, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
+            val hungarianScore = score(hungarianResult, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability, fieldWinProbabilities)
+            val greedyScore = score(greedyResult, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability, fieldWinProbabilities)
             if (greedyScore > hungarianScore + 1e-12) assignment = greedyResult
         }
 
@@ -125,9 +136,12 @@ object Optimizer {
         horizonWeight: Double,
         poolEntries: Int,
         fieldWinProbability: Double,
+        fieldWinProbabilities: Map<Int, Double>? = null,
     ): Double {
-        val ps = assignment.entries.sortedBy { it.key }.map { (w, t) -> prob[w]?.get(t) ?: 1.0 }
-        return Survival.objectiveValue(ps, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
+        val weeks = assignment.entries.sortedBy { it.key }
+        val ps = weeks.map { (w, t) -> prob[w]?.get(t) ?: 1.0 }
+        val fieldPs = fieldWinProbabilities?.let { m -> weeks.map { (w, _) -> m[w] ?: fieldWinProbability } }
+        return Survival.objectiveValue(ps, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability, fieldPs)
     }
 
     private fun improve(
@@ -140,8 +154,9 @@ object Optimizer {
         horizonWeight: Double,
         poolEntries: Int,
         fieldWinProbability: Double,
+        fieldWinProbabilities: Map<Int, Double>? = null,
     ) {
-        var best = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
+        var best = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability, fieldWinProbabilities)
         var improved = true
         var rounds = 0
         while (improved && rounds < 50) {
@@ -155,7 +170,7 @@ object Optimizer {
                     if (u in used) continue
                     val pu = prob[w]?.get(u) ?: continue
                     assignment[w] = u
-                    val s = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
+                    val s = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability, fieldWinProbabilities)
                     if (s > best + 1e-12) { best = s; improved = true } else assignment[w] = current
                 }
             }
@@ -166,7 +181,7 @@ object Optimizer {
                 val t2 = assignment[w2] ?: continue
                 if (prob[w1]?.containsKey(t2) != true || prob[w2]?.containsKey(t1) != true) continue
                 assignment[w1] = t2; assignment[w2] = t1
-                val s = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
+                val s = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability, fieldWinProbabilities)
                 if (s > best + 1e-12) { best = s; improved = true } else { assignment[w1] = t1; assignment[w2] = t2 }
             }
         }
