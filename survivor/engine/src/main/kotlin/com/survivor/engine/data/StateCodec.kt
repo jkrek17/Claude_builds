@@ -1,13 +1,20 @@
 package com.survivor.engine.data
 
 import com.survivor.engine.Game
+import com.survivor.engine.LineHistory
 import com.survivor.engine.Season
 import com.survivor.engine.UserState
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 @Serializable
-data class SavedState(val season: Season? = null, val user: UserState = UserState(), val savedAtEpochMs: Long = 0L)
+data class SavedState(
+    val season: Season? = null,
+    val user: UserState = UserState(),
+    val savedAtEpochMs: Long = 0L,
+    /** Line snapshots recorded on every refresh, used to measure lookahead-line movement. */
+    val lineHistory: LineHistory = LineHistory(),
+)
 
 /** JSON persistence for the whole app state. Unknown keys are ignored so older files keep loading. */
 object StateCodec {

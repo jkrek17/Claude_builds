@@ -3,6 +3,7 @@ package com.survivor.app.data
 import com.survivor.engine.Adjustment
 import com.survivor.engine.Evaluation
 import com.survivor.engine.Evaluator
+import com.survivor.engine.LineHistory
 import com.survivor.engine.ModelSettings
 import com.survivor.engine.Pick
 import com.survivor.engine.Season
@@ -41,6 +42,7 @@ class SurvivorRepository(
 
     val season: Season? get() = _state.value.season
     val user: UserState get() = _state.value.user
+    val lineHistory: LineHistory get() = _state.value.lineHistory
 
     suspend fun evaluate(state: SavedState = _state.value): Evaluation? {
         val s = state.season ?: return null
@@ -60,6 +62,13 @@ class SurvivorRepository(
 
     private fun mutateUser(block: (UserState) -> UserState) = mutate { it.copy(user = block(it.user)) }
 
+    /** Appends a line snapshot for the current state's season, if any, using its inferred (or overridden) current week. */
+    private fun recordLineSnapshot() {
+        val season = _state.value.season ?: return
+        val currentWeek = _state.value.user.weekOverride ?: season.inferCurrentWeek(now())
+        mutate { it.copy(lineHistory = it.lineHistory.append(season, currentWeek, now())) }
+    }
+
     suspend fun refreshNflData(includeProjections: Boolean = true) {
         if (_refresh.value is RefreshStatus.Running) return
         _refresh.value = RefreshStatus.Running("Starting")
@@ -76,6 +85,7 @@ class SurvivorRepository(
             }
             val missing = EspnClient.teamsMissing(updated)
             if (missing.isNotEmpty()) note += ". No games found for ${missing.joinToString { t -> t.abbr }}"
+            recordLineSnapshot()
             _refresh.value = RefreshStatus.Done(note)
         } catch (e: Exception) {
             _refresh.value = RefreshStatus.Failed(e.message ?: e.toString())
@@ -99,6 +109,7 @@ class SurvivorRepository(
                     .onSuccess { r -> mutate { it.copy(season = r) } }
                     .onFailure { e -> note = "Lines updated; Odds API failed: ${e.message}" }
             }
+            recordLineSnapshot()
             _refresh.value = RefreshStatus.Done(note)
         } catch (e: Exception) {
             _refresh.value = RefreshStatus.Failed(e.message ?: e.toString())
@@ -126,8 +137,12 @@ class SurvivorRepository(
 
     fun setWeekOverride(week: Int?) = mutateUser { it.copy(weekOverride = week) }
 
-    /** Resets picks, adjustments and settings; keeps downloaded data unless [includeData]. */
+    /** Resets picks, adjustments and settings; keeps downloaded data and line history unless [includeData]. */
     fun reset(includeData: Boolean) = mutate { s ->
-        SavedState(season = if (includeData) null else s.season, user = UserState(oddsApiKey = s.user.oddsApiKey))
+        SavedState(
+            season = if (includeData) null else s.season,
+            user = UserState(oddsApiKey = s.user.oddsApiKey),
+            lineHistory = if (includeData) LineHistory() else s.lineHistory,
+        )
     }
 }
