@@ -46,7 +46,21 @@ size.
 same double-elimination rule. See MODEL.md "Pool-win objective" for the formula. Closed-loop comparison with
 the engine simulator (800 seasons, common random numbers):
 
-<!-- SECTION5 -->
+| Policy | Survive season | Reach Wk 10 | Reach Wk 14 | Expected weeks alive |
+|---|---:|---:|---:|---:|
+| Greedy (highest win % now) | 6.4% | 42.9% | 21.8% | 9.19 |
+| Optimized, survive-season objective, 3%/wk discount | 8.5% | 41.0% | 21.8% | 9.09 |
+| Zero-loss path (Hungarian only) | 8.5% | 39.0% | 20.5% | 8.93 |
+| Threshold guard (take the safest team if the plan's pick is under 70%) | 8.8% | 41.4% | 21.9% | 9.13 |
+| Pool win, 10 entries | 8.6% | 42.0% | 21.1% | 9.09 |
+| Pool win, 50 entries | 8.5% | 41.0% | 21.8% | 9.09 |
+| Pool win, 500 entries | 8.5% | 41.0% | 21.8% | 9.09 |
+
+Reading: the pool-win objective interpolates as intended (a 10-entry pool pulls the early weeks toward greedy;
+50 or more entries reproduce the survive-season plan), but the effect is small because the same handful of
+elite spots dominate every objective. The threshold guard is marginally best on every metric, so it is worth
+adopting as the default decision rule. Differences of under one percentage point are within simulation noise
+at 800 seasons; use 3000+ seasons in the Simulation screen before acting on small gaps.
 
 ## 5. What changed as a result
 
