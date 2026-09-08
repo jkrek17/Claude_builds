@@ -138,29 +138,56 @@ The Dashboard reports both along the optimized route using undiscounted probabil
 One team per week, each team at most once, over the remaining weeks. This is an assignment problem.
 
 1. **Hungarian assignment** on cost `−ln(p_d)` (weeks × teams, unavailable = +∞) finds the path that exactly
-   maximises `P(0 losses)`.
-2. **Local search** then climbs the true objective `P(0) + P(1)` (or `P(0)` after a strike) with two move
-   types until no improvement: replace a week's team with an unused team; swap the teams of two weeks.
+   maximises `P(0 losses)`. This is a good starting point for every objective below, since a zero-loss path is
+   never a bad path to start improving from.
+2. **Local search** then climbs the *selected* objective (see below) with two move types until no improvement:
+   replace a week's team with an unused team; swap the teams of two weeks.
 3. Recorded picks for the current or future weeks are **locked**; used teams are removed.
 
 The displayed route always starts with the recommended (or recorded) pick so the planner, season survival and
 Monte Carlo describe the plan you would actually follow; the unconstrained optimum is shown alongside when it
-differs, with the survival delta, and the difference feeds the "season path loss" term.
+differs, with the objective delta, and the difference feeds the "season path loss" term.
 
 The greedy "highest win % every week" route is kept as a baseline for the Monte Carlo comparison.
+
+### Route objective
+
+A real pool rarely requires the entry to survive all 18 weeks — pools usually end once everyone else is
+eliminated — so being alive for **more weeks** has value even for an entry that eventually takes a fatal loss.
+`ModelSettings.routeObjective` (default `SURVIVE_SEASON`) selects what the local search in step 2 climbs:
+
+| Objective | Formula | Notes |
+|---|---|---|
+| `SURVIVE_SEASON` | `P(0 losses) + P(1 loss)` (or `P(0)` after a strike) over the whole route | Current/default behavior — maximizes P(alive after Week 18). |
+| `EXPECTED_WEEKS_ALIVE` | `Σₖ P(at most strikesAllowed losses among the first k games)`, k = 1..n | Maximizes the expected number of remaining weeks the entry gets through, rewarding routes that stay safe *early* even at some cost to the full-season number. |
+| `BLENDED` | `(1 − horizonWeight) · P(survive season) + horizonWeight · expectedWeeksAlive / n` | `horizonWeight` (default 0.5, range 0..1) is a `ModelSettings` field; `n` = number of weeks in the route. |
+
+`expectedWeeksAlive` and its building block `aliveAfterEachWeek` (the survival probability after each
+week-`k` prefix) live in `Survival`, computed incrementally from the same loss-distribution DP as
+`lossDistribution`, O(n²). Because these are *prefix* probabilities, unlike `P(0)+P(1)` they depend on which
+week each team is assigned to, not just which teams are used — so `EXPECTED_WEEKS_ALIVE` can prefer spending a
+very safe team **now** instead of saving it for a marginally-better spot later, where `SURVIVE_SEASON` would
+save it. `Route.objectiveValue(objective, horizonWeight)` reports whichever value is configured;
+`Route.survival` and `Route.expectedWeeksAlive` are always available for reporting regardless of what the
+optimizer is climbing.
+
+Opportunity cost and season path loss (§3) are relative losses of this same objective value, not always of raw
+survival probability.
 
 ## 7. Monte Carlo
 
 Each simulated season walks the route: every week is an independent Bernoulli trial at that game's undiscounted
 win probability; a second strike eliminates. Reported: P(survive season), P(zero-loss finish), P(reach Week
-10 / 14 / 18), expected strikes, expected elimination week. Strategies compared:
+10 / 14 / 18), expected strikes, expected elimination week, expected weeks alive (mean number of weeks
+survived in the simulation, comparable to `Survival.expectedWeeksAlive`). Strategies compared:
 
 | Strategy | Route |
 |---|---|
 | Highest win % each week | greedy, no reuse |
-| Future-value optimized | Hungarian + local search on discounted probabilities (the app's recommendation) |
+| Future-value optimized | Hungarian + local search on discounted probabilities, using the configured route objective (the app's recommendation) |
 | Zero-loss path (undiscounted) | Hungarian only, no discount |
-| Contrarian (ownership-nudged) | optimizer on probabilities nudged by `0.25 · (equity − 1)` where pick shares exist |
+| Contrarian (ownership-nudged) | optimizer on probabilities nudged by `0.25 · (equity − 1)` where pick shares exist, using the configured route objective |
+| Expected-weeks-alive optimized | Hungarian + local search on discounted probabilities, always with `EXPECTED_WEEKS_ALIVE` regardless of settings, so it can be compared against the configured objective |
 
 ## 8. Ownership and pool equity
 
@@ -184,7 +211,10 @@ by equity outright. This is a proxy; a pool-size-aware equity model is listed un
 | discount | `0.5 + (p − 0.5)(1 − d)^k` | `Probability.discount` |
 | rest days | days between kickoffs, 7 for Week 1, clamped 3–21 | `ScheduleAnalysis.restDays` |
 | P(0), P(1) | product / sum of single-loss products | `Survival` |
-| opportunity cost | `100(1 − V_without/V_with)`, path from next week | `Evaluator` |
-| season path loss | `100(1 − V_locked/V_unconstrained)` | `Evaluator` |
+| alive after week k | `P(at most strikesAllowed losses among first k games)` | `Survival.aliveAfterEachWeek` |
+| expected weeks alive | `Σₖ aliveAfterEachWeek[k]`, k = 1..n | `Survival.expectedWeeksAlive` |
+| route objective | `SURVIVE_SEASON: P(0)+P(1)`; `EXPECTED_WEEKS_ALIVE: expectedWeeksAlive`; `BLENDED: (1−horizonWeight)·survive + horizonWeight·expectedWeeksAlive/n` | `Survival.objectiveValue`, `Route.objectiveValue` |
+| opportunity cost | `100(1 − V_without/V_with)`, path from next week, `V` = the configured route objective | `Evaluator` |
+| season path loss | `100(1 − V_locked/V_unconstrained)`, `V` = the configured route objective | `Evaluator` |
 | safety | see §4 | `Safety.components` |
 | equity | `p / (o + (1 − o) f)` | `Safety.leverage` |

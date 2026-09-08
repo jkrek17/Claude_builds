@@ -17,6 +17,15 @@ object Explain {
     private fun fmt(s: Double): String = if (s == s.roundToInt().toDouble()) s.roundToInt().toString() else String.format(java.util.Locale.US, "%.1f", s)
     fun moneyline(ml: Int?): String = ml?.let { if (it > 0) "+$it" else "$it" } ?: "—"
 
+    /** Formats a route's objective value for the configured [RouteObjective]: a percentage for
+     *  probability-shaped objectives, a week count for expected-weeks-alive. */
+    private fun objectiveText(route: Route, settings: ModelSettings): String {
+        val value = route.objectiveValue(settings.routeObjective, settings.horizonWeight)
+        return if (settings.routeObjective == RouteObjective.EXPECTED_WEEKS_ALIVE) {
+            String.format(java.util.Locale.US, "%.1f weeks", value)
+        } else pct1(value)
+    }
+
     fun venue(e: TeamWeekEvaluation): String = when {
         e.situation.neutral -> "vs ${e.opponent.abbr} (neutral)"
         e.situation.isHome -> "vs ${e.opponent.abbr}"
@@ -75,7 +84,8 @@ object Explain {
             val optTeam = unconstrainedRoute.team(rec.week)
             if (optTeam != null && optTeam != rec.team) {
                 val optP = ranked.firstOrNull { it.team == optTeam }?.probability
-                append(" The season optimizer's unconstrained path would use ${optTeam.abbr}${optP?.let { " (${pct(it)})" } ?: ""} this week and save $t; taking $t now instead lowers modeled season survival by ${String.format(java.util.Locale.US, "%.1f", rec.seasonPathLoss)}% relative (${pct1(route.survival)} vs ${pct1(unconstrainedRoute.survival)} discounted), which the Safety Score treats as a fair trade for the extra safety this week.")
+                val objectiveName = if (settings.routeObjective == RouteObjective.SURVIVE_SEASON) "modeled season survival" else "modeled season value (${settings.routeObjective.label})"
+                append(" The season optimizer's unconstrained path would use ${optTeam.abbr}${optP?.let { " (${pct(it)})" } ?: ""} this week and save $t; taking $t now instead lowers $objectiveName by ${String.format(java.util.Locale.US, "%.1f", rec.seasonPathLoss)}% relative (${objectiveText(route, settings)} vs ${objectiveText(unconstrainedRoute, settings)} discounted), which the Safety Score treats as a fair trade for the extra safety this week.")
             } else append(" The full-season optimizer also uses $t this week.")
             if (strikesUsed >= 1) append(" You have a strike, so the model is weighting this week's safety much more heavily than future value.")
         }

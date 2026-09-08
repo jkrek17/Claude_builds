@@ -59,4 +59,39 @@ class OptimizerTest {
             assertTrue(b.survival >= a.survival - 1e-12)
         }
     }
+
+    @Test fun `local search climbs whichever objective is selected, not just survival`() {
+        for (seed in 1..5) {
+            val season = TestSeason.build(seed)
+            val cands = (1..18).associateWith { w -> season.gamesInWeek(w).flatMap { g -> listOf(g.home, g.away).map { t -> Candidate(t, ProbabilityResolver.resolve(g, t, false, null, season.ratings, ModelSettings()).probability) } } }
+            val survive = Optimizer.optimize(cands, 1, objective = RouteObjective.SURVIVE_SEASON)
+            val weeks = Optimizer.optimize(cands, 1, objective = RouteObjective.EXPECTED_WEEKS_ALIVE)
+            // EXPECTED_WEEKS_ALIVE never trails SURVIVE_SEASON on expected weeks alive, and vice versa for survival.
+            assertTrue(weeks.expectedWeeksAlive >= survive.expectedWeeksAlive - 1e-9, "seed=$seed")
+            assertTrue(survive.survival >= weeks.survival - 1e-9, "seed=$seed")
+        }
+    }
+
+    @Test fun `hand-built 3-week example where the objectives choose different Week-1 teams`() {
+        // A is safe both in Week 1 and Week 3; B is a much riskier alternative in both weeks; C is the
+        // only Week-2 team. Saving A for its (still very safe) Week 3 spot maximizes P(survive season);
+        // spending the safest team (A) in Week 1 instead maximizes the expected number of weeks survived,
+        // since an early loss costs more remaining weeks than a late one.
+        val a = Team.KC; val b = Team.DEN; val c = Team.LV
+        val cands = mapOf(
+            1 to listOf(Candidate(a, 0.95), Candidate(b, 0.60)),
+            2 to listOf(Candidate(c, 0.50)),
+            3 to listOf(Candidate(a, 0.95), Candidate(b, 0.55)),
+        )
+        val survive = Optimizer.optimize(cands, strikesAllowed = 1, objective = RouteObjective.SURVIVE_SEASON)
+        val weeks = Optimizer.optimize(cands, strikesAllowed = 1, objective = RouteObjective.EXPECTED_WEEKS_ALIVE)
+
+        assertEquals(b, survive.team(1), "SURVIVE_SEASON should save A for its Week 3 spot")
+        assertEquals(a, survive.team(3))
+        assertEquals(a, weeks.team(1), "EXPECTED_WEEKS_ALIVE should spend the safest team early")
+        assertEquals(b, weeks.team(3))
+
+        assertTrue(survive.survival > weeks.survival)
+        assertTrue(weeks.expectedWeeksAlive > survive.expectedWeeksAlive)
+    }
 }

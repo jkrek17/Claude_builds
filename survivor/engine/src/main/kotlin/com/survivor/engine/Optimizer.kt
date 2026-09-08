@@ -11,8 +11,13 @@ data class Route(val steps: List<RouteStep>, val strikesAllowed: Int) {
     val probabilities: List<Double> get() = steps.map { it.probability }
     val zeroLoss: Double get() = Survival.zeroLoss(probabilities)
     val exactlyOneLoss: Double get() = Survival.exactlyOneLoss(probabilities)
-    /** Objective: probability of surviving the whole route under the remaining strike allowance. */
+    /** Probability of surviving the whole route under the remaining strike allowance (reporting only). */
     val survival: Double get() = Survival.survive(probabilities, strikesAllowed)
+    /** Expected number of the route's weeks the entry gets through alive. */
+    val expectedWeeksAlive: Double get() = Survival.expectedWeeksAlive(probabilities, strikesAllowed)
+    /** Value of [objective] for this route; what the optimizer's local search actually climbs. */
+    fun objectiveValue(objective: RouteObjective, horizonWeight: Double): Double =
+        Survival.objectiveValue(probabilities, strikesAllowed, objective, horizonWeight)
     fun team(week: Int): Team? = steps.firstOrNull { it.week == week }?.team
     val teams: Set<Team> get() = steps.map { it.team }.toSet()
 }
@@ -34,6 +39,9 @@ object Optimizer {
         strikesAllowed: Int,
         locked: Map<Int, Team> = emptyMap(),
         localSearch: Boolean = true,
+        /** Which season-path quantity the local search climbs; the Hungarian start is unaffected by this. */
+        objective: RouteObjective = RouteObjective.SURVIVE_SEASON,
+        horizonWeight: Double = 0.5,
     ): Route {
         val weeks = candidatesByWeek.keys.sorted().filter { w -> locked.containsKey(w) || candidatesByWeek[w].orEmpty().isNotEmpty() }
         if (weeks.isEmpty()) return Route(emptyList(), strikesAllowed)
@@ -64,7 +72,7 @@ object Optimizer {
             }
         }
 
-        if (localSearch && freeWeeks.size > 1) improve(assignment, freeWeeks, prob, strikesAllowed, teamIndex.keys)
+        if (localSearch && freeWeeks.size > 1) improve(assignment, freeWeeks, prob, strikesAllowed, teamIndex.keys, objective, horizonWeight)
 
         val steps = weeks.mapNotNull { w ->
             val t = assignment[w] ?: return@mapNotNull null
@@ -74,9 +82,16 @@ object Optimizer {
         return Route(steps, strikesAllowed)
     }
 
-    private fun objective(assignment: Map<Int, Team>, prob: Map<Int, Map<Team, Double>>, strikesAllowed: Int): Double {
-        val ps = assignment.entries.map { (w, t) -> prob[w]?.get(t) ?: 1.0 }
-        return Survival.survive(ps, strikesAllowed)
+    /** Objective value of an assignment, in week order (order matters for [RouteObjective.EXPECTED_WEEKS_ALIVE]/BLENDED). */
+    private fun score(
+        assignment: Map<Int, Team>,
+        prob: Map<Int, Map<Team, Double>>,
+        strikesAllowed: Int,
+        objective: RouteObjective,
+        horizonWeight: Double,
+    ): Double {
+        val ps = assignment.entries.sortedBy { it.key }.map { (w, t) -> prob[w]?.get(t) ?: 1.0 }
+        return Survival.objectiveValue(ps, strikesAllowed, objective, horizonWeight)
     }
 
     private fun improve(
@@ -85,8 +100,10 @@ object Optimizer {
         prob: Map<Int, Map<Team, Double>>,
         strikesAllowed: Int,
         allTeams: Set<Team>,
+        objective: RouteObjective,
+        horizonWeight: Double,
     ) {
-        var best = objective(assignment, prob, strikesAllowed)
+        var best = score(assignment, prob, strikesAllowed, objective, horizonWeight)
         var improved = true
         var rounds = 0
         while (improved && rounds < 50) {
@@ -100,8 +117,8 @@ object Optimizer {
                     if (u in used) continue
                     val pu = prob[w]?.get(u) ?: continue
                     assignment[w] = u
-                    val score = objective(assignment, prob, strikesAllowed)
-                    if (score > best + 1e-12) { best = score; improved = true } else assignment[w] = current
+                    val s = score(assignment, prob, strikesAllowed, objective, horizonWeight)
+                    if (s > best + 1e-12) { best = s; improved = true } else assignment[w] = current
                 }
             }
             // Swap moves: exchange teams between two weeks.
@@ -111,8 +128,8 @@ object Optimizer {
                 val t2 = assignment[w2] ?: continue
                 if (prob[w1]?.containsKey(t2) != true || prob[w2]?.containsKey(t1) != true) continue
                 assignment[w1] = t2; assignment[w2] = t1
-                val score = objective(assignment, prob, strikesAllowed)
-                if (score > best + 1e-12) { best = score; improved = true } else { assignment[w1] = t1; assignment[w2] = t2 }
+                val s = score(assignment, prob, strikesAllowed, objective, horizonWeight)
+                if (s > best + 1e-12) { best = s; improved = true } else { assignment[w1] = t1; assignment[w2] = t2 }
             }
         }
     }

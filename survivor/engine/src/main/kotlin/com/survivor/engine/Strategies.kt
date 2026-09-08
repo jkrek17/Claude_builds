@@ -6,6 +6,7 @@ object Strategies {
     const val FUTURE_VALUE = "Future-value optimized"
     const val ZERO_LOSS = "Zero-loss path (undiscounted)"
     const val CONTRARIAN = "Contrarian (ownership-nudged)"
+    const val EXPECTED_WEEKS = "Expected-weeks-alive optimized"
 
     fun compare(season: Season, user: UserState, nowEpochMs: Long, iterations: Int? = null, seed: Long = 42L): List<SimulationResult> {
         val settings = user.settings
@@ -36,9 +37,11 @@ object Strategies {
         val n = iterations ?: settings.monteCarloIterations
         val routes = listOf(
             HIGHEST_WIN to Optimizer.greedy(table(discount = false, contrarian = false), strikesAllowed, locked),
-            FUTURE_VALUE to Optimizer.optimize(table(discount = true, contrarian = false), strikesAllowed, locked),
+            FUTURE_VALUE to Optimizer.optimize(table(discount = true, contrarian = false), strikesAllowed, locked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight),
             ZERO_LOSS to Optimizer.optimize(table(discount = false, contrarian = false), strikesAllowed, locked, localSearch = false),
-            CONTRARIAN to Optimizer.optimize(table(discount = true, contrarian = true), strikesAllowed, locked),
+            CONTRARIAN to Optimizer.optimize(table(discount = true, contrarian = true), strikesAllowed, locked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight),
+            // Always EXPECTED_WEEKS_ALIVE regardless of settings, so the Monte Carlo tab can show the objectives side by side.
+            EXPECTED_WEEKS to Optimizer.optimize(table(discount = true, contrarian = false), strikesAllowed, locked, objective = RouteObjective.EXPECTED_WEEKS_ALIVE),
         )
         return routes.map { (name, r) -> MonteCarlo.simulate(name, rawRoute(r), eval.strikesUsed, n, seed) }
     }
