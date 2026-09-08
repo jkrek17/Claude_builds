@@ -151,8 +151,13 @@ enum class Strategy(val label: String, val description: String) {
 
 @Serializable
 data class ModelSettings(
-    /** Standard deviation of NFL final margin around the closing spread. ~13.5 points historically. */
-    val marginSigma: Double = 13.45,
+    /**
+     * Scale of the normal model that turns a spread into a win probability, Φ(spread / marginSigma).
+     * 11.0 is the maximum-likelihood fit to 4,162 regular-season closing lines 2010–2025 (nflverse) and
+     * is calibrated within ~1 point in every implied-probability bucket; the raw margin standard deviation
+     * (~13.5) underprices big favourites by about 5 points. See docs/EVALUATION.md.
+     */
+    val marginSigma: Double = 11.0,
     /** Home-field advantage in points, used only when a rating gap has to stand in for a line. */
     val homeFieldPoints: Double = 1.8,
     /** For future weeks: weight on the lookahead market spread vs. the FPI projection. */
@@ -208,7 +213,7 @@ data class ModelSettings(
     companion object {
         /** Human-readable descriptions shown next to every parameter in Settings. */
         val descriptions: List<Pair<String, String>> = listOf(
-            "marginSigma" to "Std. deviation of final margin vs. the spread (points). Drives spread → win %. 13.45 fits 2000-2024 closing lines.",
+            "marginSigma" to "Scale of the spread → win % curve, Φ(spread / σ). 11.0 is the max-likelihood fit to 2010–2025 closing lines and is calibrated for big favourites; larger values make favourites look less safe.",
             "homeFieldPoints" to "Home edge in points when a rating gap must replace a missing line. Markets already include it.",
             "futureMarketWeight" to "Future weeks: weight on the lookahead spread; the rest goes to ESPN FPI.",
             "futureDiscountPerWeek" to "Shrinks future win % toward 50% by this much per week ahead inside the optimizer only.",

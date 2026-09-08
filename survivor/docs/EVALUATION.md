@@ -81,3 +81,34 @@ at 800 seasons; use 3000+ seasons in the Simulation screen before acting on smal
   simulators treat games as independent.
 - Field model: other entries are assumed to start each remaining week with a fresh strike allowance and to pick at a
   flat 76%; real fields concentrate on the same favorites, which correlates their survival with yours.
+
+## 7. Early-season variance and what past seasons can add
+
+Source: nflverse `games.csv`, 4,175 regular-season games with closing spreads, 2010–2025.
+
+**Early lines are less confident, not less accurate.** Favourites win 61–64% of games in Weeks 1–6 versus
+68–69% later, but that is because the lines themselves are tighter: mean |spread| is 4.4 in Week 1 and 5.8 in
+Weeks 13–18, and only 6% of Week 1 games carry a 75%+ favourite versus 19% late in the season. Measured by
+Brier score the early lines are only slightly worse (0.220–0.226 vs 0.203–0.208). The week's safest team
+actually won 81% of the time in Week 1 against a 76% implied probability; in every bucket the safest picks won at
+least as often as the line said.
+
+**The spread curve was miscalibrated for favourites.** Fitting σ in `Φ(spread / σ)` by maximum likelihood gives
+11.0 (stable across leave-one-season-out folds), not the ~13.5 margin standard deviation used before.
+
+| Implied bucket at σ = 13.45 | Actual | Implied bucket at σ = 11.0 | Actual |
+|---|---:|---|---:|
+| 75–80% (77.4% implied) | 82.5% | 75–80% (76.4% implied) | 75.5% |
+| 80–85% (82.7%) | 87.6% | 80–85% (82.2%) | 82.5% |
+| 85–90% (86.5%) | 92.3% | 85–90% (88.2%) | 88.1% |
+
+The default is now 11.0. Practical effect: a 7-point favourite is 74% rather than 70%, a 10-point favourite 82%
+rather than 77%, so the safety of the top picks was being understated.
+
+**Last season helps a little in Week 1 and not after.** Adding β × (last season's net points per game gap) to the
+closing spread and choosing β on the other seasons improves Week 1 out of sample by 0.9% Brier (β ≈ +0.2, i.e.
+the market underweights last year by about a fifth of a point per point of net margin), and does nothing from
+Week 2 on (−0.25%, −0.07%, 0.00%). Among Weeks 1–3 favourites at 70%+, those with a +7 net-points edge from the
+prior year won 83% versus 67% for those with a negative gap, but the sample is 6 games. Decision: not adopted
+for now; the Week 1 gain is real but small, applies to one pick per season, and would add a data source.
+Recorded here so it can be revisited with more seasons.

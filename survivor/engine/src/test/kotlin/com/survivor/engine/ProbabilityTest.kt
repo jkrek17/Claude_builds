@@ -14,14 +14,18 @@ class ProbabilityTest {
         assertEquals(0.643, a, 0.001)
     }
 
-    @Test fun `spread conversion matches historical NFL closing-line win rates`() {
-        // Empirical closing-line favourite win rates (2000-2024, approx): -3 ≈ 59%, -7 ≈ 70%, -10 ≈ 77%, -14 ≈ 85%.
+    @Test fun `spread conversion is calibrated to 2010-2025 closing-line outcomes`() {
+        // nflverse closing lines 2010-2025, favourite win rate by implied bucket at sigma = 11.0:
+        // 60-65% implied -> 60.7% actual, 70-75% -> 73.8%, 80-85% -> 82.5%, 85-90% -> 88.1%, 90-95% -> 93.2%.
+        assertEquals(11.0, ModelSettings().marginSigma, 1e-9)
         assertEquals(0.50, Probability.winProbabilityFromSpread(0.0), 1e-9)
-        assertEquals(0.588, Probability.winProbabilityFromSpread(3.0), 0.01)
-        assertEquals(0.699, Probability.winProbabilityFromSpread(7.0), 0.01)
-        assertEquals(0.771, Probability.winProbabilityFromSpread(10.0), 0.01)
-        assertEquals(0.851, Probability.winProbabilityFromSpread(14.0), 0.01)
+        assertEquals(0.607, Probability.winProbabilityFromSpread(3.0), 0.005)
+        assertEquals(0.738, Probability.winProbabilityFromSpread(7.0), 0.005)
+        assertEquals(0.818, Probability.winProbabilityFromSpread(10.0), 0.005)
+        assertEquals(0.898, Probability.winProbabilityFromSpread(14.0), 0.005)
         assertEquals(1 - Probability.winProbabilityFromSpread(7.0), Probability.winProbabilityFromSpread(-7.0), 1e-9)
+        // The raw margin standard deviation (~13.5) is still available as an explicit sigma.
+        assertEquals(0.699, Probability.winProbabilityFromSpread(7.0, sigma = 13.45), 0.01)
     }
 
     @Test fun `inverse conversion round-trips`() {

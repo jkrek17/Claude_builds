@@ -32,43 +32,46 @@ The two sides are normalised so they sum to 100%. Example: −200 / +170 → 66.
 
 ### Spread → win probability
 
-Final margin is modelled as Normal(spread, σ) with **σ = 13.45 points**, so a team favoured by `s` points wins
-with probability `Φ(s / σ)`. This is the standard NFL closing-line fit (2000–2024 favourites: −3 ≈ 59%,
-−7 ≈ 70%, −10 ≈ 77%, −14 ≈ 85%). σ is editable in Model Settings.
+A team favoured by `s` points wins with probability `Φ(s / σ)` with **σ = 11.0**. σ is the maximum-likelihood
+fit to 4,162 regular-season closing lines from 2010–2025 (nflverse), chosen in every leave-one-season-out
+fold, and it is calibrated within about one point in every implied-probability bucket (60–65% implied → 60.7%
+actual; 80–85% → 82.5%; 90–95% → 93.2%). The raw standard deviation of the margin around the spread is
+about 13.5 points, but using that value underprices big favourites by roughly five points, which matters
+for survivor picks. σ is editable in Model Settings. See EVALUATION.md §7.
 
 | Favorite by | Win probability |
 |---:|---:|
 | -0 | 50.0% |
-| -1 | 53.0% |
-| -1.5 | 54.4% |
-| -2 | 55.9% |
-| -2.5 | 57.4% |
-| -3 | 58.8% |
-| -3.5 | 60.3% |
-| -4 | 61.7% |
-| -4.5 | 63.1% |
-| -5 | 64.5% |
-| -5.5 | 65.9% |
-| -6 | 67.2% |
-| -6.5 | 68.6% |
-| -7 | 69.9% |
-| -7.5 | 71.1% |
-| -8 | 72.4% |
-| -8.5 | 73.6% |
-| -9 | 74.8% |
-| -9.5 | 76.0% |
-| -10 | 77.1% |
-| -10.5 | 78.3% |
-| -11 | 79.3% |
-| -12 | 81.4% |
-| -13 | 83.3% |
-| -13.5 | 84.2% |
-| -14 | 85.1% |
-| -15 | 86.8% |
-| -16 | 88.3% |
-| -17 | 89.7% |
-| -18 | 91.0% |
-| -20 | 93.1% |
+| -1 | 53.6% |
+| -1.5 | 55.4% |
+| -2 | 57.2% |
+| -2.5 | 59.0% |
+| -3 | 60.7% |
+| -3.5 | 62.5% |
+| -4 | 64.2% |
+| -4.5 | 65.9% |
+| -5 | 67.5% |
+| -5.5 | 69.1% |
+| -6 | 70.7% |
+| -6.5 | 72.3% |
+| -7 | 73.8% |
+| -7.5 | 75.2% |
+| -8 | 76.6% |
+| -8.5 | 78.0% |
+| -9 | 79.3% |
+| -9.5 | 80.6% |
+| -10 | 81.8% |
+| -10.5 | 83.0% |
+| -11 | 84.1% |
+| -12 | 86.2% |
+| -13 | 88.1% |
+| -13.5 | 89.0% |
+| -14 | 89.8% |
+| -15 | 91.4% |
+| -16 | 92.7% |
+| -17 | 93.9% |
+| -18 | 94.9% |
+| -20 | 96.5% |
 
 Ties are ignored (P(tie) < 0.5%); an underdog's probability is 1 − favourite.
 
@@ -299,8 +302,8 @@ while every existing caller that omits the override keeps the exact flat-`f` beh
 |---|---|---|
 | implied probability | `o<0: −o/(−o+100)`, `o>0: 100/(o+100)` | `Probability.impliedFromAmerican` |
 | no-vig | `a / (a + b)` | `Probability.noVig` |
-| spread → p | `Φ(s / 13.45)` | `Probability.winProbabilityFromSpread` |
-| p → spread | `Φ⁻¹(p) · 13.45` (Acklam) | `Probability.spreadFromWinProbability` |
+| spread → p | `Φ(s / 11.0)` | `Probability.winProbabilityFromSpread` |
+| p → spread | `Φ⁻¹(p) · 11.0` (Acklam) | `Probability.spreadFromWinProbability` |
 | discount | `0.5 + (p − 0.5)(1 − d)^k` | `Probability.discount` |
 | rest days | days between kickoffs, 7 for Week 1, clamped 3–21 | `ScheduleAnalysis.restDays` |
 | P(0), P(1) | product / sum of single-loss products | `Survival` |
