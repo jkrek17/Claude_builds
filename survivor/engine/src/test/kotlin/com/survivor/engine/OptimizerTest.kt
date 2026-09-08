@@ -72,6 +72,79 @@ class OptimizerTest {
         }
     }
 
+    @Test fun `local search from a greedy start never returns a worse objective than either start, on TestSeason seeds 1 through 5`() {
+        for (seed in 1..5) {
+            val season = TestSeason.build(seed)
+            val cands = (1..18).associateWith { w -> season.gamesInWeek(w).flatMap { g -> listOf(g.home, g.away).map { t -> Candidate(t, ProbabilityResolver.resolve(g, t, false, null, season.ratings, ModelSettings()).probability) } } }
+            for (objective in RouteObjective.entries) {
+                val hungarianOnly = Optimizer.optimize(cands, 1, localSearch = false, objective = objective)
+                val greedyOnly = Optimizer.greedy(cands, 1)
+                val hungarianStartValue = hungarianOnly.objectiveValue(objective, horizonWeight = 0.5)
+                val greedyStartValue = greedyOnly.objectiveValue(objective, horizonWeight = 0.5)
+                val optimized = Optimizer.optimize(cands, 1, objective = objective)
+                val optimizedValue = optimized.objectiveValue(objective, horizonWeight = 0.5)
+                assertTrue(optimizedValue >= hungarianStartValue - 1e-9, "seed=$seed objective=$objective optimized=$optimizedValue hungarian=$hungarianStartValue")
+                assertTrue(optimizedValue >= greedyStartValue - 1e-9, "seed=$seed objective=$objective optimized=$optimizedValue greedy=$greedyStartValue")
+            }
+        }
+    }
+
+    @Test fun `a genuine 3-way rotation trap - greedy start reaches strictly better EXPECTED_WEEKS_ALIVE than the hungarian-only start, and the optimizer returns it`() {
+        // A 3-week, 3-team assignment shaped like a triangle: A plays weeks 1 and 2, B plays weeks 1 and 3, C
+        // plays weeks 2 and 3. Exactly two full (one-team-per-week, no reuse) assignments exist: (A,C,B) and
+        // (B,A,C). Moving between them needs a simultaneous 3-way rotation - unreachable by any single
+        // replace move (every candidate not already assigned here is either unavailable for that week or
+        // already used elsewhere) or swap move (every pairing needs a team the other week doesn't offer) -
+        // so a single-start local search from whichever assignment it begins at is stuck exactly there.
+        val a = Team.KC; val b = Team.DEN; val c = Team.LV
+        val cands = mapOf(
+            1 to listOf(Candidate(a, 0.99), Candidate(b, 0.50)),
+            2 to listOf(Candidate(a, 0.98), Candidate(c, 0.40)),
+            3 to listOf(Candidate(b, 0.90), Candidate(c, 0.85)),
+        )
+        // Hungarian maximizes P(zero losses) exactly and lands on (B,A,C): 0.50*0.98*0.85 = 0.4165 beats
+        // (A,C,B): 0.99*0.40*0.90 = 0.3564 - a worse pick for EXPECTED_WEEKS_ALIVE, computed below.
+        val hungarianOnly = Optimizer.optimize(cands, strikesAllowed = 1, localSearch = false, objective = RouteObjective.EXPECTED_WEEKS_ALIVE)
+        assertEquals(b, hungarianOnly.team(1)); assertEquals(a, hungarianOnly.team(2)); assertEquals(c, hungarianOnly.team(3))
+
+        // Greedy (highest probability each week, in week order, never reusing a team) lands on the other full
+        // assignment, (A,C,B), which is strictly better on EXPECTED_WEEKS_ALIVE.
+        val greedyOnly = Optimizer.greedy(cands, strikesAllowed = 1)
+        assertEquals(a, greedyOnly.team(1)); assertEquals(c, greedyOnly.team(2)); assertEquals(b, greedyOnly.team(3))
+        assertTrue(
+            greedyOnly.expectedWeeksAlive > hungarianOnly.expectedWeeksAlive + 1e-6,
+            "greedy=${greedyOnly.expectedWeeksAlive} hungarianOnly=${hungarianOnly.expectedWeeksAlive}",
+        )
+
+        // The optimizer (Hungarian start AND greedy start, both local-searched, higher objective wins) must
+        // return the better (greedy-reachable) assignment, not stall at the Hungarian one.
+        val optimized = Optimizer.optimize(cands, strikesAllowed = 1, objective = RouteObjective.EXPECTED_WEEKS_ALIVE)
+        assertEquals(a, optimized.team(1)); assertEquals(c, optimized.team(2)); assertEquals(b, optimized.team(3))
+        assertEquals(greedyOnly.expectedWeeksAlive, optimized.expectedWeeksAlive, 1e-9)
+    }
+
+    @Test fun `pool-win objective orders sensibly between expected-weeks-alive and survive-season as pool size varies`() {
+        val season = TestSeason.build(20)
+        val cands = (1..18).associateWith { w -> season.gamesInWeek(w).flatMap { g -> listOf(g.home, g.away).map { t -> Candidate(t, ProbabilityResolver.resolve(g, t, false, null, season.ratings, ModelSettings()).probability) } } }
+        val survive = Optimizer.optimize(cands, 1, objective = RouteObjective.SURVIVE_SEASON)
+        val weeks = Optimizer.optimize(cands, 1, objective = RouteObjective.EXPECTED_WEEKS_ALIVE)
+        val poolBig = Optimizer.optimize(cands, 1, objective = RouteObjective.POOL_WIN, poolEntries = 100_000, fieldWinProbability = 0.76)
+        val poolSmall = Optimizer.optimize(cands, 1, objective = RouteObjective.POOL_WIN, poolEntries = 2, fieldWinProbability = 0.76)
+
+        assertEquals(18, poolBig.steps.size)
+        assertEquals(18, poolSmall.steps.size)
+        assertEquals(18, poolBig.teams.size)
+        assertEquals(18, poolSmall.teams.size)
+
+        // A 100,000-entry pool almost never runs out of other survivors early, so POOL_WIN should behave like
+        // SURVIVE_SEASON: either it matches survival almost exactly, or it is at least as good as the
+        // expected-weeks-alive route on raw survival.
+        assertTrue(
+            Math.abs(poolBig.survival - survive.survival) < 1e-9 || poolBig.survival >= weeks.survival - 1e-9,
+            "poolBig=${poolBig.survival} survive=${survive.survival} weeks=${weeks.survival}",
+        )
+    }
+
     @Test fun `hand-built 3-week example where the objectives choose different Week-1 teams`() {
         // A is safe both in Week 1 and Week 3; B is a much riskier alternative in both weeks; C is the
         // only Week-2 team. Saving A for its (still very safe) Week 3 spot maximizes P(survive season);

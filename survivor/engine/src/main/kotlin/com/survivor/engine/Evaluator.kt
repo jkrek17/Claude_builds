@@ -109,6 +109,38 @@ data class Evaluation(
     val seasonSurvival: Double get() = Survival.survive(routeRawProbabilities, strikesAllowed)
     /** Expected number of the route's remaining weeks the entry gets through alive. */
     val seasonExpectedWeeksAlive: Double get() = Survival.expectedWeeksAlive(routeRawProbabilities, strikesAllowed)
+    /** P(win the pool) along [route], undiscounted; see [Survival.poolWinProbability]. Independent of
+     *  [settings.routeObjective] - always reported, regardless of what the optimizer is climbing. */
+    val poolWinProbability: Double
+        get() = Survival.poolWinProbability(routeRawProbabilities, strikesAllowed, settings.poolEntries, settings.fieldAverageWinProbability)
+    /** For each week along [route], the expected number of OTHER pool entries still alive after that week
+     *  (`m · a_k`; see [Survival.fieldAliveCurve]). Non-increasing by construction. */
+    val expectedFieldSurvivors: List<Pair<Int, Double>>
+        get() {
+            val n = routeRawProbabilities.size
+            if (n == 0) return emptyList()
+            val weeks = route.steps.sortedBy { it.week }.map { it.week }
+            val m = (settings.poolEntries - 1).coerceAtLeast(0)
+            val a = Survival.fieldAliveCurve(n, settings.fieldAverageWinProbability)
+            return weeks.zip(a) { w, ak -> w to m * ak }
+        }
+    /**
+     * Expected week in which the field's last other entry is eliminated, from the increments of
+     * [Survival.otherEntriesEliminatedCdf]: `Σ_{k=1..n} week(k) · (D_k − D_{k−1}) + (lastWeek+1) · (1 − D_n)`.
+     * The `lastWeek + 1` term is a "survives past the route" convention - it is not a real week number, just a
+     * marker that the field never fully clears out within the route. Null only when the route is empty.
+     */
+    val expectedPoolEndWeek: Double?
+        get() {
+            val n = routeRawProbabilities.size
+            if (n == 0) return null
+            val weeks = route.steps.sortedBy { it.week }.map { it.week }
+            val d = Survival.otherEntriesEliminatedCdf(n, settings.fieldAverageWinProbability, settings.poolEntries)
+            var expectation = 0.0
+            for (k in 1..n) expectation += weeks[k - 1] * (d[k] - d[k - 1])
+            expectation += (weeks.last() + 1) * (1.0 - d[n])
+            return expectation
+        }
 }
 
 /**
@@ -168,12 +200,18 @@ object Evaluator {
         // Locked picks for the current and any future week the user has already recorded.
         val locked = user.picks.filter { it.week >= currentWeek }.associate { it.week to it.team }
         val routeCandidates = candidates(currentWeek, usedTeams - locked.values.toSet())
-        val unconstrainedRoute = Optimizer.optimize(routeCandidates, strikesAllowed, locked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight)
-        fun routeWith(team: Team): Route = if (currentPick != null) unconstrainedRoute else Optimizer.optimize(routeCandidates, strikesAllowed, locked + (currentWeek to team), objective = settings.routeObjective, horizonWeight = settings.horizonWeight)
-        val unconstrainedObjective = unconstrainedRoute.objectiveValue(settings.routeObjective, settings.horizonWeight)
+        val unconstrainedRoute = Optimizer.optimize(
+            routeCandidates, strikesAllowed, locked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight,
+            poolEntries = settings.poolEntries, fieldWinProbability = settings.fieldAverageWinProbability,
+        )
+        fun routeWith(team: Team): Route = if (currentPick != null) unconstrainedRoute else Optimizer.optimize(
+            routeCandidates, strikesAllowed, locked + (currentWeek to team), objective = settings.routeObjective, horizonWeight = settings.horizonWeight,
+            poolEntries = settings.poolEntries, fieldWinProbability = settings.fieldAverageWinProbability,
+        )
+        val unconstrainedObjective = unconstrainedRoute.objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability)
         fun seasonPathLoss(team: Team): Double {
             if (unconstrainedRoute.team(currentWeek) == team || unconstrainedObjective <= 0.0) return 0.0
-            val withTeam = routeWith(team).objectiveValue(settings.routeObjective, settings.horizonWeight)
+            val withTeam = routeWith(team).objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability)
             return ((1.0 - withTeam / unconstrainedObjective) * 100.0).coerceAtLeast(0.0)
         }
 
@@ -181,13 +219,17 @@ object Evaluator {
         val futureWeek = currentWeek + 1
         val futureLocked = locked.filterKeys { it > currentWeek }
         val pathWith = if (futureWeek <= REGULAR_SEASON_WEEKS) {
-            Optimizer.optimize(candidates(futureWeek, usedTeams), strikesAllowed, futureLocked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight)
-                .objectiveValue(settings.routeObjective, settings.horizonWeight)
+            Optimizer.optimize(
+                candidates(futureWeek, usedTeams), strikesAllowed, futureLocked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight,
+                poolEntries = settings.poolEntries, fieldWinProbability = settings.fieldAverageWinProbability,
+            ).objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability)
         } else 1.0
         fun opportunityCost(team: Team): Double {
             if (futureWeek > REGULAR_SEASON_WEEKS || pathWith <= 0.0) return 0.0
-            val without = Optimizer.optimize(candidates(futureWeek, usedTeams + team), strikesAllowed, futureLocked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight)
-                .objectiveValue(settings.routeObjective, settings.horizonWeight)
+            val without = Optimizer.optimize(
+                candidates(futureWeek, usedTeams + team), strikesAllowed, futureLocked, objective = settings.routeObjective, horizonWeight = settings.horizonWeight,
+                poolEntries = settings.poolEntries, fieldWinProbability = settings.fieldAverageWinProbability,
+            ).objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability)
             return ((1.0 - without / pathWith) * 100.0).coerceAtLeast(0.0)
         }
 
@@ -236,7 +278,7 @@ object Evaluator {
                     val g = season.gameFor(t, w)!!
                     val e = estimates.getValue(t).getValue(w)
                     val cost = if (w == currentWeek) ranked.firstOrNull { it.team == t }?.opportunityCost
-                    else plannerOpportunityCost(w, t, route, usedTeams, strikesAllowed, settings.routeObjective, settings.horizonWeight, ::candidates)
+                    else plannerOpportunityCost(w, t, route, usedTeams, strikesAllowed, settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability, ::candidates)
                     PlannerRow(w, t, g.opponentOf(t), g.isHome(t), e.teamSpread, e.probability, e.source,
                         if (w == currentWeek) PlannerStatus.RECOMMENDED else PlannerStatus.PROJECTED, null, strikes, futureValue(t, w).best, cost)
                 }
@@ -272,16 +314,22 @@ object Evaluator {
         strikesAllowed: Int,
         objective: RouteObjective,
         horizonWeight: Double,
+        poolEntries: Int,
+        fieldWinProbability: Double,
         candidates: (Int, Set<Team>) -> Map<Int, List<Candidate>>,
     ): Double? {
         val next = week + 1
         if (next > REGULAR_SEASON_WEEKS) return 0.0
         val consumed = usedTeams + route.steps.filter { it.week < week }.map { it.team }
-        val with = Optimizer.optimize(candidates(next, consumed), strikesAllowed, localSearch = false, objective = objective, horizonWeight = horizonWeight)
-            .objectiveValue(objective, horizonWeight)
+        val with = Optimizer.optimize(
+            candidates(next, consumed), strikesAllowed, localSearch = false, objective = objective, horizonWeight = horizonWeight,
+            poolEntries = poolEntries, fieldWinProbability = fieldWinProbability,
+        ).objectiveValue(objective, horizonWeight, poolEntries, fieldWinProbability)
         if (with <= 0.0) return null
-        val without = Optimizer.optimize(candidates(next, consumed + team), strikesAllowed, localSearch = false, objective = objective, horizonWeight = horizonWeight)
-            .objectiveValue(objective, horizonWeight)
+        val without = Optimizer.optimize(
+            candidates(next, consumed + team), strikesAllowed, localSearch = false, objective = objective, horizonWeight = horizonWeight,
+            poolEntries = poolEntries, fieldWinProbability = fieldWinProbability,
+        ).objectiveValue(objective, horizonWeight, poolEntries, fieldWinProbability)
         return ((1.0 - without / with) * 100.0).coerceAtLeast(0.0)
     }
 }

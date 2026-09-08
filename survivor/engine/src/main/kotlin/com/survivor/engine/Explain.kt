@@ -20,7 +20,7 @@ object Explain {
     /** Formats a route's objective value for the configured [RouteObjective]: a percentage for
      *  probability-shaped objectives, a week count for expected-weeks-alive. */
     private fun objectiveText(route: Route, settings: ModelSettings): String {
-        val value = route.objectiveValue(settings.routeObjective, settings.horizonWeight)
+        val value = route.objectiveValue(settings.routeObjective, settings.horizonWeight, settings.poolEntries, settings.fieldAverageWinProbability)
         return if (settings.routeObjective == RouteObjective.EXPECTED_WEEKS_ALIVE) {
             String.format(java.util.Locale.US, "%.1f weeks", value)
         } else pct1(value)

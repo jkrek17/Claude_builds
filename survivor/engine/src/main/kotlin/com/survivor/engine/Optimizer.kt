@@ -16,8 +16,8 @@ data class Route(val steps: List<RouteStep>, val strikesAllowed: Int) {
     /** Expected number of the route's weeks the entry gets through alive. */
     val expectedWeeksAlive: Double get() = Survival.expectedWeeksAlive(probabilities, strikesAllowed)
     /** Value of [objective] for this route; what the optimizer's local search actually climbs. */
-    fun objectiveValue(objective: RouteObjective, horizonWeight: Double): Double =
-        Survival.objectiveValue(probabilities, strikesAllowed, objective, horizonWeight)
+    fun objectiveValue(objective: RouteObjective, horizonWeight: Double, poolEntries: Int = 50, fieldWinProbability: Double = 0.76): Double =
+        Survival.objectiveValue(probabilities, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
     fun team(week: Int): Team? = steps.firstOrNull { it.week == week }?.team
     val teams: Set<Team> get() = steps.map { it.team }.toSet()
 }
@@ -26,8 +26,13 @@ data class Route(val steps: List<RouteStep>, val strikesAllowed: Int) {
  * Season-path optimizer. Assigns at most one team per week and uses each team at most once.
  *
  * 1. Hungarian assignment on cost = -ln(p) finds the path maximizing P(zero losses) exactly.
- * 2. Local search (replace-with-unused and pairwise swap moves) then climbs the true
- *    double-elimination objective P(0 losses) + P(exactly 1 loss) when a strike is still in hand.
+ * 2. Local search (replace-with-unused and pairwise swap moves) then climbs the true objective from TWO
+ *    starting points - the Hungarian assignment above and the plain greedy assignment (highest probability
+ *    per week, in week order, never reusing a team) - and returns whichever finished assignment scores
+ *    higher. The Hungarian start is a hill-climb from a P(zero losses)-optimal point, which is an excellent
+ *    seed for [RouteObjective.SURVIVE_SEASON] but can stall in a local optimum for objectives that value
+ *    something else (e.g. [RouteObjective.EXPECTED_WEEKS_ALIVE] or [RouteObjective.POOL_WIN]); the greedy
+ *    start gives the search a second, structurally different point to climb from.
  *
  * Weeks with no candidate (e.g. every team with data already used) are dropped from the route.
  */
@@ -39,9 +44,13 @@ object Optimizer {
         strikesAllowed: Int,
         locked: Map<Int, Team> = emptyMap(),
         localSearch: Boolean = true,
-        /** Which season-path quantity the local search climbs; the Hungarian start is unaffected by this. */
+        /** Which season-path quantity the local search climbs; the starting assignments are unaffected by this. */
         objective: RouteObjective = RouteObjective.SURVIVE_SEASON,
         horizonWeight: Double = 0.5,
+        /** [RouteObjective.POOL_WIN] only. */
+        poolEntries: Int = 50,
+        /** [RouteObjective.POOL_WIN] only. */
+        fieldWinProbability: Double = 0.76,
     ): Route {
         val weeks = candidatesByWeek.keys.sorted().filter { w -> locked.containsKey(w) || candidatesByWeek[w].orEmpty().isNotEmpty() }
         if (weeks.isEmpty()) return Route(emptyList(), strikesAllowed)
@@ -55,9 +64,10 @@ object Optimizer {
             candidatesByWeek[w].orEmpty().filter { it.team !in lockedTeams }.associate { it.team to it.probability }
         }
 
-        val assignment = HashMap<Int, Team>()
-        locked.forEach { (w, t) -> if (w in weeks) assignment[w] = t }
+        val baseAssignment = HashMap<Int, Team>()
+        locked.forEach { (w, t) -> if (w in weeks) baseAssignment[w] = t }
 
+        val hungarianStart = HashMap(baseAssignment)
         if (freeWeeks.isNotEmpty()) {
             val cost = Array(freeWeeks.size) { r ->
                 DoubleArray(teams.size) { c ->
@@ -68,11 +78,23 @@ object Optimizer {
             val cols = Hungarian.solve(cost)
             for (r in freeWeeks.indices) {
                 val t = teams[cols[r]]
-                if (prob[freeWeeks[r]]?.containsKey(t) == true) assignment[freeWeeks[r]] = t
+                if (prob[freeWeeks[r]]?.containsKey(t) == true) hungarianStart[freeWeeks[r]] = t
             }
         }
 
-        if (localSearch && freeWeeks.size > 1) improve(assignment, freeWeeks, prob, strikesAllowed, teamIndex.keys, objective, horizonWeight)
+        fun climb(assignment: HashMap<Int, Team>): HashMap<Int, Team> {
+            if (localSearch && freeWeeks.size > 1) improve(assignment, freeWeeks, prob, strikesAllowed, teamIndex.keys, objective, horizonWeight, poolEntries, fieldWinProbability)
+            return assignment
+        }
+
+        val hungarianResult = climb(HashMap(hungarianStart))
+        var assignment = hungarianResult
+        if (localSearch && freeWeeks.size > 1) {
+            val greedyResult = climb(greedyAssignment(baseAssignment, freeWeeks, prob))
+            val hungarianScore = score(hungarianResult, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
+            val greedyScore = score(greedyResult, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
+            if (greedyScore > hungarianScore + 1e-12) assignment = greedyResult
+        }
 
         val steps = weeks.mapNotNull { w ->
             val t = assignment[w] ?: return@mapNotNull null
@@ -82,16 +104,30 @@ object Optimizer {
         return Route(steps, strikesAllowed)
     }
 
-    /** Objective value of an assignment, in week order (order matters for [RouteObjective.EXPECTED_WEEKS_ALIVE]/BLENDED). */
+    /** Highest available probability per week, in week order, never reusing a team; the second local-search start. */
+    private fun greedyAssignment(base: Map<Int, Team>, freeWeeks: List<Int>, prob: Map<Int, Map<Team, Double>>): HashMap<Int, Team> {
+        val assignment = HashMap(base)
+        val used = base.values.toMutableSet()
+        for (w in freeWeeks) {
+            val pick = prob[w]?.entries?.filter { it.key !in used }?.maxByOrNull { it.value } ?: continue
+            used += pick.key
+            assignment[w] = pick.key
+        }
+        return assignment
+    }
+
+    /** Objective value of an assignment, in week order (order matters for [RouteObjective.EXPECTED_WEEKS_ALIVE]/BLENDED/POOL_WIN). */
     private fun score(
         assignment: Map<Int, Team>,
         prob: Map<Int, Map<Team, Double>>,
         strikesAllowed: Int,
         objective: RouteObjective,
         horizonWeight: Double,
+        poolEntries: Int,
+        fieldWinProbability: Double,
     ): Double {
         val ps = assignment.entries.sortedBy { it.key }.map { (w, t) -> prob[w]?.get(t) ?: 1.0 }
-        return Survival.objectiveValue(ps, strikesAllowed, objective, horizonWeight)
+        return Survival.objectiveValue(ps, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
     }
 
     private fun improve(
@@ -102,8 +138,10 @@ object Optimizer {
         allTeams: Set<Team>,
         objective: RouteObjective,
         horizonWeight: Double,
+        poolEntries: Int,
+        fieldWinProbability: Double,
     ) {
-        var best = score(assignment, prob, strikesAllowed, objective, horizonWeight)
+        var best = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
         var improved = true
         var rounds = 0
         while (improved && rounds < 50) {
@@ -117,7 +155,7 @@ object Optimizer {
                     if (u in used) continue
                     val pu = prob[w]?.get(u) ?: continue
                     assignment[w] = u
-                    val s = score(assignment, prob, strikesAllowed, objective, horizonWeight)
+                    val s = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
                     if (s > best + 1e-12) { best = s; improved = true } else assignment[w] = current
                 }
             }
@@ -128,7 +166,7 @@ object Optimizer {
                 val t2 = assignment[w2] ?: continue
                 if (prob[w1]?.containsKey(t2) != true || prob[w2]?.containsKey(t1) != true) continue
                 assignment[w1] = t2; assignment[w2] = t1
-                val s = score(assignment, prob, strikesAllowed, objective, horizonWeight)
+                val s = score(assignment, prob, strikesAllowed, objective, horizonWeight, poolEntries, fieldWinProbability)
                 if (s > best + 1e-12) { best = s; improved = true } else { assignment[w1] = t1; assignment[w2] = t2 }
             }
         }

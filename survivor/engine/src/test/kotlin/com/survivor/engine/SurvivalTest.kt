@@ -2,6 +2,7 @@ package com.survivor.engine
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class SurvivalTest {
     private val ps = listOf(0.8, 0.7, 0.9, 0.6)
@@ -69,5 +70,98 @@ class SurvivalTest {
         val horizonWeight = 0.3
         val expectedBlend = (1 - horizonWeight) * Survival.survive(ps, strikesAllowed) + horizonWeight * (Survival.expectedWeeksAlive(ps, strikesAllowed) / ps.size)
         assertEquals(expectedBlend, Survival.objectiveValue(ps, strikesAllowed, RouteObjective.BLENDED, horizonWeight), 1e-12)
+    }
+
+    @Test fun `objectiveValue routes POOL_WIN to poolWinProbability`() {
+        val strikesAllowed = 1
+        assertEquals(
+            Survival.poolWinProbability(ps, strikesAllowed, poolEntries = 40, f = 0.76),
+            Survival.objectiveValue(ps, strikesAllowed, RouteObjective.POOL_WIN, horizonWeight = 0.5, poolEntries = 40, fieldWinProbability = 0.76),
+            1e-12,
+        )
+    }
+
+    @Test fun `fieldAliveCurve is monotone non-increasing and matches aliveAfterEachWeek on flat probabilities`() {
+        for (n in listOf(0, 1, 5, 10)) {
+            for (f in listOf(0.5, 0.7, 0.9, 1.0)) {
+                val curve = Survival.fieldAliveCurve(n, f)
+                assertEquals(n, curve.size)
+                assertEquals(Survival.aliveAfterEachWeek(List(n) { f }, 1), curve)
+                for (i in 1 until curve.size) assertTrue(curve[i] <= curve[i - 1] + 1e-12, "n=$n f=$f i=$i")
+            }
+        }
+    }
+
+    /**
+     * Ground truth for [Survival.poolWinProbability], built by enumerating every win/loss sequence for "you"
+     * (variable weekly probabilities [ps]) and independently for each of [m] other entries (flat weekly
+     * probability [f], double elimination): the pool ends the first week the field's alive count hits zero
+     * (you win outright iff you're still alive that week) or, failing that, at week n where survivors split
+     * the pot 1/(count) each.
+     */
+    private fun bruteForcePoolWin(ps: List<Double>, strikesAllowed: Int, f: Double, m: Int, strikesAllowedForField: Int = 1): Double {
+        val n = ps.size
+        var total = 0.0
+        for (yourMask in 0 until (1 shl n)) {
+            var yourProb = 1.0
+            var yourLosses = 0
+            val yourAlive = BooleanArray(n)
+            for (i in 0 until n) {
+                val lost = (yourMask shr i) and 1 == 1
+                yourProb *= if (lost) (1 - ps[i]) else ps[i]
+                if (lost) yourLosses++
+                yourAlive[i] = yourLosses <= strikesAllowed
+            }
+            if (yourProb == 0.0) continue
+            val otherCombos = 1 shl (n * m)
+            for (combo in 0 until otherCombos) {
+                var otherProb = 1.0
+                val aliveCount = IntArray(n)
+                for (e in 0 until m) {
+                    val mask = (combo shr (e * n)) and ((1 shl n) - 1)
+                    var losses = 0
+                    for (i in 0 until n) {
+                        val lost = (mask shr i) and 1 == 1
+                        otherProb *= if (lost) (1 - f) else f
+                        if (lost) losses++
+                        if (losses <= strikesAllowedForField) aliveCount[i]++
+                    }
+                }
+                val jointProb = yourProb * otherProb
+                if (jointProb == 0.0) continue
+                var share = 0.0
+                var decided = false
+                for (k in 0 until n) {
+                    if (aliveCount[k] == 0) {
+                        if (yourAlive[k]) share = 1.0
+                        decided = true
+                        break
+                    }
+                }
+                if (!decided && yourAlive[n - 1]) share = 1.0 / (1 + aliveCount[n - 1])
+                total += jointProb * share
+            }
+        }
+        return total
+    }
+
+    @Test fun `poolWinProbability matches brute-force enumeration for tiny pools`() {
+        val f = 0.76
+        data class Case(val ps: List<Double>, val strikesAllowed: Int, val m: Int)
+        val cases = listOf(
+            Case(listOf(0.8, 0.6), 1, 1),
+            Case(listOf(0.8, 0.6), 0, 1),
+            Case(listOf(0.55, 0.9), 1, 2),
+            Case(listOf(0.7, 0.65, 0.9), 1, 1),
+            Case(listOf(0.7, 0.65, 0.9), 1, 2),
+            Case(listOf(0.7, 0.65, 0.9), 0, 2),
+        )
+        for (c in cases) {
+            val poolEntries = c.m + 1
+            val expected = bruteForcePoolWin(c.ps, c.strikesAllowed, f, c.m)
+            val actual = Survival.poolWinProbability(c.ps, c.strikesAllowed, poolEntries, f)
+            assertEquals(expected, actual, 1e-9, "ps=${c.ps} strikesAllowed=${c.strikesAllowed} m=${c.m}")
+            assertTrue(actual in 0.0..1.0, "poolWinProbability out of range: $actual")
+        }
     }
 }

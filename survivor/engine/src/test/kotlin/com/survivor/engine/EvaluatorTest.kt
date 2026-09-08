@@ -151,20 +151,24 @@ class EvaluatorTest {
         assertNull(Evaluator.evaluate(season, UserState(), now).recommended!!.leverage)
     }
 
-    @Test fun `strategy comparison produces five simulations with sane numbers`() {
+    @Test fun `strategy comparison produces six simulations with sane numbers`() {
         val season = TestSeason.build(16)
         val results = Strategies.compare(season, UserState(), now, iterations = 2000)
-        assertEquals(5, results.size)
+        assertEquals(6, results.size)
         for (r in results) {
             assertTrue(r.surviveSeason in 0.0..1.0)
             assertTrue(r.reachWeek10 >= r.reachWeek14 && r.reachWeek14 >= r.reachWeek18)
             assertEquals(r.route.steps.size, r.route.teams.size)
             assertTrue(r.expectedWeeksAlive in 0.0..r.route.steps.size.toDouble())
+            assertTrue(r.poolWinProbability in 0.0..1.0, "${r.strategy}: ${r.poolWinProbability}")
         }
         val optimized = results.first { it.strategy == Strategies.FUTURE_VALUE }
         val analytic = Survival.survive(optimized.route.probabilities, 1)
         assertEquals(analytic, optimized.surviveSeason, 0.05)
         assertTrue(results.any { it.strategy == Strategies.EXPECTED_WEEKS })
+        val poolWinRoute = results.first { it.strategy == Strategies.POOL_WIN_ROUTE }
+        val analyticPoolWin = Survival.poolWinProbability(poolWinRoute.route.probabilities, poolWinRoute.route.strikesAllowed, ModelSettings().poolEntries, ModelSettings().fieldAverageWinProbability)
+        assertEquals(analyticPoolWin, poolWinRoute.poolWinProbability, 1e-9)
     }
 
     @Test fun `each route objective still produces a valid route with sane expected weeks alive`() {
@@ -191,5 +195,35 @@ class EvaluatorTest {
                 "seed=$seed survive=${survive.unconstrainedRoute.survival} weeks=${weeks.unconstrainedRoute.survival}",
             )
         }
+    }
+
+    @Test fun `POOL_WIN is the default objective and produces a valid route with a poolWinProbability in 0,1 and a non-increasing field-survivors curve`() {
+        val season = TestSeason.build(18)
+        assertEquals(RouteObjective.POOL_WIN, ModelSettings().routeObjective)
+        val e = Evaluator.evaluate(season, UserState(), now)
+        assertEquals(RouteObjective.POOL_WIN, e.settings.routeObjective)
+        assertEquals(e.route.steps.size, e.route.teams.size)
+        assertTrue(e.poolWinProbability in 0.0..1.0)
+        assertEquals(
+            Survival.poolWinProbability(e.routeRawProbabilities, e.strikesAllowed, e.settings.poolEntries, e.settings.fieldAverageWinProbability),
+            e.poolWinProbability,
+            1e-12,
+        )
+        val survivors = e.expectedFieldSurvivors
+        assertEquals(e.route.steps.size, survivors.size)
+        for (i in 1 until survivors.size) assertTrue(survivors[i].second <= survivors[i - 1].second + 1e-9, "index $i")
+        assertTrue(survivors.all { (_, m) -> m >= 0.0 })
+        assertNotNull(e.expectedPoolEndWeek)
+    }
+
+    @Test fun `pool size shapes expectedFieldSurvivors and expectedPoolEndWeek sensibly`() {
+        val season = TestSeason.build(19)
+        val small = Evaluator.evaluate(season, UserState(settings = ModelSettings(poolEntries = 2)), now)
+        val big = Evaluator.evaluate(season, UserState(settings = ModelSettings(poolEntries = 5000)), now)
+        // More entries means more expected OTHER survivors after any given week.
+        val week = small.expectedFieldSurvivors.first().first
+        assertTrue(big.expectedFieldSurvivors.first { it.first == week }.second >= small.expectedFieldSurvivors.first { it.first == week }.second)
+        // ...and the field takes (weakly) longer, in expectation, to be fully eliminated.
+        assertTrue(big.expectedPoolEndWeek!! >= small.expectedPoolEndWeek!! - 1e-9)
     }
 }

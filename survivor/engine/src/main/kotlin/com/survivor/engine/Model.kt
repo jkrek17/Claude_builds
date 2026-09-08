@@ -130,6 +130,10 @@ enum class RouteObjective(val label: String, val description: String) {
         "Blended",
         "Weighted mix of P(survive season) and expected weeks alive: (1 − horizonWeight) · P(survive season) + horizonWeight · expectedWeeksAlive / n",
     ),
+    POOL_WIN(
+        "Win the pool",
+        "Maximize P(win the pool): accounts for pool size and how fast the field is eliminated, not just your own survival",
+    ),
 }
 
 enum class Strategy(val label: String, val description: String) {
@@ -170,13 +174,20 @@ data class ModelSettings(
     val strikeFutureWeightMultiplier: Double = 0.4,
     val ownershipLeverageWeight: Double = 0.0,
     val strategy: Strategy = Strategy.CONSERVATIVE,
-    /** Average win probability of the field's picks, used as the pool-equity proxy when ownership is entered. */
+    /** Average win probability of the field's picks, used as the pool-equity proxy when ownership is entered
+     *  and as every other entry's flat weekly win probability in the [RouteObjective.POOL_WIN] field model. */
     val fieldAverageWinProbability: Double = 0.76,
     val monteCarloIterations: Int = 20_000,
     /** Which season-path quantity the optimizer maximizes; see [RouteObjective]. */
-    val routeObjective: RouteObjective = RouteObjective.SURVIVE_SEASON,
+    val routeObjective: RouteObjective = RouteObjective.POOL_WIN,
     /** Weight on expected-weeks-alive vs. P(survive season) when [routeObjective] is BLENDED (0..1). */
     val horizonWeight: Double = 0.5,
+    /** Total entries in the pool, including you (2..100000). Drives [RouteObjective.POOL_WIN]. */
+    val poolEntries: Int = 50,
+    /** If the season ends with several survivors, true assumes the pot is split evenly; false assumes a
+     *  tiebreaker you'd win with probability 1/(survivors). Doesn't change [Survival.poolWinProbability]'s
+     *  math - your expected share is the same either way - kept only so Settings can explain the assumption. */
+    val poolPayoutSplit: Boolean = true,
 ) {
     fun forStrategy(strategy: Strategy): ModelSettings = copy(
         strategy = strategy,
@@ -210,10 +221,12 @@ data class ModelSettings(
             "minimumAcceptableWinProbability" to "Picks below this win % are flagged as risky regardless of future value.",
             "strikeFutureWeightMultiplier" to "After a strike, future value weight is multiplied by this (be conservative).",
             "ownershipLeverageWeight" to "Safety bonus per unit of leverage when pick share is entered. Set by strategy.",
-            "fieldAverageWinProbability" to "Assumed win % of the rest of the pool's picks in the equity proxy.",
+            "fieldAverageWinProbability" to "Assumed win % of the rest of the pool's picks in the equity proxy, and of every other entry's weekly pick in the pool-win objective.",
             "monteCarloIterations" to "Simulated seasons per strategy in the Monte Carlo tab.",
-            "routeObjective" to "What the season-path optimizer maximizes: survive the whole season, expected weeks alive, or a blend of both.",
+            "routeObjective" to "What the season-path optimizer maximizes: win the pool (default), survive the whole season, expected weeks alive, or a blend of the last two.",
             "horizonWeight" to "Blended objective only: weight on expected weeks alive vs. P(survive season), 0 (survive-season only) to 1 (expected-weeks only).",
+            "poolEntries" to "Total entries in the pool, including you (2-100000). A 10-entry pool usually ends well before Week 18; a 500-entry pool often runs the full season. Drives the pool-win objective.",
+            "poolPayoutSplit" to "Whether a multi-survivor finish splits the pot evenly (true) or is decided by a tiebreaker (false). Explanation only - doesn't change the pool-win math, since your expected share is the same either way.",
         )
     }
 }

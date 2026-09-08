@@ -15,6 +15,9 @@ data class SimulationResult(
     val zeroLossFinish: Double,
     /** Mean number of the route's weeks the entry survived through, across all simulated seasons. */
     val expectedWeeksAlive: Double,
+    /** Analytic P(win the pool) along [route]'s undiscounted probabilities - not simulated, computed directly
+     *  from [Survival.poolWinProbability] the same way [Route.survival] is. */
+    val poolWinProbability: Double,
     val route: Route,
 )
 
@@ -29,6 +32,8 @@ object MonteCarlo {
         strikesUsed: Int,
         iterations: Int,
         seed: Long = 42L,
+        poolEntries: Int = 50,
+        fieldWinProbability: Double = 0.76,
     ): SimulationResult {
         val rng = Random(seed)
         val steps = route.steps.sortedBy { it.week }
@@ -74,6 +79,7 @@ object MonteCarlo {
             expectedStrikes = strikeSum / n,
             zeroLossFinish = zeroLoss / n,
             expectedWeeksAlive = weeksAliveSum / n,
+            poolWinProbability = Survival.poolWinProbability(route.probabilities, route.strikesAllowed, poolEntries, fieldWinProbability),
             route = route,
         )
     }

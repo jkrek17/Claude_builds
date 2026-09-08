@@ -50,6 +50,23 @@ sealed class Policy(val label: String) {
         }
     }
 
+    /**
+     * Runs the season-path optimizer with the [RouteObjective.POOL_WIN] objective, for a pool of
+     * [poolEntries] entries where the field's flat weekly win probability is [fieldWinProbability]. Does not
+     * change any other policy's behavior - each policy decides independently.
+     */
+    data class PoolWin(val discountPerWeek: Double, val poolEntries: Int = 50, val fieldWinProbability: Double = 0.76) :
+        Policy("Pool win ($poolEntries entries, discount ${"%.0f".format(discountPerWeek * 100)}%/wk)") {
+        override fun decide(ctx: PolicyContext): Team? {
+            val cands = candidateTable(ctx, discountPerWeek)
+            val route = Optimizer.optimize(
+                cands, ctx.strikesAllowed, locked = ctx.locked, objective = RouteObjective.POOL_WIN,
+                poolEntries = poolEntries, fieldWinProbability = fieldWinProbability,
+            )
+            return route.team(ctx.week)
+        }
+    }
+
     /** Hungarian assignment only, undiscounted: maximizes P(zero losses) over the remaining schedule. */
     object ZeroLoss : Policy("Zero-loss path (Hungarian only)") {
         override fun decide(ctx: PolicyContext): Team? {

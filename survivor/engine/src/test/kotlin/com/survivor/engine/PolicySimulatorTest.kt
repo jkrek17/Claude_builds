@@ -130,4 +130,20 @@ class PolicySimulatorTest {
         assertEquals(2 + cmp.results.size, lines.size)
         assertTrue(lines[0].contains("Policy"))
     }
+
+    @Test fun `Policy PoolWin runs alongside the other policies and does not change their results`() {
+        val season = TestSeason.build(95)
+        val user = UserState()
+        val withoutPoolWin = PolicySimulator.simulate(season, user, now, listOf(Policy.Greedy, Policy.Optimized(0.03)), seasons = 60, seed = 41)
+        val withPoolWin = PolicySimulator.simulate(
+            season, user, now,
+            listOf(Policy.Greedy, Policy.Optimized(0.03), Policy.PoolWin(discountPerWeek = 0.03, poolEntries = 20)),
+            seasons = 60, seed = 41,
+        )
+        assertEquals(withoutPoolWin.results[0], withPoolWin.results[0])
+        assertEquals(withoutPoolWin.results[1], withPoolWin.results[1])
+        val poolWinResult = withPoolWin.results[2]
+        assertTrue(poolWinResult.surviveSeason in 0.0..1.0)
+        assertTrue(poolWinResult.expectedWeeksAlive in 0.0..(REGULAR_SEASON_WEEKS.toDouble()))
+    }
 }
