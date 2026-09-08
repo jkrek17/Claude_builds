@@ -8,13 +8,20 @@ import com.survivor.app.data.SurvivorRepository
 import com.survivor.engine.Adjustment
 import com.survivor.engine.Evaluation
 import com.survivor.engine.ModelSettings
+import com.survivor.engine.Policy
+import com.survivor.engine.PolicyComparison
+import com.survivor.engine.PolicySimulator
+import com.survivor.engine.RobustPlanner
 import com.survivor.engine.SimulationResult
+import com.survivor.engine.StabilityReport
 import com.survivor.engine.Team
 import com.survivor.engine.data.SavedState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
     val state: StateFlow<SavedState> = repo.state
@@ -31,12 +38,42 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
     private val _simulating = MutableStateFlow(false)
     val simulating: StateFlow<Boolean> = _simulating
 
+    /** Scenario-based stability of the recommended route (see [RobustPlanner]); recomputed after every
+     *  evaluation on a background dispatcher and cached here. Null while nothing has finished yet. */
+    private val _robustPlan = MutableStateFlow<StabilityReport?>(null)
+    val robustPlan: StateFlow<StabilityReport?> = _robustPlan
+    private val _robustPlanning = MutableStateFlow(false)
+    val robustPlanning: StateFlow<Boolean> = _robustPlanning
+
+    private val _policyComparison = MutableStateFlow<PolicyComparison?>(null)
+    val policyComparison: StateFlow<PolicyComparison?> = _policyComparison
+    private val _policyComparing = MutableStateFlow(false)
+    val policyComparing: StateFlow<Boolean> = _policyComparing
+
     init {
         viewModelScope.launch {
             repo.state.collectLatest { s ->
                 _evaluating.value = true
                 _evaluation.value = runCatching { repo.evaluate(s) }.getOrNull()
                 _evaluating.value = false
+            }
+        }
+        // Independent collector so a slow robustness pass never blocks the fast evaluation above; collectLatest
+        // cancels any in-flight scenario run the moment newer state arrives.
+        viewModelScope.launch {
+            repo.state.collectLatest { s ->
+                val season = s.season
+                if (season == null || season.games.isEmpty()) {
+                    _robustPlan.value = null
+                    return@collectLatest
+                }
+                _robustPlanning.value = true
+                _robustPlan.value = withContext(Dispatchers.Default) {
+                    runCatching {
+                        RobustPlanner.plan(season, s.user, System.currentTimeMillis(), scenarios = 150, lockedValueScenarios = 60)
+                    }.getOrNull()
+                }
+                _robustPlanning.value = false
             }
         }
     }
@@ -52,12 +89,37 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
     fun updateSettings(s: ModelSettings) = repo.updateSettings(s)
     fun setOddsApiKey(k: String) = repo.setOddsApiKey(k)
     fun setWeekOverride(w: Int?) = repo.setWeekOverride(w)
-    fun reset(includeData: Boolean) { repo.reset(includeData); _simulation.value = emptyList() }
+    fun reset(includeData: Boolean) {
+        repo.reset(includeData)
+        _simulation.value = emptyList()
+        _policyComparison.value = null
+    }
 
     fun runMonteCarlo() = viewModelScope.launch {
         _simulating.value = true
         _simulation.value = runCatching { repo.compareStrategies() }.getOrDefault(emptyList())
         _simulating.value = false
+    }
+
+    /** Closed-loop comparison of the five headline policies over [seasons] re-decided seasons (200-2000). */
+    fun runPolicyComparison(seasons: Int = 500) = viewModelScope.launch {
+        val season = state.value.season ?: return@launch
+        val user = state.value.user
+        _policyComparing.value = true
+        _policyComparison.value = withContext(Dispatchers.Default) {
+            runCatching {
+                val settings = user.settings
+                val policies = listOf(
+                    Policy.Greedy,
+                    Policy.Optimized(settings.futureDiscountPerWeek),
+                    Policy.PoolWin(settings.futureDiscountPerWeek, settings.poolEntries, settings.fieldAverageWinProbability),
+                    Policy.ZeroLoss,
+                    Policy.Threshold(settings.minimumAcceptableWinProbability, settings.futureDiscountPerWeek),
+                )
+                PolicySimulator.simulate(season, user, System.currentTimeMillis(), policies, seasons.coerceIn(200, 2000))
+            }.getOrNull()
+        }
+        _policyComparing.value = false
     }
 
     class Factory(private val repo: SurvivorRepository) : ViewModelProvider.Factory {
