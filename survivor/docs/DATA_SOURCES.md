@@ -9,6 +9,7 @@
 | Consensus moneylines across US books | The Odds API v4 | `api.the-odds-api.com/v4/sports/americanfootball_nfl/odds?regions=us&markets=h2h` | yes (free tier: 500 requests/month) | any refresh when a key is saved |
 | Injuries, starting QBs, weather | none automated | — | — | Weekly Inputs (points of spread) |
 | Survivor pick popularity (Yahoo) | Yahoo Survival Football pick-distribution page (public, server-rendered HTML) | `football.fantasysports.yahoo.com/survival/pickdistribution/` | no | Refresh Odds / Refresh NFL Data |
+| Multi-book odds board (moneyline, spread, total) for the Betting tab | The Odds API v4 | `api.the-odds-api.com/v4/sports/americanfootball_nfl/odds?regions=us&markets=h2h,spreads,totals` | yes (counts as 3 of the 500 free monthly requests per refresh - see BETTING.md) | a dedicated betting-board refresh, recommended at most every 3 hours |
 
 ## Freshness and staleness
 

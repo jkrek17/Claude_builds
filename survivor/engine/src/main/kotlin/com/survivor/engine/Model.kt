@@ -86,6 +86,10 @@ data class Season(
     val pickShares: Map<Int, Map<Team, Double>> = emptyMap(),
     val pickSharesFetchedAtEpochMs: Long? = null,
     val pickSharesSource: String = "",
+    /** Multi-book odds (moneyline, spread, total) from The Odds API, keyed by the ESPN [Game.id] they
+     *  were matched to. See [com.survivor.engine.data.OddsApiParser.attachBoard] and [BettingEngine]. */
+    val board: Map<String, GameBoard> = emptyMap(),
+    val boardFetchedAtEpochMs: Long? = null,
 ) {
     fun gamesInWeek(week: Int): List<Game> = games.filter { it.week == week }
     fun gameFor(team: Team, week: Int): Game? = games.firstOrNull { it.week == week && it.involves(team) }
@@ -199,6 +203,22 @@ data class ModelSettings(
      *  tiebreaker you'd win with probability 1/(survivors). Doesn't change [Survival.poolWinProbability]'s
      *  math - your expected share is the same either way - kept only so Settings can explain the assumption. */
     val poolPayoutSplit: Boolean = true,
+    /** Assumed bankroll (dollars) for [BettingEngine] stake sizing. */
+    val bankroll: Double = 1000.0,
+    /** Fraction of full Kelly staked, e.g. 0.25 = quarter-Kelly. */
+    val kellyMultiplier: Double = 0.25,
+    /** Cap on any single stake, as a fraction of [bankroll]. */
+    val maxStakePct: Double = 0.02,
+    /** Minimum EV (0.01 = 1%) for a line-shopping pick to be shown. */
+    val minLineShopEdge: Double = 0.01,
+    /** Minimum EV (0.03 = 3%) for a model-vs-market pick to be shown; higher than [minLineShopEdge]
+     *  because the model signal is far noisier. */
+    val minModelEdge: Double = 0.03,
+    /** Scale of the normal model that turns a total's over/under line into a probability, used only to
+     *  shift a "better number" total onto the consensus total's fair probability. */
+    val totalSigma: Double = 10.0,
+    /** Whether [BettingEngine] considers the TOTAL market at all. */
+    val includeTotals: Boolean = true,
 ) {
     fun forStrategy(strategy: Strategy): ModelSettings = copy(
         strategy = strategy,
@@ -238,6 +258,13 @@ data class ModelSettings(
             "horizonWeight" to "Blended objective only: weight on expected weeks alive vs. P(survive season), 0 (survive-season only) to 1 (expected-weeks only).",
             "poolEntries" to "Total entries in the pool, including you (2-100000). A 10-entry pool usually ends well before Week 18; a 500-entry pool often runs the full season. Drives the pool-win objective.",
             "poolPayoutSplit" to "Whether a multi-survivor finish splits the pot evenly (true) or is decided by a tiebreaker (false). Explanation only - doesn't change the pool-win math, since your expected share is the same either way.",
+            "bankroll" to "Assumed betting bankroll (dollars) for stake sizing in the Betting tab.",
+            "kellyMultiplier" to "Fraction of full Kelly staked, e.g. 0.25 = quarter-Kelly. Lower is more conservative.",
+            "maxStakePct" to "Hard cap on any single stake, as a fraction of bankroll, regardless of Kelly's suggestion.",
+            "minLineShopEdge" to "Minimum EV for a line-shopping bet (best book vs. no-vig consensus of the rest) to be shown.",
+            "minModelEdge" to "Minimum EV for a model-vs-market bet to be shown. Higher than minLineShopEdge because the model signal is speculative.",
+            "totalSigma" to "Scale of the points-total → probability curve, used only to price a total offered at a different number than the consensus.",
+            "includeTotals" to "Whether the Betting tab looks at the total (over/under) market at all.",
         )
     }
 }
@@ -250,6 +277,8 @@ data class UserState(
     val oddsApiKey: String = "",
     /** Manually chosen week; null = infer from the schedule. */
     val weekOverride: Int? = null,
+    /** Logged wagers, graded by [BettingEngine.ledger]. */
+    val bets: List<Bet> = emptyList(),
 ) {
     fun pickFor(week: Int): Pick? = picks.firstOrNull { it.week == week }
     fun adjustment(week: Int, team: Team): Adjustment? = adjustments.firstOrNull { it.week == week && it.team == team }
