@@ -16,6 +16,10 @@ data class TeamWeekEvaluation(
     val futureValue: FutureValue,
     /** Relative loss (%) of the remaining path's survival probability if this team is used now. */
     val opportunityCost: Double,
+    /** Relative loss (%) of modeled season survival when this team is locked in now vs. the optimizer's unconstrained best path. */
+    val seasonPathLoss: Double,
+    /** True when the unconstrained optimizer also uses this team in the current week. */
+    val onOptimalPath: Boolean,
     val components: SafetyComponents,
     val leverage: Leverage?,
     val adjustment: Adjustment?,
@@ -88,8 +92,10 @@ data class Evaluation(
     val recommended: TeamWeekEvaluation?,
     val alternatives: List<TeamWeekEvaluation>,
     val explanation: Explanation?,
-    /** Optimized route from the current week to Week 18 (discounted probabilities inside the optimizer). */
+    /** Optimized route from the current week to Week 18, with the recommended (or recorded) pick locked in for this week. */
     val route: Route,
+    /** The optimizer's best path with no current-week constraint; differs from [route] only when the Safety ranking disagrees. */
+    val unconstrainedRoute: Route,
     /** Undiscounted probabilities along the route, for season survival reporting. */
     val routeRawProbabilities: List<Double>,
     val planner: List<PlannerRow>,
@@ -160,7 +166,12 @@ object Evaluator {
         // Locked picks for the current and any future week the user has already recorded.
         val locked = user.picks.filter { it.week >= currentWeek }.associate { it.week to it.team }
         val routeCandidates = candidates(currentWeek, usedTeams - locked.values.toSet())
-        val route = Optimizer.optimize(routeCandidates, strikesAllowed, locked)
+        val unconstrainedRoute = Optimizer.optimize(routeCandidates, strikesAllowed, locked)
+        fun routeWith(team: Team): Route = if (currentPick != null) unconstrainedRoute else Optimizer.optimize(routeCandidates, strikesAllowed, locked + (currentWeek to team))
+        fun seasonPathLoss(team: Team): Double {
+            if (unconstrainedRoute.team(currentWeek) == team || unconstrainedRoute.survival <= 0.0) return 0.0
+            return ((1.0 - routeWith(team).survival / unconstrainedRoute.survival) * 100.0).coerceAtLeast(0.0)
+        }
 
         // Opportunity cost of using each team this week = relative loss of the future path's survival.
         val futureWeek = currentWeek + 1
@@ -179,10 +190,11 @@ object Evaluator {
             val adjustment = user.adjustment(currentWeek, team)
             val used = team in usedTeams && currentPick?.team != team
             val cost = if (used) 0.0 else opportunityCost(team)
+            val pathLoss = if (used) 0.0 else seasonPathLoss(team)
             val fv = futureValues.getValue(team)
             val leverage = Safety.leverage(estimate.probability, adjustment?.estimatedPickShare, settings.fieldAverageWinProbability)
-            val components = Safety.components(estimate, situation, adjustment, cost, fv.premiumSpots, leverage, strikesUsed, settings)
-            TeamWeekEvaluation(currentWeek, team, game, game.opponentOf(team), situation, estimate, used, fv, cost, components, leverage, adjustment, rank = 0)
+            val components = Safety.components(estimate, situation, adjustment, cost, pathLoss, fv.premiumSpots, leverage, strikesUsed, settings)
+            TeamWeekEvaluation(currentWeek, team, game, game.opponentOf(team), situation, estimate, used, fv, cost, pathLoss, unconstrainedRoute.team(currentWeek) == team, components, leverage, adjustment, rank = 0)
         }
         val rankKey: (TeamWeekEvaluation) -> Double = { e ->
             if (settings.strategy == Strategy.MAX_POOL_EQUITY && e.leverage != null) e.leverage.expectedEquity * 100.0 else e.safetyScore
@@ -192,7 +204,9 @@ object Evaluator {
 
         val recommended = currentPick?.let { p -> ranked.firstOrNull { it.team == p.team } } ?: ranked.firstOrNull()
         val alternatives = ranked.filter { it.team != recommended?.team }.take(3)
-        val explanation = recommended?.let { Explain.build(it, alternatives, ranked, strikesUsed, settings) }
+        // The route shown everywhere starts from the pick we are actually recommending (or the one recorded).
+        val route = recommended?.let { routeWith(it.team) } ?: unconstrainedRoute
+        val explanation = recommended?.let { Explain.build(it, alternatives, ranked, unconstrainedRoute, route, strikesUsed, settings) }
 
         // Planner
         var strikes = 0
@@ -237,7 +251,7 @@ object Evaluator {
             season = season, currentWeek = currentWeek, strikesUsed = strikesUsed, eliminated = strikesUsed >= 2,
             usedTeams = usedTeams, pickOutcomes = outcomes, currentPick = currentPick,
             rankings = ranked, unavailable = unavailable, recommended = recommended, alternatives = alternatives, explanation = explanation,
-            route = route, routeRawProbabilities = routeRaw, planner = planner, grid = grid, futureValues = futureValues, settings = settings,
+            route = route, unconstrainedRoute = unconstrainedRoute, routeRawProbabilities = routeRaw, planner = planner, grid = grid, futureValues = futureValues, settings = settings,
         )
     }
 

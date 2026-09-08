@@ -13,12 +13,13 @@ data class SafetyComponents(
     val marketAdjustment: Double,
     val futureCost: Double,
     val scarcityPenalty: Double,
+    val pathPenalty: Double,
     val thresholdPenalty: Double,
     val leverageAdjustment: Double,
 ) {
     val matchupRisk: Double get() = roadPenalty + divisionalPenalty + restPenalty + travelPenalty + qbPenalty
     val total: Double
-        get() = (base - matchupRisk + marketAdjustment - futureCost - scarcityPenalty - thresholdPenalty + leverageAdjustment)
+        get() = (base - matchupRisk + marketAdjustment - futureCost - scarcityPenalty - pathPenalty - thresholdPenalty + leverageAdjustment)
             .coerceIn(0.0, 100.0)
 }
 
@@ -42,6 +43,7 @@ object Safety {
         situation: Situation,
         adjustment: Adjustment?,
         opportunityCost: Double,
+        seasonPathLoss: Double,
         premiumSpots: Int,
         leverage: Leverage?,
         strikesUsed: Int,
@@ -67,6 +69,7 @@ object Safety {
             marketAdjustment = marketAdjustment,
             futureCost = opportunityCost * settings.futureValueWeight * strikeMultiplier,
             scarcityPenalty = premiumSpots.coerceAtMost(3) * settings.futureScarcityWeight * strikeMultiplier,
+            pathPenalty = seasonPathLoss * settings.pathLossWeight * strikeMultiplier,
             thresholdPenalty = shortfall * if (strikesUsed >= 1) 1.5 else 0.5,
             leverageAdjustment = leverage?.let { it.leverageScore * settings.ownershipLeverageWeight } ?: 0.0,
         )

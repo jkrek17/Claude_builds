@@ -1,0 +1,146 @@
+name: Survivor Optimizer CI
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["survivor/**", ".github/workflows/survivor-android.yml"]
+  pull_request:
+    paths: ["survivor/**", ".github/workflows/survivor-android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: survivor
+
+jobs:
+  build:
+    name: Test, lint and build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # versionCode = commit count
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests (engine + app)
+        run: ./gradlew :engine:test :app:testDebugUnitTest --no-daemon
+
+      - name: Lint
+        run: ./gradlew :app:lintDebug --no-daemon
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: survivor-optimizer-debug-apk
+          path: survivor/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish rolling debug release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          TAG="survivor-debug-latest"
+          cp app/build/outputs/apk/debug/app-debug.apk SurvivorOptimizer-debug.apk
+          gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create "$TAG" SurvivorOptimizer-debug.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Survivor Optimizer: latest debug build" \
+            --notes "Debug APK built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Download SurvivorOptimizer-debug.apk, open it on your phone, allow the install, then tap Download NFL data."
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: survivor-test-reports
+          path: |
+            survivor/engine/build/reports/tests
+            survivor/app/build/reports/tests
+            survivor/app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
+  release:
+    name: Build release APK and AAB
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HAS_RELEASE_KEY: ${{ secrets.SV_RELEASE_KEYSTORE_BASE64 != '' && secrets.SV_RELEASE_KEYSTORE_PASSWORD != '' && secrets.SV_RELEASE_KEY_ALIAS != '' && secrets.SV_RELEASE_KEY_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble release APK and bundle
+        env:
+          SV_RELEASE_KEYSTORE_BASE64: ${{ secrets.SV_RELEASE_KEYSTORE_BASE64 }}
+          SV_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.SV_RELEASE_KEYSTORE_PASSWORD }}
+          SV_RELEASE_KEY_ALIAS: ${{ secrets.SV_RELEASE_KEY_ALIAS }}
+          SV_RELEASE_KEY_PASSWORD: ${{ secrets.SV_RELEASE_KEY_PASSWORD }}
+        run: |
+          echo "Release signing: ${HAS_RELEASE_KEY}" >> "$GITHUB_STEP_SUMMARY"
+          ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon
+
+      - name: Upload release outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: survivor-optimizer-release
+          path: |
+            survivor/app/build/outputs/apk/release/*.apk
+            survivor/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish rolling release build
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          TAG="survivor-release-latest"
+          cp app/build/outputs/apk/release/app-release.apk SurvivorOptimizer-release.apk
+          gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create "$TAG" SurvivorOptimizer-release.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Survivor Optimizer: latest release build" \
+            --notes "R8-shrunk release APK built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Signed with a real upload key: ${HAS_RELEASE_KEY}."

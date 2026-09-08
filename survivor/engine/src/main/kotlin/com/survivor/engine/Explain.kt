@@ -7,13 +7,14 @@ import kotlin.math.roundToInt
 object Explain {
 
     fun pct(p: Double): String = "${(p * 100).roundToInt()}%"
+    fun pct1(p: Double): String = String.format(java.util.Locale.US, "%.1f%%", p * 100)
     fun spread(s: Double?): String = when {
         s == null -> "no line"
         s == 0.0 -> "pick'em"
         s < 0 -> "${fmt(s)}"
         else -> "+${fmt(s)}"
     }
-    private fun fmt(s: Double): String = if (s == s.roundToInt().toDouble()) s.roundToInt().toString() else String.format("%.1f", s)
+    private fun fmt(s: Double): String = if (s == s.roundToInt().toDouble()) s.roundToInt().toString() else String.format(java.util.Locale.US, "%.1f", s)
     fun moneyline(ml: Int?): String = ml?.let { if (it > 0) "+$it" else "$it" } ?: "—"
 
     fun venue(e: TeamWeekEvaluation): String = when {
@@ -26,6 +27,8 @@ object Explain {
         rec: TeamWeekEvaluation,
         alternatives: List<TeamWeekEvaluation>,
         ranked: List<TeamWeekEvaluation>,
+        unconstrainedRoute: Route,
+        route: Route,
         strikesUsed: Int,
         settings: ModelSettings,
     ): Explanation {
@@ -69,6 +72,11 @@ object Explain {
                 best.probability <= rec.probability + 0.02 -> append("This is $t's best remaining spot: its next-best game is ${pct(best.probability)} in Week ${best.week} ${if (best.isHome) "vs" else "@"} ${best.opponent.abbr}.")
                 else -> append("$t does have a better spot later (Week ${best.week}, ${pct(best.probability)}), but the optimizer can cover Week ${best.week} with another team, so the cost of using $t now is only ${fmt(rec.opportunityCost)}% of future path value.")
             }
+            val optTeam = unconstrainedRoute.team(rec.week)
+            if (optTeam != null && optTeam != rec.team) {
+                val optP = ranked.firstOrNull { it.team == optTeam }?.probability
+                append(" The season optimizer's unconstrained path would use ${optTeam.abbr}${optP?.let { " (${pct(it)})" } ?: ""} this week and save $t; taking $t now instead lowers modeled season survival by ${String.format(java.util.Locale.US, "%.1f", rec.seasonPathLoss)}% relative (${pct1(route.survival)} vs ${pct1(unconstrainedRoute.survival)} discounted), which the Safety Score treats as a fair trade for the extra safety this week.")
+            } else append(" The full-season optimizer also uses $t this week.")
             if (strikesUsed >= 1) append(" You have a strike, so the model is weighting this week's safety much more heavily than future value.")
         }
         val giveUp = buildString {
@@ -96,6 +104,7 @@ object Explain {
                 if (a.components.matchupRisk > rec.components.matchupRisk + 1) reasons += "more matchup risk (${fmt(a.components.matchupRisk)} pts of penalties)"
                 if (a.components.marketAdjustment < rec.components.marketAdjustment) reasons += "weaker market backing (${a.estimate.source.label.lowercase()})"
                 if (a.components.scarcityPenalty > rec.components.scarcityPenalty) reasons += "${a.futureValue.premiumSpots} premium future spots to protect"
+                if (a.seasonPathLoss > rec.seasonPathLoss + 1) reasons += "locking it now costs ${String.format(java.util.Locale.US, "%.1f", a.seasonPathLoss)}% of season survival vs ${String.format(java.util.Locale.US, "%.1f", rec.seasonPathLoss)}%"
                 if (a.components.thresholdPenalty > 0) reasons += "below the ${pct(settings.minimumAcceptableWinProbability)} minimum"
                 if (a.components.leverageAdjustment < rec.components.leverageAdjustment - 0.5) reasons += "more heavily owned"
                 if (reasons.isEmpty()) reasons += "nearly identical; ${rec.team.abbr} edges it on the combined score"

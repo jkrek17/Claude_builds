@@ -1,5 +1,10 @@
 # Composition Coach
 
+> **Also in this repository:** [`survivor/`](survivor/README.md) — **Survivor Optimizer**, a separate native Android app
+> that acts as an NFL survivor-pool command center (live DraftKings lines and ESPN FPI via ESPN's public JSON, a
+> season-path optimizer, double-elimination survival math, Monte Carlo, and a plain-language weekly recommendation).
+> It has its own Gradle build and CI workflow and does not affect Composition Coach.
+
 A native Android camera app that acts as a real-time photography composition coach.
 It analyzes the live camera preview **on the device**, shows a 0–100 composition score,
 and tells you how to physically reframe the shot before you press the shutter:

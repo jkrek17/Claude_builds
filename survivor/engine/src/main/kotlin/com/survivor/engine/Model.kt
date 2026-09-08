@@ -138,6 +138,8 @@ data class ModelSettings(
     val futureValueWeight: Double = 0.55,
     /** Extra scarcity penalty when a team has several premium future spots. */
     val futureScarcityWeight: Double = 1.5,
+    /** Safety points removed per 1% of modeled season survival lost by taking this team now instead of the optimizer's path. */
+    val pathLossWeight: Double = 0.5,
     val roadPenalty: Double = 1.0,
     val divisionalPenalty: Double = 1.5,
     val shortRestPenaltyPerDay: Double = 0.6,
@@ -176,6 +178,7 @@ data class ModelSettings(
             "futureDiscountPerWeek" to "Shrinks future win % toward 50% by this much per week ahead inside the optimizer only.",
             "futureValueWeight" to "Safety points removed per point of opportunity cost. Higher = protect elite teams more.",
             "futureScarcityWeight" to "Extra safety penalty per premium (>80%) future spot the team would lose.",
+            "pathLossWeight" to "Safety points removed per 1% of season-survival lost (relative) by locking this team now vs. the optimizer's unconstrained best path.",
             "roadPenalty" to "Safety points removed for a road game (variance not captured by the line).",
             "divisionalPenalty" to "Safety points removed for a divisional game (historically more upsets).",
             "shortRestPenaltyPerDay" to "Safety points removed per day of rest disadvantage vs. the opponent.",

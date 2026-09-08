@@ -25,6 +25,14 @@ class EvaluatorTest {
         val season = TestSeason.build(8)
         val e = Evaluator.evaluate(season, UserState(), now)
         assertEquals(e.route.steps.size, e.route.teams.size)
+        assertEquals(e.unconstrainedRoute.steps.size, e.unconstrainedRoute.teams.size)
+        // The displayed route always starts with the recommended pick, and the unconstrained optimum is never worse.
+        assertEquals(e.recommended!!.team, e.route.team(e.currentWeek))
+        assertTrue(e.unconstrainedRoute.survival >= e.route.survival - 1e-12)
+        val onPath = e.rankings.first { it.onOptimalPath }
+        assertEquals(e.unconstrainedRoute.team(e.currentWeek), onPath.team)
+        assertEquals(0.0, onPath.seasonPathLoss, 1e-12)
+        assertTrue(e.rankings.filter { !it.onOptimalPath }.all { it.seasonPathLoss >= 0.0 })
         for (r in e.rankings) {
             val cell = e.grid.getValue(r.team)[0]!!
             assertEquals(cell.probability, r.probability, 1e-12)
