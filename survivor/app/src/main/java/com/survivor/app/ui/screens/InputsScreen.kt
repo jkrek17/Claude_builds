@@ -38,6 +38,8 @@ import com.survivor.app.ui.components.HTable
 import com.survivor.app.ui.components.SectionCard
 import com.survivor.app.ui.components.TierBadge
 import com.survivor.app.ui.components.WeekSelector
+import com.survivor.app.ui.components.TeamLogo
+import com.survivor.app.ui.theme.Spacing
 import com.survivor.engine.Adjustment
 import com.survivor.engine.GridCell
 import com.survivor.engine.LineHistory
@@ -54,7 +56,7 @@ fun InputsScreen(vm: AppViewModel) {
     var editing by remember { mutableStateOf<GridCell?>(null) }
     var apiKey by remember(state.user.oddsApiKey) { mutableStateOf(state.user.oddsApiKey) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         SectionCard("Data sources") {
             Text("Schedule, scores, DraftKings spreads/moneylines and FPI projections come from ESPN automatically. Optionally add a free key from the-odds-api.com to replace the single-book moneyline with a consensus across US books for the current week.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(apiKey, { apiKey = it }, label = { Text("The Odds API key (optional)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
@@ -68,7 +70,8 @@ fun InputsScreen(vm: AppViewModel) {
             val cells = e.grid.mapNotNull { (_, row) -> row[week - 1] }.sortedBy { it.team.abbr }
             cells.forEach { c ->
                 val adj = state.user.adjustment(week, c.team)
-                Row(Modifier.fillMaxWidth().clickable { editing = c }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().clickable { editing = c }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    TeamLogo(c.team, 28.dp)
                     Column(Modifier.weight(1f)) {
                         Text("${c.team.abbr} ${Fmt.matchup(c.opponent.abbr, c.isHome, c.neutral)}", fontWeight = FontWeight.SemiBold)
                         Text("${Fmt.spread(c.teamSpread)} · ${c.source.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

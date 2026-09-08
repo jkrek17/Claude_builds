@@ -35,6 +35,7 @@ import com.survivor.app.ui.AppViewModel
 import com.survivor.app.ui.components.EmptyState
 import com.survivor.app.ui.components.Fmt
 import com.survivor.app.ui.components.KeyValue
+import com.survivor.app.ui.components.TeamLogo
 import com.survivor.app.ui.components.TierBadge
 import com.survivor.app.ui.theme.premiumContainer
 import com.survivor.app.ui.theme.tierContainer
@@ -46,7 +47,7 @@ import com.survivor.engine.Tier
 
 private val CELL_W = 84.dp
 private val CELL_H = 34.dp
-private val TEAM_W = 46.dp
+private val TEAM_W = 64.dp
 private val SUMMARY_W = 60.dp
 
 @Composable
@@ -67,8 +68,15 @@ fun GridScreen(vm: AppViewModel) {
             Column {
                 HeaderCell("Team", TEAM_W)
                 teams.forEach { t ->
-                    Box(Modifier.width(TEAM_W).height(CELL_H).background(if (t in e.usedTeams) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface).clickable { detail = t }, contentAlignment = Alignment.Center) {
-                        Text(t.abbr, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (t in e.usedTeams) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified)
+                    Row(
+                        Modifier.width(TEAM_W).height(CELL_H).background(if (t in e.usedTeams) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface).clickable { detail = t }.padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TeamLogo(t, 20.dp)
+                        Text(
+                            t.abbr, Modifier.padding(start = 4.dp), fontWeight = FontWeight.Bold, fontSize = 11.sp,
+                            color = if (t in e.usedTeams) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                        )
                     }
                 }
             }
@@ -98,7 +106,12 @@ fun GridScreen(vm: AppViewModel) {
         AlertDialog(
             onDismissRequest = { detail = null },
             confirmButton = { TextButton(onClick = { detail = null }) { Text("Close") } },
-            title = { Text("${t.fullName}${if (t in e.usedTeams) " (used)" else ""}") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TeamLogo(t, 28.dp)
+                    Text("${t.fullName}${if (t in e.usedTeams) " (used)" else ""}")
+                }
+            },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     KeyValue("FPI rating", Fmt.rating(e.season.ratings[t]?.fpi) + (e.season.ratings[t]?.rank?.let { " (#$it)" } ?: ""))

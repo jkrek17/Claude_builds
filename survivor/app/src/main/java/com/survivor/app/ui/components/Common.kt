@@ -1,5 +1,8 @@
 package com.survivor.app.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -7,19 +10,31 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,6 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.survivor.app.ui.theme.CardRadius
+import com.survivor.app.ui.theme.Spacing
 import com.survivor.app.ui.theme.tierColor
 import com.survivor.app.ui.theme.tierContainer
 import com.survivor.engine.Evaluation
@@ -72,7 +89,7 @@ object Fmt {
 fun TierBadge(text: String, tier: Tier, modifier: Modifier = Modifier) {
     Box(
         modifier
-            .background(tierContainer(tier), RoundedCornerShape(6.dp))
+            .background(tierContainer(tier), RoundedCornerShape(8.dp))
             .padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -80,14 +97,82 @@ fun TierBadge(text: String, tier: Tier, modifier: Modifier = Modifier) {
     }
 }
 
+/** A rounded 16 dp card with a subtle elevation - the standard content container across the app. */
 @Composable
 fun SectionCard(title: String? = null, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(1.dp)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Card(
+        modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(CardRadius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(1.dp),
+    ) {
+        Column(Modifier.padding(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             if (title != null) Text(title, style = MaterialTheme.typography.titleMedium)
             content()
         }
     }
+}
+
+/** A tier-colored vertical bar plus text/grade - a low-key alternative to a full tinted chip, used where a
+ *  tier needs to register next to a row without a loud background fill. */
+@Composable
+fun TierBar(tier: Tier, modifier: Modifier = Modifier) {
+    Box(modifier.size(width = 4.dp, height = 28.dp).background(tierColor(tier), RoundedCornerShape(2.dp)))
+}
+
+/** Grade chip: letter grade on a soft tinted container, colored by tier. Always paired with the letter
+ *  grade text, never color alone. */
+@Composable
+fun GradeChip(grade: String, tier: Tier, modifier: Modifier = Modifier) = TierBadge(grade, tier, modifier)
+
+/** Two strike pips (filled once a strike is used) plus the numeric label, so the strike count is never
+ *  conveyed by color/fill alone. */
+@Composable
+fun StrikePips(strikesUsed: Int, allowed: Int = 2, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        repeat(allowed) { i ->
+            val used = i < strikesUsed
+            Box(
+                Modifier.size(10.dp).background(
+                    if (used) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceVariant,
+                    CircleShape,
+                ),
+            )
+        }
+        Text("$strikesUsed/$allowed strikes", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** A titled section that starts collapsed and expands on tap, for long-form content (Why this pick,
+ *  alternatives, advanced settings). */
+@Composable
+fun Expandable(title: String, modifier: Modifier = Modifier, startExpanded: Boolean = false, subtitle: String? = null, content: @Composable () -> Unit) {
+    var expanded by remember { mutableStateOf(startExpanded) }
+    Column(modifier) {
+        Row(
+            Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp).clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+            )
+        }
+        AnimatedVisibility(expanded, enter = expandVertically(), exit = shrinkVertically()) {
+            Column(Modifier.padding(top = Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) { content() }
+        }
+    }
+}
+
+/** A horizontally-scrolling row of chips (the route strip, e.g.), spaced consistently. */
+@Composable
+fun ChipRow(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    val scroll = rememberScrollState()
+    Row(modifier.horizontalScroll(scroll), horizontalArrangement = Arrangement.spacedBy(Spacing.sm), content = content)
 }
 
 @Composable

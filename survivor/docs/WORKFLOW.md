@@ -13,13 +13,22 @@ Odds API. Refreshes merge into the stored season: a game that comes back without
 ## Before each NFL week
 
 1. Refresh.
-2. Dashboard: read the recommendation, the three explanation paragraphs, the future-value warning if any, and the
-   alternatives with their reasons.
-3. Rankings tab for the full table; tap any row for the Safety Score breakdown.
-4. If you have news the line has not absorbed (late QB scratch), open **Weekly Inputs**, tap the game, enter points
-   (e.g. QB −4) or a full manual override. The rankings update immediately.
-5. Record the pick: **Record … as Week N pick** on the Dashboard, or the Picks screen. The route re-optimizes with
-   that team locked and the Planner shows it as *Locked*.
+2. Home: read the recommendation, the **Decision robustness** row, the "Why this pick" paragraphs, the
+   future-value warning if any, and the alternatives with their one-line reasons.
+3. Rankings tab for the full list (card view by default, or toggle to the full table); tap any row for the
+   Safety Score breakdown.
+4. If you have news the line has not absorbed (late QB scratch), open **More → Weekly Inputs**, tap the game,
+   enter points (e.g. QB −4) or a full manual override. The rankings update immediately.
+5. Record the pick: **Record … for Week N** on Home, or the Picks tab. The route re-optimizes with that team
+   locked and the Planner shows it as *Locked*.
+
+### Decision robustness
+
+The Home screen also runs `RobustPlanner` in the background (150 line scenarios, cached after every
+evaluation) and reports **"Chosen in N% of 150 line scenarios"** - how often the current recommendation
+survives plausible lookahead-line movement. A share below 60% shows a **Toss-up** chip, and if a different
+team scores better on average across those scenarios it is named as the more robust alternative. Treat a low
+share as a signal to look harder at the alternatives rather than a formality.
 
 ## After the week
 
@@ -32,20 +41,24 @@ override in Model Settings.
 
 ## Changing model assumptions
 
-**Model Settings** lists every parameter with a description and safe bounds:
+**Model Settings** (More → Model Settings) is grouped into three sections:
 
-- *Strategy* presets set the ownership leverage weight (Conservative 0, Balanced 0.3, Contrarian 0.7, Max Pool
-  Equity ranks by equity when shares exist).
-- *Future value weight* and *Season path loss weight* control how much elite future spots are protected.
-- *Future discount per week* controls how much Weeks 12–18 count inside the optimizer.
-- *Future market weight* sets the lookahead-spread vs. FPI blend for future weeks.
-- *Margin sigma* changes the spread → win probability curve.
-- *Minimum acceptable win probability* flags picks below it.
-- *Strike future weight multiplier* sets how much future value is ignored after a strike.
+- **Your pool** - number of entries (presets 10/25/50/100/250+ or an exact count), the payout-split
+  assumption, the field's average weekly win probability, and a plain-language line computed from the
+  current evaluation: "With N entries the model expects the last other entry to fall around Week X, so it
+  optimizes for …". This directly drives `RouteObjective.POOL_WIN` (§6 of MODEL.md) and the "P(win the pool)"
+  number on Home - a 10-entry pool usually resolves early and the model leans on near-term safety, while a
+  250+-entry pool usually runs the full season and it leans on season-long survival.
+- **Strategy** - the route objective as radio cards (Win the pool / Survive the season / Expected weeks alive
+  / Blended, each with a one-line description; Win the pool is the default and marked recommended for most
+  pools), the horizon weight (Blended only), the ownership strategy preset (sets the leverage weight:
+  Conservative 0, Balanced 0.3, Contrarian 0.7, Max Pool Equity ranks by equity when shares exist), and the
+  current-week override.
+- **Advanced model parameters** (collapsed by default) - every remaining weight and penalty behind the Safety
+  Score, each with a description and safe bounds, plus **Restore defaults**.
 
-**Restore defaults** resets the parameters; **Reset Model** (Survivor Tools) clears picks, adjustments and
-settings, and **Reset everything** also removes downloaded data. Everything is saved instantly to the app's
-private storage and included in Android backups.
+**Reset Model** (Survivor Tools) clears picks, adjustments and settings, and **Reset everything** also removes
+downloaded data. Everything is saved instantly to the app's private storage and included in Android backups.
 
 ## The Odds API key (optional)
 
