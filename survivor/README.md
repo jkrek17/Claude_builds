@@ -82,6 +82,13 @@ stay short by default.
 the pick. **After the week:** refresh. The result, strike, used-team flag and the whole remaining route update
 themselves. Details in [docs/WORKFLOW.md](docs/WORKFLOW.md).
 
+## Automatic updates
+
+A background WorkManager job refreshes lines and scores every few hours (configurable in **More → Model
+Settings → Automatic updates**, on by default) and sends a notification when the recommended pick changes, a
+recorded pick's result comes in, or the weekend arrives with no pick recorded. Manual refresh still works
+exactly the same - automatic updates just mean you often don't have to.
+
 ## Build from source
 
 ```

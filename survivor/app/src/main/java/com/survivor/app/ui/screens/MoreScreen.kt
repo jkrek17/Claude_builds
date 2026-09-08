@@ -30,7 +30,7 @@ fun MoreScreen(@Suppress("UNUSED_PARAMETER") vm: AppViewModel, onNavigate: (Stri
         Item(Icons.Filled.Tune, "Model Settings", "Your pool, strategy and advanced model parameters") { onNavigate(Routes.SETTINGS) }
         Item(Icons.Filled.BarChart, "Simulation", "Monte Carlo route comparison and closed-loop policy comparison") { onNavigate(Routes.SIMULATION) }
         Item(Icons.Filled.MenuBook, "How to use", "Weekly workflow, data sources, changing assumptions") { onNavigate(Routes.GUIDE) }
-        Item(Icons.Filled.Info, "About", "Version, season and data timestamps") { onNavigate(Routes.ABOUT) }
+        Item(Icons.Filled.Info, "About", "Version, season, data and automatic-refresh timestamps") { onNavigate(Routes.ABOUT) }
     }
 }
 

@@ -10,6 +10,17 @@
 Progress is shown under the top bar; a snackbar reports the outcome, including a partial failure of the optional
 Odds API. Refreshes merge into the stored season: a game that comes back without a projection keeps its old one.
 
+## Automatic updates
+
+A WorkManager job refreshes lines and scores in the background (every 3/6/12 hours, default 6; a full
+schedule + FPI refresh runs once every 7 days instead, since FPI changes slowly) and posts a notification when
+the recommended pick for the current week changes and no pick is recorded yet, when a recorded pick's result
+comes in, or when it's the weekend with no pick recorded for the current week and the entry is still alive.
+Configure it in **More → Model Settings → Automatic updates**: an on/off switch (requests the notification
+permission on Android 13+), the check-in interval, the three notification toggles, the time and outcome of the
+last automatic run, and a **Run now** button. Manual refresh (above) always still works and needs none of
+this - automatic updates just mean you often don't have to.
+
 ## Before each NFL week
 
 1. Refresh.

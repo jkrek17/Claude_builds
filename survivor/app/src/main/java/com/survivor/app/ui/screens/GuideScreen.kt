@@ -25,6 +25,11 @@ fun GuideScreen() {
         SectionCard("After the games finish") {
             Text("Refresh once games are final (pull the refresh icon in the top bar, or More → Survivor Tools → Refresh Odds). Your pick's result and strike count are read from the final score automatically, the team is marked used, and every remaining week is re-optimized. Nothing to type.")
         }
+        SectionCard("Automatic updates") {
+            Text(
+                "On by default: the app checks for new lines and scores in the background every few hours (More → Model Settings → Automatic updates sets how often) and notifies you when the recommended pick changes, a recorded pick's result comes in, or the weekend arrives with no pick recorded. Manual refresh still works exactly the same and is never required - it's just a way to check sooner.",
+            )
+        }
         SectionCard("What changes with pool size") {
             Text(
                 "A 10-entry pool is usually decided within a few weeks - most entries take a bad beat early, so the model leans on protecting your strongest teams for the near term. A 250+-entry pool often runs the full 18 weeks, so it leans on surviving deep into the season instead. Set your pool size once in More → Model Settings → Your pool, and the recommendation, the season outlook, and the \"P(win the pool)\" number on Home all adjust automatically.",

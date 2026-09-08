@@ -1,6 +1,8 @@
 package com.survivor.app
 
 import android.app.Application
+import com.survivor.app.background.AutoRefreshPrefs
+import com.survivor.app.background.AutoRefreshScheduler
 import com.survivor.app.data.EspnClient
 import com.survivor.app.data.OddsApiClient
 import com.survivor.app.data.OkHttpFetcher
@@ -20,5 +22,6 @@ class SurvivorApp : Application() {
             espn = EspnClient(http),
             oddsApi = OddsApiClient(http),
         )
+        AutoRefreshScheduler.schedule(this, AutoRefreshPrefs(this))
     }
 }

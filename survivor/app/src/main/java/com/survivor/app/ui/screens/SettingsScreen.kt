@@ -1,5 +1,10 @@
 package com.survivor.app.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,9 +30,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.survivor.app.background.AUTO_REFRESH_INTERVAL_HOURS_CHOICES
+import com.survivor.app.background.AutoRefreshPrefs
+import com.survivor.app.background.AutoRefreshScheduler
 import com.survivor.app.ui.AppViewModel
 import com.survivor.app.ui.PoolGuidance
 import com.survivor.app.ui.components.Expandable
@@ -74,6 +84,8 @@ fun SettingsScreen(vm: AppViewModel) {
     var entriesText by remember(settings.poolEntries) { mutableStateOf(settings.poolEntries.toString()) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Spacing.sm), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        AutoUpdatesCard()
+
         SectionCard("Your pool") {
             Text("Number of entries", style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -166,5 +178,80 @@ private fun ParamField(p: Param, settings: ModelSettings, description: String, o
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         )
         Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Background refresh: enable/interval/notification toggles, last-run status and a manual "Run now". Reads
+ *  and writes [AutoRefreshPrefs] directly (app-side settings, kept out of the engine's [ModelSettings]). */
+@Composable
+private fun AutoUpdatesCard() {
+    val context = LocalContext.current
+    val store = remember { AutoRefreshPrefs(context) }
+    var prefs by remember { mutableStateOf(store.snapshot()) }
+    fun reload() { prefs = store.snapshot() }
+
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        // Whether or not notifications were granted, background refresh itself doesn't need the permission -
+        // only posting a notification does, and that call is failure-safe. So turn the feature on either way.
+        store.enabled = true
+        AutoRefreshScheduler.schedule(context, store)
+        reload()
+    }
+
+    fun setEnabled(turnOn: Boolean) {
+        if (turnOn && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+        store.enabled = turnOn
+        AutoRefreshScheduler.schedule(context, store)
+        reload()
+    }
+
+    SectionCard("Automatic updates") {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Automatic background refresh", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Periodically refreshes lines and scores in the background and notifies you about pick changes, results and reminders.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = prefs.enabled, onCheckedChange = { setEnabled(it) })
+        }
+        if (prefs.enabled) {
+            HorizontalDivider()
+            Text("Check every", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                AUTO_REFRESH_INTERVAL_HOURS_CHOICES.forEach { hours ->
+                    FilterChip(
+                        selected = prefs.intervalHours == hours,
+                        onClick = { store.intervalHours = hours; AutoRefreshScheduler.schedule(context, store); reload() },
+                        label = { Text("${hours}h") },
+                    )
+                }
+            }
+            HorizontalDivider()
+            NotifyToggleRow("Recommended pick changed", prefs.notifyPickChanged) { store.notifyPickChanged = it; reload() }
+            NotifyToggleRow("A pick's result comes in", prefs.notifyResultRecorded) { store.notifyResultRecorded = it; reload() }
+            NotifyToggleRow("No pick recorded by the weekend", prefs.notifyNoPickByWeekend) { store.notifyNoPickByWeekend = it; reload() }
+        }
+        HorizontalDivider()
+        val outcome = prefs.lastRunOutcome.takeIf { it.isNotBlank() } ?: "—"
+        Text(
+            "Last automatic refresh: ${Fmt.age(prefs.lastRunEpochMs.takeIf { it > 0 })} · $outcome",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(onClick = { AutoRefreshScheduler.runNow(context) }) { Text("Run now") }
+    }
+}
+
+@Composable
+private fun NotifyToggleRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
