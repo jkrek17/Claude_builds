@@ -23,6 +23,25 @@ Raw imports are stored as-is in the `Season` object (games with `line`, `consens
 from user state (`UserState`: picks, adjustments, settings) and from model output (`Evaluation`, which is
 recomputed and never stored). The whole app state is one JSON file (`files/survivor_state.json`, ~100 KB).
 
+## Line history and calibration
+
+Every successful refresh (`refreshNflData` or `refreshOdds`) appends a snapshot of every non-final game's
+DraftKings spread, moneylines, and FPI projection to `LineHistory` (`engine/.../LineHistory.kt`), tagged with
+the inferred (or overridden) current week. Snapshots are throttled to at most one per 6 hours unless a
+recorded spread actually changed, and only the newest 60 are kept. `LineHistory` is part of `SavedState`, so
+it persists across restarts and, like the rest of the state, is cleared only by "Reset app data" (a settings
+reset that keeps downloaded data keeps line history too).
+
+The Weekly Inputs screen's "Line movement" card shows the biggest spread moves since the previous snapshot,
+and a calibration table: games are bucketed by how many weeks ahead of their own week a line was recorded,
+and each bucket reports its sample count, the mean absolute spread change (points), and the standard
+deviation of the win-probability change in logit space, versus that game's closing (in-week) line. Once
+several buckets have at least 5 samples, a least-squares line `logitSd(k) ≈ tauBase + tauPerWeek * k` is
+fit across them — the measured counterpart to the assumed future-week noise model `tau(k) = min(0.5, 0.08 +
+0.03k)` used elsewhere in the engine to widen uncertainty on lookahead lines. Comparing the two once enough
+weeks of data has accumulated tells you whether that assumed noise model over- or under-states real line
+movement.
+
 ## Proxies and limitations
 
 - **Home field, rest, travel, divisional** effects are largely already in the market line. The extra Safety

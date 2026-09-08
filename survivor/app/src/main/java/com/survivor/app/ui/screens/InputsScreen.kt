@@ -27,17 +27,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.survivor.app.ui.AppViewModel
+import com.survivor.app.ui.components.Col
 import com.survivor.app.ui.components.EmptyState
 import com.survivor.app.ui.components.Fmt
+import com.survivor.app.ui.components.HTable
 import com.survivor.app.ui.components.SectionCard
 import com.survivor.app.ui.components.TierBadge
 import com.survivor.app.ui.components.WeekSelector
 import com.survivor.engine.Adjustment
 import com.survivor.engine.GridCell
+import com.survivor.engine.LineHistory
 import com.survivor.engine.Safety
+import com.survivor.engine.Season
 import com.survivor.engine.Team
 
 @Composable
@@ -56,6 +61,7 @@ fun InputsScreen(vm: AppViewModel) {
             Button(onClick = { vm.setOddsApiKey(apiKey); vm.refreshOdds() }, enabled = apiKey != state.user.oddsApiKey || apiKey.isNotBlank()) { Text("Save key and refresh odds") }
             Text("Lines fetched ${Fmt.age(e.season.oddsFetchedAtEpochMs)} · FPI ${Fmt.age(e.season.fpiFetchedAtEpochMs)} · Consensus ${Fmt.age(e.season.consensusFetchedAtEpochMs)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        LineMovementCard(state.lineHistory, e.season)
         SectionCard("Weekly inputs · manual adjustments") {
             Text("Everything here is optional. Manual override replaces all automated numbers. Injury, QB and weather adjustments are in points of spread (negative = worse for the team) and shift the market number. Pick share feeds the leverage model.", style = MaterialTheme.typography.bodySmall)
             WeekSelector(week, { week = it })
@@ -77,6 +83,58 @@ fun InputsScreen(vm: AppViewModel) {
 
     editing?.let { c ->
         AdjustmentDialog(c, state.user.adjustment(week, c.team), onDismiss = { editing = null }) { vm.setAdjustment(it); editing = null }
+    }
+}
+
+/** How much DraftKings lookahead lines have moved: recent history plus an empirical calibration of the noise model. */
+@Composable
+private fun LineMovementCard(history: LineHistory, season: Season) {
+    SectionCard("Line movement") {
+        val sorted = history.snapshots.sortedBy { it.takenAtEpochMs }
+        if (sorted.isEmpty()) {
+            Text("Refresh NFL data or odds a few times to start tracking how lookahead lines move before kickoff.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            return@SectionCard
+        }
+        Text(
+            "${sorted.size} snapshot${if (sorted.size == 1) "" else "s"} · ${Fmt.dateTime(sorted.first().takenAtEpochMs)} → ${Fmt.dateTime(sorted.last().takenAtEpochMs)}",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (sorted.size >= 2) {
+            val gamesById = season.games.associateBy { it.id }
+            val movers = history.biggestMovers(sinceEpochMs = sorted[sorted.size - 2].takenAtEpochMs, limit = 8)
+            Text("Biggest movers since the previous snapshot", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+            if (movers.isEmpty()) {
+                Text("No spread changes since the previous snapshot.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                HTable(
+                    columns = listOf(Col("Game", 92.dp), Col("Wk", 32.dp, TextAlign.Center), Col("From → To", 96.dp, TextAlign.End), Col("Δ", 48.dp, TextAlign.End)),
+                    rows = movers.map { m ->
+                        val g = gamesById[m.gameId]
+                        val label = g?.let { "${it.away.abbr}@${it.home.abbr}" } ?: m.gameId
+                        listOf(label, m.week.toString(), "${Fmt.spread(m.fromSpread)} → ${Fmt.spread(m.toSpread)}", Fmt.signed(m.delta))
+                    },
+                )
+            }
+        }
+
+        val cal = history.calibration()
+        Text("Calibration: closing line vs. earlier lookahead lines", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        if (cal.buckets.isEmpty()) {
+            Text("Needs a few weeks of refreshes: each game's closing (in-week) line has to be compared against earlier lookahead lines for it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            HTable(
+                columns = listOf(Col("Wks ahead", 72.dp, TextAlign.Center), Col("N", 40.dp, TextAlign.Center), Col("Mean |Δspread|", 104.dp, TextAlign.End), Col("Logit sd", 76.dp, TextAlign.End)),
+                rows = cal.buckets.sortedBy { it.weeksAhead }.map { b -> listOf(b.weeksAhead.toString(), b.samples.toString(), Fmt.num(b.meanAbsSpreadMove), Fmt.num(b.logitSd)) },
+            )
+            val tauBase = cal.tauBase
+            val tauPerWeek = cal.tauPerWeek
+            if (tauBase != null && tauPerWeek != null) {
+                Text("Fitted noise model: tau(k) ≈ ${Fmt.num(tauBase)} + ${Fmt.num(tauPerWeek)} × k weeks ahead", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Text("Calibration curve needs a bucket with at least 5 samples at two different weeks-ahead values.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }
 

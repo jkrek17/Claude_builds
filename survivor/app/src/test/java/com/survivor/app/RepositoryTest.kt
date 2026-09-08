@@ -115,4 +115,25 @@ class RepositoryTest {
         assertNull(r.season)
         assertNull(r.evaluate())
     }
+
+    @Test fun `a refresh records one line snapshot and an unchanged reload adds none`() = runTest {
+        val (r, file) = repo(FakeHttp())
+        assertTrue(r.lineHistory.snapshots.isEmpty())
+
+        r.refreshNflData(includeProjections = false)
+        assertEquals(1, r.lineHistory.snapshots.size)
+        val snap = r.lineHistory.snapshots.single()
+        assertEquals(1000L, snap.takenAtEpochMs)
+        assertTrue(snap.lines.isNotEmpty())
+
+        // now() is fixed at 1000L for this repository, so a second refresh with identical lines is
+        // both inside the minimum interval and unchanged, and should not add a snapshot.
+        r.refreshNflData(includeProjections = false)
+        assertEquals(1, r.lineHistory.snapshots.size)
+
+        // Line history survives a reload from disk.
+        val reloaded = SurvivorRepository(StateStore(file), EspnClient(FakeHttp()), OddsApiClient(FakeHttp()))
+        assertEquals(r.lineHistory, reloaded.lineHistory)
+        assertEquals(1, reloaded.lineHistory.snapshots.size)
+    }
 }
