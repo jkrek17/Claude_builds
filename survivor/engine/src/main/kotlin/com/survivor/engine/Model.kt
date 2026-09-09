@@ -224,8 +224,8 @@ data class ModelSettings(
         strategy = strategy,
         ownershipLeverageWeight = when (strategy) {
             Strategy.CONSERVATIVE -> 0.0
-            Strategy.BALANCED -> 4.0
-            Strategy.CONTRARIAN -> 9.0
+            Strategy.BALANCED -> 0.3
+            Strategy.CONTRARIAN -> 0.7
             Strategy.MAX_POOL_EQUITY -> 0.0
         },
     )

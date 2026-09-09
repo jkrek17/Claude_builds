@@ -266,4 +266,27 @@ class EvaluatorTest {
         assertEquals(0.10, Evaluator.effectivePickShare(season, user, 1, teamB))
         assertNull(Evaluator.effectivePickShare(baseSeason, UserState(), 1, teamA))
     }
+
+    @Test fun `ownership data never collapses the safety scores under any strategy`() {
+        // Yahoo-like shares: chalk heavily owned, the rest near zero. Regression for weights of 4/9 that zeroed the board.
+        val season = TestSeason.build(21)
+        val week1 = season.gamesInWeek(1).flatMap { listOf(it.home, it.away) }
+        val shares = week1.mapIndexed { i, t -> t to when (i) { 0 -> 0.33; 1 -> 0.24; 2 -> 0.17; else -> 0.005 } }.toMap()
+        val withShares = season.copy(pickShares = mapOf(1 to shares))
+        for (strategy in Strategy.entries) {
+            val plain = Evaluator.evaluate(season, UserState(settings = ModelSettings(strategy = strategy)), now)
+            val owned = Evaluator.evaluate(withShares, UserState(settings = ModelSettings(strategy = strategy)), now)
+            for (r in owned.rankings) {
+                val before = plain.rankings.first { it.team == r.team }
+                val maxMove = Safety.LEVERAGE_CAP * owned.settings.ownershipLeverageWeight + 1e-9
+                assertTrue(kotlin.math.abs(r.components.leverageAdjustment) <= maxMove, "$strategy ${r.team} lev=${r.components.leverageAdjustment}")
+                assertTrue(kotlin.math.abs(r.safetyScore - before.safetyScore) <= maxMove + 1e-6, "$strategy ${r.team} moved ${before.safetyScore} -> ${r.safetyScore}")
+            }
+            // The best team by win probability must still grade at least a B under every strategy.
+            val top = owned.rankings.maxByOrNull { it.probability }!!
+            assertTrue(top.safetyScore >= 70.0, "$strategy top=${top.team} safety=${top.safetyScore}")
+        }
+        assertEquals(0.3, ModelSettings().forStrategy(Strategy.BALANCED).ownershipLeverageWeight, 1e-9)
+        assertEquals(0.7, ModelSettings().forStrategy(Strategy.CONTRARIAN).ownershipLeverageWeight, 1e-9)
+    }
 }

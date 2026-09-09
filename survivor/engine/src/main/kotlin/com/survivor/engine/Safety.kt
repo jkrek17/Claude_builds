@@ -27,6 +27,9 @@ data class SafetyComponents(
 data class Leverage(val pickShare: Double, val expectedEquity: Double, val leverageScore: Double)
 
 object Safety {
+    /** Largest leverage score (in points) allowed to feed the Safety Score before the strategy weight. */
+    const val LEVERAGE_CAP = 30.0
+
 
     fun leverage(p: Double, pickShare: Double?, fieldAverageWinProbability: Double): Leverage? {
         if (pickShare == null) return null
@@ -71,7 +74,8 @@ object Safety {
             scarcityPenalty = premiumSpots.coerceAtMost(3) * settings.futureScarcityWeight * strikeMultiplier,
             pathPenalty = seasonPathLoss * settings.pathLossWeight * strikeMultiplier,
             thresholdPenalty = shortfall * if (strikesUsed >= 1) 1.5 else 0.5,
-            leverageAdjustment = leverage?.let { it.leverageScore * settings.ownershipLeverageWeight } ?: 0.0,
+            // Leverage is a proxy; clamp it so ownership can move a score by at most ±LEVERAGE_CAP × weight points.
+            leverageAdjustment = leverage?.let { it.leverageScore.coerceIn(-LEVERAGE_CAP, LEVERAGE_CAP) * settings.ownershipLeverageWeight } ?: 0.0,
         )
     }
 
