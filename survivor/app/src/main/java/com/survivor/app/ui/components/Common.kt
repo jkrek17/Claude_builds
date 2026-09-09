@@ -86,7 +86,7 @@ object Fmt {
     /** Signed percentage for a bet's EV/CLV, e.g. "+4.2%" or "-1.0%". */
     fun evPct(v: Double): String = String.format(Locale.US, "%+.1f%%", v * 100)
     /** Like [age], but from a duration already in milliseconds rather than an epoch timestamp - for
-     *  [com.survivor.engine.BettingBoard.boardAgeMs], which is pre-computed against the evaluation time. */
+     *  [com.survivor.engine.BetBoard.boardAgeMs], which is pre-computed against the evaluation time. */
     fun durationAgo(ms: Long?): String {
         if (ms == null || ms < 0) return "never"
         val mins = ms / 60_000

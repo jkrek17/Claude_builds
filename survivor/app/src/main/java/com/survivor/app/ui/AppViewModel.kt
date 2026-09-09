@@ -7,7 +7,7 @@ import com.survivor.app.data.RefreshStatus
 import com.survivor.app.data.SurvivorRepository
 import com.survivor.engine.Adjustment
 import com.survivor.engine.Bet
-import com.survivor.engine.BettingBoard
+import com.survivor.engine.BetBoard
 import com.survivor.engine.BettingEngine
 import com.survivor.engine.Evaluation
 import com.survivor.engine.Ledger
@@ -54,11 +54,11 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
     private val _policyComparing = MutableStateFlow(false)
     val policyComparing: StateFlow<Boolean> = _policyComparing
 
-    /** Line-shopping and model-vs-market bet suggestions for the Betting tab; never influences the
-     *  survivor recommendation above. Recomputed on a background dispatcher whenever state changes -
-     *  cheap enough to redo on every refresh, pick, or setting change. */
-    private val _bettingBoard = MutableStateFlow<BettingBoard?>(null)
-    val bettingBoard: StateFlow<BettingBoard?> = _bettingBoard
+    /** The graded Bet Score board for the Betting tab - every market of every current-week game, scored
+     *  and ranked; never influences the survivor recommendation above. Recomputed on a background
+     *  dispatcher whenever state changes - cheap enough to redo on every refresh, pick, or setting change. */
+    private val _betBoard = MutableStateFlow<BetBoard?>(null)
+    val betBoard: StateFlow<BetBoard?> = _betBoard
 
     /** Every logged bet, graded from final scores, with totals split by signal and market. */
     private val _ledger = MutableStateFlow<Ledger?>(null)
@@ -96,13 +96,13 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
             repo.state.collectLatest { s ->
                 val season = s.season
                 if (season == null || season.games.isEmpty()) {
-                    _bettingBoard.value = null
+                    _betBoard.value = null
                     _ledger.value = null
                     return@collectLatest
                 }
                 val now = System.currentTimeMillis()
                 withContext(Dispatchers.Default) {
-                    _bettingBoard.value = runCatching { BettingEngine.evaluate(season, s.user, now) }.getOrNull()
+                    _betBoard.value = runCatching { BettingEngine.board(season, s.user, now, s.lineHistory) }.getOrNull()
                     _ledger.value = runCatching { BettingEngine.ledger(season, s.user) }.getOrNull()
                 }
             }

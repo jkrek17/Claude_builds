@@ -219,6 +219,10 @@ data class ModelSettings(
     val totalSigma: Double = 10.0,
     /** Whether [BettingEngine] considers the TOTAL market at all. */
     val includeTotals: Boolean = true,
+    /** Weight on the model-vs-market edge inside the Bet Score's blended EV (0 = ignore the model
+     *  signal entirely, 1 = weight it the same as the line-shopping edge). Default 0.25 keeps the
+     *  speculative model signal a minor contributor next to the reliable no-vig edge. */
+    val modelWeight: Double = 0.25,
 ) {
     fun forStrategy(strategy: Strategy): ModelSettings = copy(
         strategy = strategy,
@@ -265,6 +269,7 @@ data class ModelSettings(
             "minModelEdge" to "Minimum EV for a model-vs-market bet to be shown. Higher than minLineShopEdge because the model signal is speculative.",
             "totalSigma" to "Scale of the points-total → probability curve, used only to price a total offered at a different number than the consensus.",
             "includeTotals" to "Whether the Betting tab looks at the total (over/under) market at all.",
+            "modelWeight" to "Weight on the model-vs-market edge inside the Bet Score's blended EV. 0 ignores the speculative model signal; 0.25 (default) keeps it a minor contributor; 0.5 weights it equally with the reliable line-shopping edge.",
         )
     }
 }

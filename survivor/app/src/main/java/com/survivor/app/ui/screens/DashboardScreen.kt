@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.survivor.app.ui.AppViewModel
+import com.survivor.app.ui.BetFormat
 import com.survivor.app.ui.Routes
 import com.survivor.app.ui.components.Expandable
 import com.survivor.app.ui.components.Fmt
@@ -42,8 +43,9 @@ import com.survivor.app.ui.components.TierBadge
 import com.survivor.app.ui.theme.Spacing
 import com.survivor.app.ui.theme.tierColor
 import com.survivor.engine.Evaluation
+import com.survivor.engine.Market
 import com.survivor.engine.REGULAR_SEASON_WEEKS
-import com.survivor.engine.Signal
+import com.survivor.engine.SideAssessment
 import com.survivor.engine.StabilityReport
 import com.survivor.engine.Team
 import com.survivor.engine.TeamWeekEvaluation
@@ -54,7 +56,7 @@ fun DashboardScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
     val e = eval ?: run { OnboardingScreen(vm); return }
     val robust by vm.robustPlan.collectAsStateWithLifecycle()
     val robustPlanning by vm.robustPlanning.collectAsStateWithLifecycle()
-    val bettingBoard by vm.bettingBoard.collectAsStateWithLifecycle()
+    val betBoard by vm.betBoard.collectAsStateWithLifecycle()
 
     LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(Spacing.md), verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
         item { StatusStrip(e) }
@@ -86,20 +88,25 @@ fun DashboardScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
         }
         item { TopTenList(e, onNavigate) }
         item { SeasonOutlook(e, onNavigate) }
-        val lineShopPicks = bettingBoard?.picks?.filter { it.signal == Signal.LINE_SHOP }.orEmpty()
-        if (lineShopPicks.isNotEmpty()) item { BetsTeaserCard(lineShopPicks.size, lineShopPicks.maxOf { it.ev }, onNavigate) }
+        val topSide = betBoard?.topPicks(1)?.firstOrNull()?.takeIf { it.score >= 76.0 }
+        val topMarket = topSide?.let { side -> betBoard?.games.orEmpty().flatMap { it.markets }.firstOrNull { it.best === side } }
+        if (topSide != null && topMarket != null) item { BetsTeaserCard(topMarket.market, topSide, onNavigate) }
     }
 }
 
-/** Only shown when there's at least one line-shopping edge; never surfaces model-vs-market picks here -
- *  Home stays about the survivor recommendation, this is just a pointer to the separate Bets tab. */
+/** Only shown for a single Strong-tier (score >= 76) side, the very best of the week across every
+ *  market; Home stays about the survivor recommendation, this is just a pointer to the separate Bets tab. */
 @Composable
-private fun BetsTeaserCard(count: Int, bestEv: Double, onNavigate: (String) -> Unit) {
+private fun BetsTeaserCard(market: Market, pick: SideAssessment, onNavigate: (String) -> Unit) {
     SectionCard {
-        Text(
-            "$count line-shopping edge${if (count == 1) "" else "s"} this week, best ${Fmt.evPct(bestEv)} EV",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            pick.sideTeam?.let { TeamLogo(it, 28.dp) }
+            Column(Modifier.weight(1f)) {
+                Text("This week's top play", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(BetFormat.marketLabel(market, pick.side, pick.point), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            }
+            TierBadge(pick.grade, pick.tier)
+        }
         OutlinedButton(onClick = { onNavigate(Routes.BETS) }, modifier = Modifier.fillMaxWidth()) { Text("Open Bets") }
     }
 }

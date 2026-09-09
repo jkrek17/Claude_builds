@@ -1,11 +1,83 @@
 # Betting
 
 Everything below is implemented in `survivor/engine` (`Betting.kt`, `BettingEngine`) and is pure and
-deterministic: the same season, board, and settings always produce the same picks. This module is
-separate from the survivor-pool model - it prices bets on the same games your survivor pick might come
-from, using the market data the app already fetches (plus, optionally, a multi-book odds board).
+deterministic: the same season, board, settings, and line history always produce the same result. This
+module is separate from the survivor-pool model - it prices bets on the same games your survivor pick
+might come from, using the market data the app already fetches (plus, optionally, a multi-book odds
+board and the app's recorded line history).
 
-## Two signals, and why they're kept apart
+## The graded board (`BettingEngine.board`)
+
+`BettingEngine.board(season, user, nowEpochMs, lineHistory)` is the Bets screen's primary data source (a
+`BetBoard`). Unlike `evaluate` (kept for compatibility - see below), it doesn't filter to sides that clear
+an edge threshold: **every** SCHEDULED, not-yet-kicked-off game of the current week appears, with
+MONEYLINE and SPREAD always attempted (falling back to the ESPN/DraftKings line when there's no odds
+board) and TOTAL attempted only when `settings.includeTotals` and the board prices a total for that game.
+Both sides of every market get a `SideAssessment`: a 0-100 **Bet Score**, a letter grade, a `Tier`, and a
+rank against every other game's same market this week (`MarketAssessment.rank`, 1 = best `best.score`).
+`MarketAssessment.best` is simply the higher-scoring of the two sides. Most sides of most markets are
+below break-even by construction (the book's vig), so a low score and an `F`/`AVOID` tier are the normal,
+correct outcome for most rows on the board - not a sign anything is broken.
+
+`BetBoard.topPicks(n)` returns the `n` best-scoring sides across every game and market this week.
+`BetBoard.suggestedStake(side, settings)` runs the same fractional-Kelly staking as below, using `side`'s
+`fairProbability` (falling back to `modelProbability`), and is zero unless the side's blended EV (see the
+Bet Score formula) is positive.
+
+### Bet Score formula
+
+For each side of each market:
+
+```
+blendedEv = lineShopEv (0 if null) + modelWeight × modelEv (0 if null)   // modelWeight: ModelSettings, default 0.25
+base      = 50 + 12.5 × blendedEv × 100                                  // +4% EV -> 100, -4% EV -> 0
+score     = base
+          − bookConfidencePenalty   // 0 for >=6 books, 2 for 3-5, 5 for 2, 10 for a single source (no board)
+          − dispersionPenalty       // 100 × lineDispersion × 0.5, capped at 6 - books disagreeing means a less reliable fair price
+          + movementAdjustment      // clamp(lineMovePoints × 1.0, -4, +4) for spread/total; clamp(Δno-vig% × 0.5, -4, +4) for moneyline
+          − staleBoardPenalty       // 5 past 6h, 10 past 24h since the board was fetched, 0 if fresh or there's no board
+score     = score.coerceIn(0, 100)
+```
+
+`BetScoreComponents` carries every term above plus `lineShopEvPct` and `modelEvPct` - the two *already
+model-weighted* percentage-point contributions that sum into `base`, so the model's actual, usually small,
+share of the score stays visible in the UI even though the score itself is a single number. Worked
+example: a fresh, 9-book board with no dispersion or line movement and a +1.5% line-shopping EV (model
+weight zeroed out) scores `50 + 12.5 × 1.5 = 68.75` → grade `B-`, tier `ACCEPTABLE`.
+
+**`fairProbability`** is the multi-book no-vig mean at the market's consensus point (≥2 books quoting both
+sides at the same point, same grouping rule as line shopping below) when a board exists; without one, it
+falls back to the ESPN/DraftKings line itself - the real no-vig probability of `Game.line`'s two moneylines
+for MONEYLINE, or an assumed 50% at standard -110 juice for SPREAD (a fairly-set spread is, by
+construction, close to a coinflip at standard vig). TOTAL has no ESPN fallback at all (the scoreboard
+payload never carries one) and is simply skipped without a board.
+
+**`lineDispersion`** is the standard deviation of the consensus books' own no-vig probabilities for that
+side (0.0 for a single paired book, `null` with no board to disperse at all) - a proxy for how much the
+market disagrees with itself about the true number.
+
+**`lineMovePoints`** compares the side's current number to the earliest point recorded in the app's
+`LineHistory` (positive = the number moved in this side's favor): for SPREAD, the side's own point,
+current minus earliest; for MONEYLINE, the change in no-vig probability (percentage points) from the
+DraftKings/ESPN line's own history. `null` with no recorded history. TOTAL has no history support (ESPN
+never carries a total) and is always `null` here.
+
+**Grades**: `A+ ≥92, A ≥85, A- ≥80, B+ ≥76, B ≥72, B- ≥68, C ≥60, D ≥50, F <50` - stricter than the
+survivor Safety Score's scale, on purpose, since most sides here are meant to read as unattractive.
+**Tiers** reuse `Tier`: `STRONG ≥76, ACCEPTABLE 68-76, RISKY 60-68, AVOID <60`.
+
+**Rationale** is one sentence, market-appropriate and never crossing vocabularies: MONEYLINE states the
+best price against the fair price and books (e.g. *"FanDuel +350 vs fair +343 from 9 books (no-vig
+22.6%); EV +1.5%."*); SPREAD and TOTAL state the price, the consensus fair number and books, and - SPREAD
+only - the model's **cover** probability and its break-even (e.g. *"LAC -9.5 at -105 (LowVig.ag);
+consensus -9.5 at fair -108 from 7 books; model has LAC covering 56% (break-even 51.2%)."*) - a spread's
+model number is a cover probability, never described as a moneyline win probability.
+
+## `evaluate` and the two-signal `BettingBoard` (kept for compatibility)
+
+`BettingEngine.evaluate` and the `BettingBoard`/`BetPick` types it returns still work exactly as before,
+for anything still built against them; the Bets screen itself now uses `board` above. `evaluate` only
+surfaces sides that clear an edge threshold, kept apart as two signals:
 
 `BetPick.signal` is either `LINE_SHOP` or `MODEL`. They are **never merged** - the same side of the same
 game can appear once under each, with very different confidence:
@@ -116,6 +188,7 @@ It uses the last known DraftKings line on the game (`Game.line`) as a simple pro
 | `minModelEdge` | 3% | Minimum EV to show a model-vs-market pick. |
 | `totalSigma` | 10.0 | Scale of the total → probability curve (for pricing a "better number" total). |
 | `includeTotals` | true | Whether the totals market is considered at all. |
+| `modelWeight` | 0.25 | Weight on the model-vs-market edge inside the Bet Score's blended EV. 0 ignores it; 0.5 weights it the same as the line-shopping edge. |
 
 ## The odds board and API quota
 

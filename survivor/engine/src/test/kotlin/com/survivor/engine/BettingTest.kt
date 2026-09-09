@@ -331,4 +331,172 @@ class BettingTest {
         assertTrue(back.user.bets.isEmpty())
         assertEquals(1000.0, back.user.settings.bankroll)
     }
+
+    // ---- Graded board (Bet Score) -----------------------------------------------------------
+
+    /** 9 books paired at -110/-110 (fair 50%, zero dispersion) plus a 10th, SEA-only book at +103 as
+     *  the best price: ev = 0.5 x decimalOdds(103) - 1 = 0.5 x 2.03 - 1 = +1.5% exactly. */
+    private fun nineBookMlQuotes(): List<Quote> {
+        val paired = (1..9).flatMap { i -> listOf(Quote("B$i", Market.MONEYLINE, "SEA", null, -110), Quote("B$i", Market.MONEYLINE, "NE", null, -110)) }
+        return paired + Quote("B10", Market.MONEYLINE, "SEA", null, 103)
+    }
+
+    @Test fun `hand-derived score - fresh 9-book board, plus-1_5pct EV, no penalties, is 68_75 and grades B-Acceptable`() {
+        val game = seaNeGame()
+        val now = kickoff - 1000L
+        val gboard = GameBoard(home = game.home, away = game.away, commenceEpochMs = game.kickoffEpochMs, quotes = nineBookMlQuotes(), fetchedAtEpochMs = now)
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = now).copy(board = mapOf(game.id to gboard))
+        val user = UserState(settings = ModelSettings(modelWeight = 0.0)) // isolate the line-shop EV term
+        val betBoard = BettingEngine.board(season, user, now)
+        val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
+        val sea = ml.sides.single { it.side == "SEA" }
+        assertEquals(9, sea.booksQuoting)
+        assertEquals(0.015, sea.lineShopEv!!, 1e-9)
+        assertEquals(0.0, sea.components.bookConfidencePenalty)
+        assertEquals(0.0, sea.components.dispersionPenalty)
+        assertEquals(0.0, sea.components.staleBoardPenalty)
+        assertEquals(0.0, sea.components.movementAdjustment)
+        assertEquals(68.75, sea.score, 0.01)
+        assertEquals("B-", sea.grade)
+        assertEquals(Tier.ACCEPTABLE, sea.tier)
+        assertEquals("B-", BettingEngine.scoreGrade(68.75))
+        assertEquals(Tier.ACCEPTABLE, BettingEngine.scoreTier(68.75))
+    }
+
+    @Test fun `single-source ESPN fallback carries a 10-point book-confidence penalty`() {
+        val game = seaNeGame(fpi = FpiProjection(0.75, 1L))
+        val season = Season(2026, listOf(game)) // no board at all
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
+        ml.sides.forEach {
+            assertEquals(1, it.booksQuoting)
+            assertEquals(10.0, it.components.bookConfidencePenalty)
+        }
+    }
+
+    @Test fun `line dispersion penalty is capped at 6 points when books disagree sharply`() {
+        // Zero-vig books (implied probabilities already sum to 1) at 0.9 and 0.4 fair SEA -> sample
+        // stdDev of [0.9, 0.4] = 0.5 / sqrt(2) ~= 0.3536 -> 100 x 0.3536 x 0.5 ~= 17.7, capped to 6.
+        val quotes = listOf(
+            Quote("Book1", Market.MONEYLINE, "SEA", null, -900), Quote("Book1", Market.MONEYLINE, "NE", null, 900),
+            Quote("Book2", Market.MONEYLINE, "SEA", null, 150), Quote("Book2", Market.MONEYLINE, "NE", null, -150),
+        )
+        val season = boardSeason(quotes)
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
+        val sea = ml.sides.single { it.side == "SEA" }
+        assertEquals(2, sea.booksQuoting)
+        assertEquals(0.3535533905932738, sea.lineDispersion!!, 1e-6)
+        assertEquals(6.0, sea.components.dispersionPenalty, 1e-9)
+    }
+
+    @Test fun `spread movement adjustment is clamped to plus-minus-4 points`() {
+        val game = seaNeGame(line = MarketLine("DraftKings", homeSpread = 7.0, homeMoneyline = -170, awayMoneyline = 142, fetchedAtEpochMs = 1L))
+        val season = Season(2026, listOf(game)) // no board -> ESPN fallback for spread
+        val history = LineHistory(listOf(LineSnapshot(takenAtEpochMs = 0L, currentWeek = 1, lines = listOf(LineRecord(game.id, 1, homeSpread = -3.0, homeMoneyline = null, awayMoneyline = null, fpiHome = null)))))
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L, history)
+        val spread = betBoard.games.single().markets.single { it.market == Market.SPREAD }
+        val home = spread.sides.single { it.side == game.home.abbr }
+        val away = spread.sides.single { it.side == game.away.abbr }
+        assertEquals(10.0, home.lineMovePoints!!, 1e-9) // 7.0 - (-3.0)
+        assertEquals(4.0, home.components.movementAdjustment, 1e-9) // clamp(10, -4, 4)
+        assertEquals(-10.0, away.lineMovePoints!!, 1e-9)
+        assertEquals(-4.0, away.components.movementAdjustment, 1e-9)
+    }
+
+    @Test fun `stale board penalty is 5 past 6 hours and 10 past 24 hours`() {
+        val game = seaNeGame()
+        val now = kickoff - 1000L
+        fun penaltyAtAge(ageMs: Long): Double {
+            val season = Season(2026, listOf(game), boardFetchedAtEpochMs = now - ageMs)
+            val betBoard = BettingEngine.board(season, UserState(), now)
+            return betBoard.games.single().markets.single { it.market == Market.MONEYLINE }.sides.first().components.staleBoardPenalty
+        }
+        assertEquals(0.0, penaltyAtAge(3L * 3_600_000L))
+        assertEquals(5.0, penaltyAtAge(7L * 3_600_000L))
+        assertEquals(10.0, penaltyAtAge(25L * 3_600_000L))
+    }
+
+    @Test fun `spread rationale never mentions a moneyline win probability`() {
+        val game = seaNeGame(fpi = FpiProjection(0.75, 1L))
+        val season = Season(2026, listOf(game))
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val spread = betBoard.games.single().markets.single { it.market == Market.SPREAD }
+        spread.sides.forEach { side ->
+            assertTrue(side.rationale.contains("covering"), "expected 'covering' in: ${side.rationale}")
+            assertTrue(!side.rationale.contains("win", ignoreCase = true), "unexpected 'win' in: ${side.rationale}")
+        }
+    }
+
+    @Test fun `both sides are always present and best is the higher-scoring side`() {
+        val boards = OddsApiParser.parseBoard(fixture("oddsapi_board.json"), 5L)
+        val game = seaNeGame()
+        val attached = OddsApiParser.attachBoard(listOf(game), boards)
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = 5L).copy(board = attached)
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val gameAssessment = betBoard.games.single()
+        assertTrue(gameAssessment.markets.isNotEmpty())
+        gameAssessment.markets.forEach { m ->
+            assertEquals(2, m.sides.size)
+            assertEquals(m.sides.maxBy { it.score }.side, m.best.side)
+            assertTrue(m.sides.contains(m.best))
+        }
+    }
+
+    @Test fun `ranks are 1 through N and unique within each market across all of the week's games`() {
+        val g1 = seaNeGame()
+        val g2 = seaNeGame(fpi = FpiProjection(0.6, 1L)).copy(id = "g2", home = Team.KC, away = Team.DEN)
+        val g3 = seaNeGame(fpi = FpiProjection(0.4, 1L)).copy(id = "g3", home = Team.BUF, away = Team.MIA)
+        val season = Season(2026, listOf(g1, g2, g3))
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val mlRanks = betBoard.games.flatMap { it.markets.filter { m -> m.market == Market.MONEYLINE } }.map { it.rank }.sorted()
+        assertEquals((1..3).toList(), mlRanks)
+        val spreadRanks = betBoard.games.flatMap { it.markets.filter { m -> m.market == Market.SPREAD } }.map { it.rank }.sorted()
+        assertEquals((1..3).toList(), spreadRanks)
+    }
+
+    @Test fun `no-board fallback still yields MONEYLINE and SPREAD assessments priced off the ESPN line`() {
+        val game = seaNeGame(fpi = FpiProjection(0.75, 1L))
+        val season = Season(2026, listOf(game)) // no board attached at all
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val gameAssessment = betBoard.games.single()
+        val ml = gameAssessment.markets.single { it.market == Market.MONEYLINE }
+        assertEquals(2, ml.sides.size)
+        assertTrue(ml.sides.all { it.bestBook == "DraftKings (ESPN)" && it.booksQuoting == 1 })
+        val spread = gameAssessment.markets.single { it.market == Market.SPREAD }
+        assertEquals(2, spread.sides.size)
+        assertTrue(spread.sides.all { it.bestBook == "DraftKings (ESPN)" && it.bestPrice == -110 && it.booksQuoting == 1 })
+        assertTrue(gameAssessment.markets.none { it.market == Market.TOTAL })
+    }
+
+    @Test fun `totals are absent without a board even when includeTotals is on`() {
+        val game = seaNeGame()
+        val season = Season(2026, listOf(game))
+        val betBoard = BettingEngine.board(season, UserState(settings = ModelSettings(includeTotals = true)), kickoff - 1000L)
+        assertTrue(betBoard.games.single().markets.none { it.market == Market.TOTAL })
+    }
+
+    @Test fun `every scheduled game of the week appears even with no markets priced`() {
+        val game = seaNeGame(line = null, fpi = null)
+        val season = Season(2026, listOf(game))
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        assertEquals(1, betBoard.games.size)
+        assertEquals(game.id, betBoard.games.single().gameId)
+        assertTrue(betBoard.games.single().markets.isEmpty())
+    }
+
+    @Test fun `suggestedStake is zero for a negative blended EV and positive Kelly-sized otherwise`() {
+        val boards = OddsApiParser.parseBoard(fixture("oddsapi_board.json"), 5L)
+        val game = seaNeGame()
+        val attached = OddsApiParser.attachBoard(listOf(game), boards)
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = 5L).copy(board = attached)
+        val settings = ModelSettings()
+        val betBoard = BettingEngine.board(season, UserState(settings = settings), kickoff - 1000L)
+        val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
+        ml.sides.forEach { side ->
+            val stake = betBoard.suggestedStake(side, settings)
+            val blendedEv = (side.components.lineShopEvPct + side.components.modelEvPct) / 100.0
+            if (blendedEv <= 0.0) assertEquals(0.0, stake) else assertTrue(stake >= 0.0)
+        }
+    }
 }

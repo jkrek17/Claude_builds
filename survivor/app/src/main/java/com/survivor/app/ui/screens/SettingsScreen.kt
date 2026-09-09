@@ -139,6 +139,13 @@ fun SettingsScreen(vm: AppViewModel) {
             PercentField("Max stake (%)", settings.maxStakePct, descriptions["maxStakePct"] ?: "") { vm.updateSettings(settings.copy(maxStakePct = it)) }
             PercentField("Min line-shop edge (%)", settings.minLineShopEdge, descriptions["minLineShopEdge"] ?: "") { vm.updateSettings(settings.copy(minLineShopEdge = it)) }
             PercentField("Min model edge (%)", settings.minModelEdge, descriptions["minModelEdge"] ?: "") { vm.updateSettings(settings.copy(minModelEdge = it)) }
+            Text("Model weight (Bet Score)", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                listOf(0.0, 0.25, 0.5).forEach { w ->
+                    FilterChip(selected = settings.modelWeight == w, onClick = { vm.updateSettings(settings.copy(modelWeight = w)) }, label = { Text(Fmt.num(w)) })
+                }
+            }
+            Text(descriptions["modelWeight"] ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             HorizontalDivider()
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -193,6 +200,7 @@ fun SettingsScreen(vm: AppViewModel) {
                         routeObjective = settings.routeObjective, horizonWeight = settings.horizonWeight,
                         bankroll = settings.bankroll, kellyMultiplier = settings.kellyMultiplier, maxStakePct = settings.maxStakePct,
                         minLineShopEdge = settings.minLineShopEdge, minModelEdge = settings.minModelEdge, includeTotals = settings.includeTotals,
+                        modelWeight = settings.modelWeight,
                     ),
                 )
             }) { Text("Restore defaults") }

@@ -23,4 +23,12 @@ class BetFormatTest {
         assertEquals(EvTier.LOW, BetFormat.evTier(0.0))
         assertEquals(EvTier.LOW, BetFormat.evTier(-0.02))
     }
+
+    @Test fun `formats line movement for the graded board's small movement line`() {
+        assertEquals("moved +1", BetFormat.movedLabel(Market.SPREAD, 1.0))
+        assertEquals("moved -0.5", BetFormat.movedLabel(Market.TOTAL, -0.5))
+        assertEquals("moved +2.3%", BetFormat.movedLabel(Market.MONEYLINE, 2.3))
+        assertEquals("moved -1%", BetFormat.movedLabel(Market.MONEYLINE, -1.0))
+        assertEquals("no history", BetFormat.movedLabel(Market.SPREAD, null))
+    }
 }
