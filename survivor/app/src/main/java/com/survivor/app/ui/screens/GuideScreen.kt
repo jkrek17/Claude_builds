@@ -27,7 +27,7 @@ fun GuideScreen() {
         }
         SectionCard("Automatic updates") {
             Text(
-                "On by default: the app checks for new lines and scores in the background every few hours (More → Model Settings → Automatic updates sets how often) and notifies you when the recommended pick changes, a recorded pick's result comes in, or the weekend arrives with no pick recorded. Manual refresh still works exactly the same and is never required - it's just a way to check sooner.",
+                "On by default: the app checks for new lines and scores in the background once a day (3, 6 or 12 hours selectable) (More → Model Settings → Automatic updates sets how often) and notifies you when the recommended pick changes, a recorded pick's result comes in, or the weekend arrives with no pick recorded. Manual refresh still works exactly the same and is never required - it's just a way to check sooner.",
             )
         }
         SectionCard("What changes with pool size") {

@@ -12,7 +12,7 @@ Odds API. Refreshes merge into the stored season: a game that comes back without
 
 ## Automatic updates
 
-A WorkManager job refreshes lines and scores in the background (every 3/6/12 hours, default 6; a full
+A WorkManager job refreshes lines and scores in the background (every 3/6/12/24 hours, default once a day to stay well inside the free Odds API quota; a full
 schedule + FPI refresh runs once every 7 days instead, since FPI changes slowly) and posts a notification when
 the recommended pick for the current week changes and no pick is recorded yet, when a recorded pick's result
 comes in, or when it's the weekend with no pick recorded for the current week and the entry is still alive.

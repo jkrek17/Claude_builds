@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 
 /** Interval choices offered in Settings for the periodic background refresh. */
-val AUTO_REFRESH_INTERVAL_HOURS_CHOICES = listOf(3, 6, 12)
+val AUTO_REFRESH_INTERVAL_HOURS_CHOICES = listOf(3, 6, 12, 24)
 
 /**
  * Immutable snapshot of [AutoRefreshPrefs], used by the pure notification-decision logic (see
@@ -13,7 +13,7 @@ val AUTO_REFRESH_INTERVAL_HOURS_CHOICES = listOf(3, 6, 12)
  */
 data class AutoRefreshPrefsSnapshot(
     val enabled: Boolean = true,
-    val intervalHours: Int = 6,
+    val intervalHours: Int = 24,
     val notifyPickChanged: Boolean = true,
     val notifyResultRecorded: Boolean = true,
     val notifyNoPickByWeekend: Boolean = true,
@@ -35,8 +35,8 @@ class AutoRefreshPrefs(context: Context) {
         set(value) = prefs.edit { putBoolean(KEY_ENABLED, value) }
 
     var intervalHours: Int
-        get() = prefs.getInt(KEY_INTERVAL_HOURS, 6).takeIf { it in AUTO_REFRESH_INTERVAL_HOURS_CHOICES } ?: 6
-        set(value) = prefs.edit { putInt(KEY_INTERVAL_HOURS, value.takeIf { it in AUTO_REFRESH_INTERVAL_HOURS_CHOICES } ?: 6) }
+        get() = prefs.getInt(KEY_INTERVAL_HOURS, 24).takeIf { it in AUTO_REFRESH_INTERVAL_HOURS_CHOICES } ?: 24
+        set(value) = prefs.edit { putInt(KEY_INTERVAL_HOURS, value.takeIf { it in AUTO_REFRESH_INTERVAL_HOURS_CHOICES } ?: 24) }
 
     var notifyPickChanged: Boolean
         get() = prefs.getBoolean(KEY_NOTIFY_PICK_CHANGED, true)
