@@ -6,7 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.survivor.app.data.RefreshStatus
 import com.survivor.app.data.SurvivorRepository
 import com.survivor.engine.Adjustment
+import com.survivor.engine.Bet
+import com.survivor.engine.BettingBoard
+import com.survivor.engine.BettingEngine
 import com.survivor.engine.Evaluation
+import com.survivor.engine.Ledger
 import com.survivor.engine.ModelSettings
 import com.survivor.engine.Policy
 import com.survivor.engine.PolicyComparison
@@ -50,6 +54,16 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
     private val _policyComparing = MutableStateFlow(false)
     val policyComparing: StateFlow<Boolean> = _policyComparing
 
+    /** Line-shopping and model-vs-market bet suggestions for the Betting tab; never influences the
+     *  survivor recommendation above. Recomputed on a background dispatcher whenever state changes -
+     *  cheap enough to redo on every refresh, pick, or setting change. */
+    private val _bettingBoard = MutableStateFlow<BettingBoard?>(null)
+    val bettingBoard: StateFlow<BettingBoard?> = _bettingBoard
+
+    /** Every logged bet, graded from final scores, with totals split by signal and market. */
+    private val _ledger = MutableStateFlow<Ledger?>(null)
+    val ledger: StateFlow<Ledger?> = _ledger
+
     init {
         viewModelScope.launch {
             repo.state.collectLatest { s ->
@@ -76,10 +90,28 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
                 _robustPlanning.value = false
             }
         }
+        // Betting board and ledger: independent of the survivor evaluation above, and cheap enough to
+        // recompute on Dispatchers.Default every time state changes.
+        viewModelScope.launch {
+            repo.state.collectLatest { s ->
+                val season = s.season
+                if (season == null || season.games.isEmpty()) {
+                    _bettingBoard.value = null
+                    _ledger.value = null
+                    return@collectLatest
+                }
+                val now = System.currentTimeMillis()
+                withContext(Dispatchers.Default) {
+                    _bettingBoard.value = runCatching { BettingEngine.evaluate(season, s.user, now) }.getOrNull()
+                    _ledger.value = runCatching { BettingEngine.ledger(season, s.user) }.getOrNull()
+                }
+            }
+        }
     }
 
     fun refreshNflData() = viewModelScope.launch { repo.refreshNflData(includeProjections = true) }
     fun refreshOdds() = viewModelScope.launch { repo.refreshOdds() }
+    fun refreshOddsBoard(force: Boolean = true) = viewModelScope.launch { repo.refreshOddsBoard(force) }
     fun dismissRefresh() = repo.dismissRefreshStatus()
     fun recomputeNow() = viewModelScope.launch { _evaluation.value = repo.evaluate() }
 
@@ -89,6 +121,8 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
     fun updateSettings(s: ModelSettings) = repo.updateSettings(s)
     fun setOddsApiKey(k: String) = repo.setOddsApiKey(k)
     fun setWeekOverride(w: Int?) = repo.setWeekOverride(w)
+    fun recordBet(bet: Bet) = repo.recordBet(bet)
+    fun deleteBet(id: String) = repo.deleteBet(id)
     fun reset(includeData: Boolean) {
         repo.reset(includeData)
         _simulation.value = emptyList()

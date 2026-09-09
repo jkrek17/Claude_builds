@@ -12,5 +12,8 @@ class FmtTest {
         assertEquals("vs CLE", Fmt.matchup("CLE", true)); assertEquals("@ BUF", Fmt.matchup("BUF", false)); assertEquals("vs KC (N)", Fmt.matchup("KC", false, neutral = true))
         assertEquals("never", Fmt.age(null)); assertEquals("5 min ago", Fmt.age(1000L, 1000L + 5 * 60_000L)); assertEquals("2 d ago", Fmt.age(1000L, 1000L + 48 * 3_600_000L))
         assertEquals("+5.9", Fmt.rating(5.854)); assertEquals("-0.4", Fmt.rating(-0.36))
+        assertEquals("+4.2%", Fmt.evPct(0.0421)); assertEquals("-1.0%", Fmt.evPct(-0.0100))
+        assertEquals("never", Fmt.durationAgo(null)); assertEquals("just now", Fmt.durationAgo(0L))
+        assertEquals("5 min ago", Fmt.durationAgo(5 * 60_000L)); assertEquals("2 h ago", Fmt.durationAgo(2 * 3_600_000L))
     }
 }

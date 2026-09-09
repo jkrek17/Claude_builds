@@ -1,6 +1,7 @@
 package com.survivor.app.data
 
 import com.survivor.engine.Adjustment
+import com.survivor.engine.Bet
 import com.survivor.engine.Evaluation
 import com.survivor.engine.Evaluator
 import com.survivor.engine.LineHistory
@@ -11,6 +12,7 @@ import com.survivor.engine.SimulationResult
 import com.survivor.engine.Strategies
 import com.survivor.engine.Team
 import com.survivor.engine.UserState
+import com.survivor.engine.data.OddsApiParser
 import com.survivor.engine.data.SavedState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -89,6 +91,7 @@ class SurvivorRepository(
             val missing = EspnClient.teamsMissing(updated)
             if (missing.isNotEmpty()) note += ". No games found for ${missing.joinToString { t -> t.abbr }}"
             note += refreshPickShares()
+            note += refreshBoard(force = false)
             recordLineSnapshot()
             _refresh.value = RefreshStatus.Done(note)
         } catch (e: Exception) {
@@ -114,11 +117,46 @@ class SurvivorRepository(
                     .onFailure { e -> note = "Lines updated; Odds API failed: ${e.message}" }
             }
             note += refreshPickShares()
+            note += refreshBoard(force = false)
             recordLineSnapshot()
             _refresh.value = RefreshStatus.Done(note)
         } catch (e: Exception) {
             _refresh.value = RefreshStatus.Failed(e.message ?: e.toString())
         }
+    }
+
+    /** Multi-book odds board (moneyline/spread/total) for the Betting tab, from The Odds API - 3 requests
+     *  per call, so it is throttled to once every [BOARD_REFRESH_INTERVAL_MS] unless [force]. Skipped
+     *  silently when no key is saved or no season is loaded yet; non-fatal on failure (the existing board,
+     *  if any, is kept and a short note is appended to the caller's refresh message). */
+    private suspend fun refreshBoard(force: Boolean): String {
+        val key = user.oddsApiKey
+        if (key.isBlank()) return ""
+        val currentSeason = season ?: return ""
+        val age = currentSeason.boardFetchedAtEpochMs?.let { now() - it }
+        if (!force && age != null && age < BOARD_REFRESH_INTERVAL_MS) return ""
+        _refresh.value = RefreshStatus.Running("Odds board (line shopping)")
+        return try {
+            val boards = oddsApi.fetchBoard(key)
+            val fetchedAt = now()
+            mutate { s ->
+                val sn = s.season ?: return@mutate s
+                s.copy(season = sn.copy(board = OddsApiParser.attachBoard(sn.games, boards), boardFetchedAtEpochMs = fetchedAt))
+            }
+            ""
+        } catch (e: Exception) {
+            ". Odds board unavailable: ${e.message}"
+        }
+    }
+
+    /** Standalone "Refresh odds board" action for the Bets screen; [force] bypasses the 3-hour throttle
+     *  (default true, since a user tapping the button explicitly wants a fresh board). */
+    suspend fun refreshOddsBoard(force: Boolean = true) {
+        if (_refresh.value is RefreshStatus.Running) return
+        if (user.oddsApiKey.isBlank()) { _refresh.value = RefreshStatus.Failed("Add a The Odds API key in Weekly Inputs first"); return }
+        if (season == null) { _refresh.value = RefreshStatus.Failed("Download NFL data first"); return }
+        val note = refreshBoard(force)
+        _refresh.value = if (note.isEmpty()) RefreshStatus.Done("Odds board updated") else RefreshStatus.Failed(note.removePrefix(". "))
     }
 
     /**
@@ -171,6 +209,10 @@ class SurvivorRepository(
 
     fun setWeekOverride(week: Int?) = mutateUser { it.copy(weekOverride = week) }
 
+    fun recordBet(bet: Bet) = mutateUser { it.copy(bets = it.bets + bet) }
+
+    fun deleteBet(id: String) = mutateUser { it.copy(bets = it.bets.filter { b -> b.id != id }) }
+
     /** Resets picks, adjustments and settings; keeps downloaded data and line history unless [includeData]. */
     fun reset(includeData: Boolean) = mutate { s ->
         SavedState(
@@ -178,5 +220,10 @@ class SurvivorRepository(
             user = UserState(oddsApiKey = s.user.oddsApiKey),
             lineHistory = if (includeData) LineHistory() else s.lineHistory,
         )
+    }
+
+    companion object {
+        /** Minimum gap between automatic odds-board fetches - see docs/BETTING.md's quota note. */
+        private const val BOARD_REFRESH_INTERVAL_MS = 3L * 3_600_000L
     }
 }

@@ -52,5 +52,12 @@ fun GuideScreen() {
         SectionCard("Changing assumptions") {
             Text("Model Settings groups everything into Your pool, Strategy, and Advanced (every weight, collapsed by default, each with a description and a Restore defaults button). More → Survivor Tools → Reset Model clears picks and settings; \"Reset everything\" also clears downloaded data.")
         }
+        SectionCard("Bets") {
+            Text(
+                "The Bets tab is entirely separate from your survivor pick and never changes it. It shows two kinds of edge: Line shopping compares one book's price on this week's games to a no-vig consensus built from the rest of the market - a real, structural edge when a book's number is out of step, and small and rare by nature. Model disagreements compares this engine's own win-probability estimate (the same FPI/market blend used for future survivor weeks) to the best price available - a much noisier, speculative signal, since the market is usually right, and it's always labeled so it's never mistaken for line shopping.\n\n" +
+                    "Suggested stakes use fractional Kelly (quarter-Kelly by default) on your bankroll, capped at a hard percentage of it - both set in More → Model Settings → Betting, along with the minimum edge each signal needs to show a pick. Recorded bets are graded automatically from final scores after a refresh - no separate step - and the Ledger shows your record, profit and ROI overall and split by signal and market.\n\n" +
+                    "Line shopping needs several books to build a consensus, so it needs the multi-book odds board (More → Weekly Inputs → add a free key from the-odds-api.com). Refreshing that board costs 3 requests against the API's monthly quota, so it's throttled to once every 3 hours automatically; a manual \"Refresh odds board\" on the Bets tab can force an earlier one.",
+            )
+        }
     }
 }

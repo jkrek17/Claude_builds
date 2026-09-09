@@ -8,7 +8,9 @@ import com.survivor.app.data.StateStore
 import com.survivor.app.data.SurvivorRepository
 import com.survivor.app.data.YahooClient
 import com.survivor.engine.Adjustment
+import com.survivor.engine.Bet
 import com.survivor.engine.GameState
+import com.survivor.engine.Market
 import com.survivor.engine.ModelSettings
 import com.survivor.engine.Strategy
 import com.survivor.engine.Team
@@ -29,6 +31,9 @@ import kotlin.test.assertTrue
 private class FakeHttp(
     private val failPredictor: Boolean = false,
     private val oddsBody: String? = null,
+    /** Response for the multi-market board URL (`markets=h2h,spreads,totals`), distinct from [oddsBody]'s
+     *  single-market consensus URL so the two fetches can be tested independently. */
+    private val boardBody: String? = null,
     private val failYahoo: Boolean = false,
 ) : HttpFetcher {
     val calls = mutableListOf<String>()
@@ -40,6 +45,7 @@ private class FakeHttp(
             url.contains("/scoreboard?") -> if (url.contains("week=18")) res("espn_scoreboard_final.json") else res("espn_scoreboard_week1.json")
             url.contains("/predictor") -> if (failPredictor) throw IOException("boom") else res("espn_predictor.json")
             url.contains("powerindex") -> res("espn_powerindex.json")
+            url.contains("markets=h2h,spreads,totals") -> boardBody ?: throw IOException("401")
             url.contains("the-odds-api") -> oddsBody ?: throw IOException("401")
             url == YahooClient.URL -> if (failYahoo) throw IOException("yahoo boom") else res("yahoo_pickdistribution.html")
             else -> throw IOException("unexpected $url")
@@ -176,5 +182,59 @@ class RepositoryTest {
         r.refreshOdds()
         assertTrue(r.refresh.value is RefreshStatus.Done)
         assertTrue(r.season!!.pickShares[1]?.isNotEmpty() == true)
+    }
+
+    @Test fun `a refresh with a key fetches and attaches the multi-book odds board`() = runTest {
+        val boardJson = javaClass.classLoader.getResource("oddsapi_board.json")!!.readText()
+        val (r, _) = repo(FakeHttp(boardBody = boardJson))
+        r.setOddsApiKey("abc")
+        r.refreshNflData(includeProjections = false)
+        val status = r.refresh.value as RefreshStatus.Done
+        assertFalse(status.message.contains("Odds board unavailable"), "message=${status.message}")
+        val season = assertNotNull(r.season)
+        assertTrue(season.board.isNotEmpty())
+        val game = season.games.first { it.home == Team.SEA && it.away == Team.NE }
+        val board = assertNotNull(season.board[game.id])
+        assertTrue(board.quotes.isNotEmpty())
+        assertEquals(1000L, season.boardFetchedAtEpochMs)
+    }
+
+    @Test fun `the odds board is throttled to once every 3 hours unless forced`() = runTest {
+        val boardJson = javaClass.classLoader.getResource("oddsapi_board.json")!!.readText()
+        val http = FakeHttp(boardBody = boardJson)
+        val (r, _) = repo(http)
+        r.setOddsApiKey("abc")
+
+        r.refreshNflData(includeProjections = false)
+        assertEquals(1, http.calls.count { it.contains("markets=h2h,spreads,totals") })
+
+        // now() is fixed at 1000L for this repository, so the board is always "0 ms old" - well inside the
+        // 3-hour throttle - and a plain refresh should not fetch it again.
+        r.refreshOdds()
+        assertEquals(1, http.calls.count { it.contains("markets=h2h,spreads,totals") }, "a refresh inside the 3-hour window should not refetch the board")
+
+        // The standalone "Refresh odds board" action forces a fetch regardless of age.
+        r.refreshOddsBoard(force = true)
+        assertEquals(2, http.calls.count { it.contains("markets=h2h,spreads,totals") })
+    }
+
+    @Test fun `recordBet and deleteBet persist and reload`() = runTest {
+        val (r, file) = repo(FakeHttp())
+        r.refreshNflData(includeProjections = false)
+        val game = r.season!!.games.first()
+        val bet = Bet(
+            id = "test-1", placedAtEpochMs = 1000L, gameId = game.id, week = game.week, market = Market.MONEYLINE,
+            side = game.home.abbr, price = -150, stake = 25.0, book = "DraftKings",
+        )
+        r.recordBet(bet)
+        assertEquals(listOf(bet), r.user.bets)
+
+        val reloaded = SurvivorRepository(StateStore(file), EspnClient(FakeHttp()), OddsApiClient(FakeHttp()))
+        assertEquals(listOf(bet), reloaded.user.bets)
+
+        r.deleteBet(bet.id)
+        assertTrue(r.user.bets.isEmpty())
+        val reloadedAfterDelete = SurvivorRepository(StateStore(file), EspnClient(FakeHttp()), OddsApiClient(FakeHttp()))
+        assertTrue(reloadedAfterDelete.user.bets.isEmpty())
     }
 }

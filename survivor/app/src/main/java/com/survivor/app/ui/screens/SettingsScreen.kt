@@ -73,6 +73,7 @@ private val advancedParams = listOf(
     Param("minimumAcceptableWinProbability", "Minimum acceptable win probability (0–1)", { it.minimumAcceptableWinProbability }, { s, v -> s.copy(minimumAcceptableWinProbability = v.coerceIn(0.5, 0.9)) }),
     Param("strikeFutureWeightMultiplier", "Future weight multiplier after a strike (0–1)", { it.strikeFutureWeightMultiplier }, { s, v -> s.copy(strikeFutureWeightMultiplier = v.coerceIn(0.0, 1.0)) }),
     Param("monteCarloIterations", "Monte Carlo iterations", { it.monteCarloIterations.toDouble() }, { s, v -> s.copy(monteCarloIterations = v.toInt().coerceIn(1000, 200_000)) }),
+    Param("totalSigma", "Total sigma (points)", { it.totalSigma }, { s, v -> s.copy(totalSigma = v.coerceIn(5.0, 20.0)) }),
 )
 
 @Composable
@@ -118,6 +119,36 @@ fun SettingsScreen(vm: AppViewModel) {
             ) { vm.updateSettings(it) }
         }
 
+        SectionCard("Betting") {
+            Text("Powers the Bets tab: line-shopping and model-vs-market edges, and how big a bet it suggests. Never affects the survivor recommendation.", style = MaterialTheme.typography.bodySmall)
+            var bankrollText by remember(settings.bankroll) { mutableStateOf(Fmt.num(settings.bankroll)) }
+            OutlinedTextField(
+                value = bankrollText,
+                onValueChange = { bankrollText = it; it.toDoubleOrNull()?.let { v -> vm.updateSettings(settings.copy(bankroll = v.coerceIn(0.0, 1_000_000.0))) } },
+                label = { Text("Bankroll (\$)") }, singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth(),
+            )
+            Text(descriptions["bankroll"] ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Kelly multiplier", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                listOf(0.1, 0.25, 0.5).forEach { m ->
+                    FilterChip(selected = settings.kellyMultiplier == m, onClick = { vm.updateSettings(settings.copy(kellyMultiplier = m)) }, label = { Text("${Fmt.num(m * 100)}%") })
+                }
+            }
+            Text(descriptions["kellyMultiplier"] ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PercentField("Max stake (%)", settings.maxStakePct, descriptions["maxStakePct"] ?: "") { vm.updateSettings(settings.copy(maxStakePct = it)) }
+            PercentField("Min line-shop edge (%)", settings.minLineShopEdge, descriptions["minLineShopEdge"] ?: "") { vm.updateSettings(settings.copy(minLineShopEdge = it)) }
+            PercentField("Min model edge (%)", settings.minModelEdge, descriptions["minModelEdge"] ?: "") { vm.updateSettings(settings.copy(minModelEdge = it)) }
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Include totals", style = MaterialTheme.typography.bodyMedium)
+                    Text(descriptions["includeTotals"] ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = settings.includeTotals, onCheckedChange = { vm.updateSettings(settings.copy(includeTotals = it)) })
+            }
+        }
+
         SectionCard("Strategy") {
             Text("Route objective", style = MaterialTheme.typography.titleSmall)
             RouteObjective.entries.forEach { obj ->
@@ -160,6 +191,8 @@ fun SettingsScreen(vm: AppViewModel) {
                         poolEntries = settings.poolEntries, poolPayoutSplit = settings.poolPayoutSplit,
                         fieldAverageWinProbability = settings.fieldAverageWinProbability,
                         routeObjective = settings.routeObjective, horizonWeight = settings.horizonWeight,
+                        bankroll = settings.bankroll, kellyMultiplier = settings.kellyMultiplier, maxStakePct = settings.maxStakePct,
+                        minLineShopEdge = settings.minLineShopEdge, minModelEdge = settings.minModelEdge, includeTotals = settings.includeTotals,
                     ),
                 )
             }) { Text("Restore defaults") }
@@ -175,6 +208,20 @@ private fun ParamField(p: Param, settings: ModelSettings, description: String, o
         OutlinedTextField(
             value = text, onValueChange = { text = it; it.toDoubleOrNull()?.let { v -> onChange(p.set(settings, v)) } },
             label = { Text(p.label) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        )
+        Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Like [ParamField] but a fraction (0..1) shown and edited as a whole-number percentage, e.g. 0.02 as "2". */
+@Composable
+private fun PercentField(label: String, current: Double, description: String, onChange: (Double) -> Unit) {
+    var text by remember(current) { mutableStateOf(Fmt.num(current * 100)) }
+    Column {
+        OutlinedTextField(
+            value = text, onValueChange = { text = it; it.toDoubleOrNull()?.let { v -> onChange((v / 100.0).coerceIn(0.0, 1.0)) } },
+            label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         )
         Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

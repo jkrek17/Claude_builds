@@ -83,6 +83,20 @@ object Fmt {
     }
     fun dateTime(epochMs: Long?): String = epochMs?.let { SimpleDateFormat("EEE MMM d, h:mm a", Locale.US).format(Date(it)) } ?: "—"
     fun rating(v: Double?): String = v?.let { signed((it * 10).roundToInt() / 10.0) } ?: "—"
+    /** Signed percentage for a bet's EV/CLV, e.g. "+4.2%" or "-1.0%". */
+    fun evPct(v: Double): String = String.format(Locale.US, "%+.1f%%", v * 100)
+    /** Like [age], but from a duration already in milliseconds rather than an epoch timestamp - for
+     *  [com.survivor.engine.BettingBoard.boardAgeMs], which is pre-computed against the evaluation time. */
+    fun durationAgo(ms: Long?): String {
+        if (ms == null || ms < 0) return "never"
+        val mins = ms / 60_000
+        return when {
+            mins < 1 -> "just now"
+            mins < 60 -> "$mins min ago"
+            mins < 60 * 24 -> "${mins / 60} h ago"
+            else -> "${mins / (60 * 24)} d ago"
+        }
+    }
 }
 
 @Composable

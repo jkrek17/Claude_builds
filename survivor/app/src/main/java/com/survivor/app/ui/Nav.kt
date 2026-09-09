@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.FormatListNumbered
+import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -47,6 +48,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.survivor.app.data.RefreshStatus
 import com.survivor.app.ui.screens.AboutScreen
+import com.survivor.app.ui.screens.BetsScreen
 import com.survivor.app.ui.screens.DashboardScreen
 import com.survivor.app.ui.screens.GuideScreen
 import com.survivor.app.ui.screens.InputsScreen
@@ -61,6 +63,7 @@ object Routes {
     const val DASHBOARD = "dashboard"
     const val RANKINGS = "rankings"
     const val SEASON = "season"
+    const val BETS = "bets"
     const val MORE = "more"
     const val PICKS = "picks"
     const val INPUTS = "inputs"
@@ -70,16 +73,17 @@ object Routes {
     const val ABOUT = "about"
 }
 
-private val moreDestinations = setOf(Routes.INPUTS, Routes.SETTINGS, Routes.SIMULATION, Routes.GUIDE, Routes.ABOUT)
+private val moreDestinations = setOf(Routes.PICKS, Routes.INPUTS, Routes.SETTINGS, Routes.SIMULATION, Routes.GUIDE, Routes.ABOUT)
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
-/** At most 5 bottom-bar destinations: Home, Rankings, Season (Planner + Grid tabs), Picks, More. */
+/** At most 5 bottom-bar destinations: Home, Rankings, Season (Planner + Grid tabs), Bets, More. Picks
+ *  lives in More (record/change is also reachable from Home's hero card). */
 private val tabs = listOf(
     Tab(Routes.DASHBOARD, "Home", Icons.Filled.SportsFootball),
     Tab(Routes.RANKINGS, "Rankings", Icons.Filled.FormatListNumbered),
     Tab(Routes.SEASON, "Season", Icons.Filled.CalendarMonth),
-    Tab(Routes.PICKS, "Picks", Icons.Filled.TouchApp),
+    Tab(Routes.BETS, "Bets", Icons.Filled.MonetizationOn),
     Tab(Routes.MORE, "More", Icons.Filled.MoreHoriz),
 )
 
@@ -146,6 +150,7 @@ fun SurvivorNavHost(vm: AppViewModel) {
             composable(Routes.DASHBOARD) { DashboardScreen(vm, ::go) }
             composable(Routes.RANKINGS) { RankingsScreen(vm) }
             composable(Routes.SEASON) { SeasonScreen(vm) }
+            composable(Routes.BETS) { BetsScreen(vm, ::go) }
             composable(Routes.MORE) { MoreScreen(vm, ::go) }
             composable(Routes.PICKS) { PicksScreen(vm) }
             composable(Routes.INPUTS) { InputsScreen(vm) }
@@ -173,6 +178,7 @@ private fun titleFor(route: String) = when (route) {
     Routes.DASHBOARD -> "Survivor Optimizer"
     Routes.RANKINGS -> "Rankings"
     Routes.SEASON -> "Season"
+    Routes.BETS -> "Bets"
     Routes.PICKS -> "Picks & Used Teams"
     Routes.MORE -> "More"
     Routes.INPUTS -> "Weekly Inputs"

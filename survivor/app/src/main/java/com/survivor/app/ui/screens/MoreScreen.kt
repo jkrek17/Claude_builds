@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -26,6 +27,7 @@ import com.survivor.app.ui.components.clickableRow
 @Composable
 fun MoreScreen(@Suppress("UNUSED_PARAMETER") vm: AppViewModel, onNavigate: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+        Item(Icons.Filled.TouchApp, "Picks", "Record or change your weekly pick, and the used-teams history") { onNavigate(Routes.PICKS) }
         Item(Icons.Filled.Edit, "Weekly Inputs", "Manual overrides, injury/QB/weather points, pick share, Odds API key") { onNavigate(Routes.INPUTS) }
         Item(Icons.Filled.Tune, "Model Settings", "Your pool, strategy and advanced model parameters") { onNavigate(Routes.SETTINGS) }
         Item(Icons.Filled.BarChart, "Simulation", "Monte Carlo route comparison and closed-loop policy comparison") { onNavigate(Routes.SIMULATION) }

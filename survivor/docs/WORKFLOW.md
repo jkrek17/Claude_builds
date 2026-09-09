@@ -76,3 +76,17 @@ downloaded data. Everything is saved instantly to the app's private storage and 
 Sign up at the-odds-api.com, paste the key in Weekly Inputs, tap **Save key and refresh odds**. The current
 week then uses the mean no-vig probability across US books instead of DraftKings alone. Each refresh uses one
 request; the free tier allows 500 per month.
+
+## Betting
+
+The **Bets** tab is a separate module priced off the same market data - it never reads or changes your
+survivor pick. With an Odds API key saved, every refresh also pulls the full multi-book odds board (moneyline,
+spread, total) and looks for two kinds of edge: **line shopping** (a book's price vs. the rest of the market's
+own no-vig consensus - the primary, reliable signal) and **model vs. market** (this engine's own win
+probability vs. the best price - a secondary, speculative signal, always shown labeled as such). Suggested
+stakes use fractional Kelly on your bankroll, both configurable in **Model Settings → Betting** along with the
+minimum edge each signal needs to show a pick. Record a suggested bet from its card (book, price, point and
+stake are all editable) and it's graded automatically from final scores on the next refresh - the Ledger
+shows totals, a split by signal and by market, and closing-line value per bet. The odds board costs 3 requests
+per fetch, so it's throttled to once every 3 hours automatically; the Bets tab's own "Refresh odds board"
+button can force an earlier one. See [docs/BETTING.md](BETTING.md) for the full formula reference.
