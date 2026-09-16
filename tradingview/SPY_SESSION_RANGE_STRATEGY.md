@@ -194,9 +194,73 @@ If step 1 shows no edge, the strategy is not rescued by better option selection.
 
 ---
 
-## 10. Next steps
+## 10. Improvements over v1 (ranked by expected impact)
+
+Each item says whether it fits in Pine, needs the Python side, or is a testing discipline. Items marked **v1.1** go into the first script; the rest are tested one at a time against the v1 baseline so we know what each one adds.
+
+### 10.1 Size targets to the market's expected move — v1.1, Pine
+
+v1 targets are structural (range edges, OR multiples) with no check against what the market thinks today's range will be. Pull `CBOE:VIX1D` (one-day implied vol) via `request.security`; the expected move for the session is roughly `SPY × VIX1D / 100 / sqrt(252)`. Then:
+
+- Cap T2 at the expected-move boundary from the open. A target beyond it is a hope, not a plan.
+- Skip a setup whose T1 is less than 20% of the expected move. That is noise, and the option's spread eats it.
+- Show "T2 uses 65% of today's expected move" in the panel.
+
+This is the single biggest fix because it makes targets consistent with what 0DTE premium is actually pricing.
+
+### 10.2 Confluence score for Setup A — v1.1, Pine
+
+A London low that is also yesterday's low and a round-number strike is a far better sweep target than a lone London low. Count levels within 0.10% of the swept level: Asia/London/overnight edges, PDH/PDL/PDC, $5 strike increments, prior-day VWAP, 1-hour swing high/low. Require confluence ≥ 2 for Setup A. Show the count in the panel.
+
+### 10.3 Reclaim-bar quality — v1.1, Pine
+
+v1 accepts any close back inside the range. Require, for a long reclaim: close in the top third of the bar's range, volume ≥ 1.5 × the 20-bar average, and the bar's low is the lowest of the last 6 bars. Fake reclaims (a doji poking back inside on thin volume) are where most Setup A losses come from.
+
+### 10.4 Trend-day detection — v1.1, Pine
+
+A gap larger than 0.5% that holds beyond the OR without a retest by 10:00, with VWAP sloping the same way, is a trend day. On trend days: disable Setup A against the trend entirely, and let Setup B use VWAP pullbacks as entries instead of the OR edge. Fading trend days is the fastest way to lose on this strategy.
+
+### 10.5 Volatility-regime switch — Pine + advisor
+
+Low-vol days favor mean reversion (Setup A); high-vol days favor continuation (Setup B). Rule: if VIX1D is below its 20-day median, weight Setup A; above it, weight Setup B; extreme (VIX > 30 or term structure inverted, which the advisor project already computes), halve size on everything. The advisor's daily regime can be pushed into the script as inputs each morning until Pine can read it directly.
+
+### 10.6 Dealer-positioning levels as target modifiers — manual or advisor
+
+Large open-interest strikes act as magnets and pins near expiry. Pine cannot see open interest, but the advisor can pull the SPY chain each morning and push the top three OI strikes and the zero-gamma level as inputs. Rule: never set a target just past a wall; set it just before, and treat a wall as an extra confluence level for Setup A.
+
+### 10.7 A second option expression for Setup A: credit spread — Python overlay
+
+The reclaim thesis is "the low is in", not "price will rally 3R". A put credit spread with the short strike just below the sweep low expresses exactly that: it profits from time and any non-breach, with defined risk. Lower reward per trade but a much higher win rate, and it is the better vehicle after 10:30 when a long call's theta is punishing. Test both expressions against the same signals in the options overlay and let the numbers pick. Suggested default: long call/put before 10:30, credit spread after.
+
+### 10.8 Better exits — Pine strategy twin, tested
+
+- After T1, trail the remainder by the prior 5-minute swing low/high instead of a fixed T2, and compare.
+- Test scale-out splits 50/50 vs 33/67 vs all-at-T1.
+- Entry variant: buy stop one tick above the reclaim bar's high (confirmation) instead of at its close. Fewer trades, better quality, test it.
+
+### 10.9 Historical hit rates in the panel — Pine
+
+Pine can keep running tallies. Show, next to each level type, how often it was swept and reclaimed in the last 250 sessions and how often T1 followed. "London low reclaim → T1 hit 58% (n=112)" is real context at the moment of decision, and it will tell you quickly if a level type has stopped working.
+
+### 10.10 Calendar awareness — Pine input list + advisor
+
+Early-close days (13:00) break the time stops; opex Fridays pin; the first day after a holiday behaves differently. The advisor project can generate the year's list (early closes, opex, FOMC, CPI, NFP) and the script takes it as an input string. Skip or halve size accordingly.
+
+### 10.11 Testing discipline (this is where most strategies die)
+
+- Keep the tunable parameters to about six. Every extra one is a way to overfit.
+- Sweep each parameter and keep only plateaus, never the single best value.
+- Walk-forward: tune on months 1–6, test on 7–12, then roll.
+- Report by setup, direction, hour, day of week, and volatility regime. A strategy that only works on Tuesdays in low vol is not a strategy.
+- Include one tick of slippage each way on SPY and real bid-ask fills in the options overlay. Most "edges" vanish here.
+
+### 10.12 What to leave alone
+
+Do not add oscillators (RSI, MACD) as filters. They add parameters, lag, and false confidence without changing where stops sit. Do not add more setups until A and B are proven. Do not trade the afternoon until the morning is profitable for three months.
+
+## 11. Next steps
 
 1. Confirm or change the defaults above and the session definitions.
-2. Write `spy_session_ranges.pine` (indicator, Pine v6) and `spy_session_ranges_strategy.pine` (strategy twin).
+2. Write `spy_session_ranges.pine` (indicator, Pine v6) and `spy_session_ranges_strategy.pine` (strategy twin), including the v1.1 items from §10.
 3. Run the TradingView backtest and check in a results summary here.
 4. Wire the alert webhook into the advisor's recommendation log.
