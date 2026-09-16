@@ -69,7 +69,7 @@ Dates go in as `2026-09-17,2026-10-29`. Put FOMC, CPI, NFP and early-close days 
 
 ## Strategy twin: reading the tester
 
-- Position size is `riskDollars / R` shares, so one full stop-out is one R and net profit reads in R multiples of your risk setting.
+- Position size is `riskDollars / R` shares, so one full stop-out is one R and net profit reads in R multiples of your risk setting. Because a tight stop can mean a position worth more than the account, the strategy sets `margin_long=0, margin_short=0` to turn off the tester's equity check; otherwise every order is skipped and the tester reports "requires trade data".
 - Entries fill at the close of the trigger bar. Exits are resting limit/stop orders, filled intrabar. The T1 exit takes 50% and the remaining exit moves its stop to entry after T1 fills.
 - Slippage is 1 tick per fill. Set commission to your broker's per-share rate if you want cash numbers.
 - Use **List of Trades** with the comment column to split A vs B and long vs short. Run the parameter sweeps and walk-forward described in spec §8 and §10.11 before believing anything.

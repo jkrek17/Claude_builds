@@ -9,7 +9,9 @@ hdr = '''//@version=6
 // Generated from spy_session_ranges.pine by build_strategy.py: identical logic, plus strategy orders.
 // Tests the setups on the underlying so the tester reports win rate and expectancy per setup.
 // Options P&L is NOT modeled here; see the spec §8 for the Python options overlay.
-strategy("SPY Session Ranges + Setups [strategy]", shorttitle="SPY Sessions STRAT", overlay=true, initial_capital=30000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_order, commission_value=0, slippage=1, process_orders_on_close=true, calc_on_every_tick=false, max_lines_count=500, max_labels_count=200, max_boxes_count=100)
+// margin_long/short=0 disables the tester's equity check: share counts are sized from
+// risk dollars, not capital, so a tight stop can mean a position larger than the account.
+strategy("SPY Session Ranges + Setups [strategy]", shorttitle="SPY Sessions STRAT", overlay=true, initial_capital=100000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_order, commission_value=0, slippage=1, process_orders_on_close=true, calc_on_every_tick=false, margin_long=0, margin_short=0, max_lines_count=500, max_labels_count=200, max_boxes_count=100)
 
 '''
 orders = '''
