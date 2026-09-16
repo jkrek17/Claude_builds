@@ -1,6 +1,6 @@
 //@version=6
 // SPY Session Ranges + Setups — STRATEGY twin (backtest on SPY shares)
-// Generated from spy_session_ranges.pine: identical logic, plus strategy orders.
+// Generated from spy_session_ranges.pine by build_strategy.py: identical logic, plus strategy orders.
 // Tests the setups on the underlying so the tester reports win rate and expectancy per setup.
 // Options P&L is NOT modeled here; see the spec §8 for the Python options overlay.
 strategy("SPY Session Ranges + Setups [strategy]", shorttitle="SPY Sessions STRAT", overlay=true, initial_capital=30000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_order, commission_value=0, slippage=1, process_orders_on_close=true, calc_on_every_tick=false, max_lines_count=500, max_labels_count=200, max_boxes_count=100)
@@ -30,6 +30,7 @@ aStopHHMM   = input.int(1130, "Time stop (HHMM ET)", group=grpA)
 grpB = "Setup B: OR break + retest"
 useB        = input.bool(true, "Enable", group=grpB)
 retestATR   = input.float(0.15, "Retest tolerance (x ATR)", step=0.05, group=grpB)
+bStopMode   = input.string("OR midpoint", "Stop", options=["OR midpoint", "OR far side"], group=grpB)
 bStartHHMM  = input.int(945, "First entry (HHMM ET)", group=grpB)
 bEndHHMM    = input.int(1130, "Last entry (HHMM ET)", group=grpB)
 bStopHHMM   = input.int(1200, "Time stop (HHMM ET)", group=grpB)
@@ -40,7 +41,7 @@ grpR = "Risk / reward"
 minR1          = input.float(1.5, "Minimum T1 (R)", step=0.1, group=grpR)
 minR2          = input.float(2.5, "Minimum T2 (R)", step=0.1, group=grpR)
 stopBufATR     = input.float(0.25, "Stop buffer beyond sweep extreme (x ATR)", step=0.05, group=grpR)
-stopMinPct     = input.float(0.10, "Minimum stop distance (%)", step=0.01, group=grpR)
+stopMinPct     = input.float(0.05, "Minimum stop distance (%)", step=0.01, group=grpR)
 stopThruPct    = input.float(0.10, "Intrabar stop-through tolerance (%)", step=0.01, group=grpR)
 riskDollars    = input.float(150, "Risk $ per trade", group=grpR)
 deltaAssume    = input.float(0.50, "Assumed option delta", step=0.05, group=grpR)
@@ -53,7 +54,7 @@ zeroDteHHMM    = input.int(1030, "0DTE if entry before (HHMM), else 1DTE", group
 
 grpF = "Filters"
 emSym       = input.symbol("CBOE:VIX1D", "1-day implied vol index (expected move)", group=grpF)
-emMinT1Pct  = input.float(20, "Skip if T1 < % of expected move", group=grpF)
+emMinT1Pct  = input.float(15, "Skip if T1 < % of expected move", group=grpF)
 onRangeMin  = input.float(35, "Skip A if overnight range < % of avg daily range", group=grpF)
 onRangeMax  = input.float(150, "Half size if overnight range > % of avg daily range", group=grpF)
 gapTrendPct = input.float(0.5, "Trend day: gap ≥ %", step=0.1, group=grpF)
@@ -278,6 +279,8 @@ var int   bBreakBar = na
 var trigN = array.new_int(4, 0)
 var t1N   = array.new_int(4, 0)
 var winN  = array.new_int(4, 0)
+var rawN  = array.new_int(2, 0)   // raw triggers before gates: 0 A, 1 B
+var rejN  = array.new_int(7, 0)   // rejections by code
 
 if newDay
     tradesToday := 0
@@ -377,24 +380,31 @@ f_contracts(float rDist) =>
     math.max(1, math.min(maxContracts, n))
 
 // Build a candidate trade, or return na and a reason.
+// Rejection codes: 1 R/EM gate, 2 confluence, 3 bar quality/volume, 4 bias/trend, 5 range/chop/OR width, 6 no level
 f_build(string setup, int dir, float entry, float stop, float t1, float t2) =>
     string reason = ""
+    int code = 0
     Trade t = na
     rDist = math.abs(entry - stop)
     if na(t1)
         reason := "no T1 level in the way"
+        code := 6
     else if na(t2)
         reason := "no T2 level"
+        code := 6
     else
         r1 = math.abs(t1 - entry) / rDist
         r2 = math.abs(t2 - entry) / rDist
         emPct = emDollars > 0 ? math.abs(t1 - entry) / emDollars * 100 : 100
         if r1 < minR1
             reason := "T1 only " + str.tostring(r1, "#.#") + "R (need " + str.tostring(minR1, "#.#") + ")"
+            code := 1
         else if r2 < minR2
             reason := "T2 only " + str.tostring(r2, "#.#") + "R (need " + str.tostring(minR2, "#.#") + ")"
+            code := 1
         else if emPct < emMinT1Pct
             reason := "T1 is " + str.tostring(emPct, "#") + "% of expected move (noise)"
+            code := 1
         else
             t := Trade.new()
             t.setup := setup
@@ -415,27 +425,34 @@ f_build(string setup, int dir, float entry, float stop, float t1, float t2) =>
             t.strike := math.round(entry)
             t.statIdx := (setup == "A" ? 0 : 2) + (dir == 1 ? 0 : 1)
             t.resultR := na
-    [t, reason]
+    [t, reason, code]
 
 // Setup A candidate
 f_tryA(int dir, float lvl, float ext, float rangeHi, float rangeLo) =>
     string reason = ""
+    int code = 0
     Trade t = na
     confl = f_confluence(lvl)
     qualityOk = dir == 1 ? (close >= low + (high - low) * 2 / 3 and ext <= low6) : (close <= high - (high - low) * 2 / 3 and ext >= high6)
     volOk = volume >= volAvg * volMult
     if not na(onRangePct) and onRangePct < onRangeMin
         reason := "overnight range too small (" + str.tostring(onRangePct, "#") + "% of avg)"
+        code := 5
     else if (dir == 1 and bias == -1) or (dir == -1 and bias == 1)
         reason := "A against strong bias"
+        code := 4
     else if (dir == 1 and trendDay == -1) or (dir == -1 and trendDay == 1)
         reason := "A against trend day"
+        code := 4
     else if confl < minConfl
         reason := "confluence " + str.tostring(confl) + " < " + str.tostring(minConfl)
+        code := 2
     else if not qualityOk
         reason := "weak reclaim bar (close not in outer third / extreme not 6-bar extreme)"
+        code := 3
     else if not volOk
         reason := "reclaim volume below " + str.tostring(volMult, "#.#") + "x average"
+        code := 3
     else
         entry = close
         buf = math.max(stopBufATR * atr, entry * stopMinPct / 100)
@@ -451,22 +468,26 @@ f_tryA(int dir, float lvl, float ext, float rangeHi, float rangeLo) =>
             t1 := f_nearestBelow(array.from(mid, vwap), entry)
             t2 := f_nearestBelow(array.from(rangeLo, pdl, onLo, pdc, asiaLo, lonLo), nz(t1, entry))
             t2 := na(t2) ? na : math.max(t2, emLo)
-        [tt, rr] = f_build("A", dir, entry, stop, t1, t2)
+        [tt, rr, cc] = f_build("A", dir, entry, stop, t1, t2)
         t := tt
         reason := rr
-    [t, reason]
+        code := cc
+    [t, reason, code]
 
 // Setup B candidate
 f_tryB(int dir) =>
     string reason = ""
+    int code = 0
     Trade t = na
     if not na(orPct) and orPct > orWideMax
         reason := "OR too wide (" + str.tostring(orPct, "#") + "% of avg daily range)"
+        code := 5
     else if isChop
         reason := "chop: " + str.tostring(chopCount) + " OR edge crossings"
+        code := 5
     else
         entry = close
-        stop = dir == 1 ? orLo : orHi
+        stop = bStopMode == "OR midpoint" ? orMid : (dir == 1 ? orLo : orHi)
         float t1 = na
         float t2 = na
         if dir == 1
@@ -485,10 +506,11 @@ f_tryB(int dir) =>
             t2 := entry - 2 * orH
             t2 := na(onLo) ? t2 : math.max(t2, onLo < t1 ? onLo : t2)
             t2 := math.max(t2, emLo)
-        [tt, rr] = f_build("B", dir, entry, stop, t1, t2)
+        [tt, rr, cc] = f_build("B", dir, entry, stop, t1, t2)
         t := tt
         reason := rr
-    [t, reason]
+        code := cc
+    [t, reason, code]
 
 // ───────────────────────────── Signal evaluation ─────────────────────────────
 bool aLongTrig  = false
@@ -496,37 +518,51 @@ bool aShortTrig = false
 bool bLongTrig  = false
 bool bShortTrig = false
 
+anyARaw = lonLoTrig or asiaLoTrig or lonHiTrig or asiaHiTrig
+anyBRaw = bRetestLong or bRetestShort
+if barstate.isconfirmed and anyARaw
+    array.set(rawN, 0, array.get(rawN, 0) + 1)
+if barstate.isconfirmed and anyBRaw
+    array.set(rawN, 1, array.get(rawN, 1) + 1)
+
 if barstate.isconfirmed and canOpen and tradingAllowed
     Trade cand = na
     string why = ""
+    int code = 0
     // Setup A, London levels first
     if useA
         if lonLoTrig
-            [c, w] = f_tryA(1, lonLo, lonLoExt, lonHi, lonLo)
+            [c, w, k] = f_tryA(1, lonLo, lonLoExt, lonHi, lonLo)
             cand := c
             why := w
+            code := k
         if na(cand) and asiaLoTrig
-            [c, w] = f_tryA(1, asiaLo, asiaLoExt, asiaHi, asiaLo)
+            [c, w, k] = f_tryA(1, asiaLo, asiaLoExt, asiaHi, asiaLo)
             cand := c
             why := why == "" ? w : why
+            code := code == 0 ? k : code
         if na(cand) and lonHiTrig
-            [c, w] = f_tryA(-1, lonHi, lonHiExt, lonHi, lonLo)
+            [c, w, k] = f_tryA(-1, lonHi, lonHiExt, lonHi, lonLo)
             cand := c
             why := why == "" ? w : why
+            code := code == 0 ? k : code
         if na(cand) and asiaHiTrig
-            [c, w] = f_tryA(-1, asiaHi, asiaHiExt, asiaHi, asiaLo)
+            [c, w, k] = f_tryA(-1, asiaHi, asiaHiExt, asiaHi, asiaLo)
             cand := c
             why := why == "" ? w : why
+            code := code == 0 ? k : code
     if na(cand) and useB
         if bRetestLong
-            [c, w] = f_tryB(1)
+            [c, w, k] = f_tryB(1)
             cand := c
             why := why == "" ? w : why
+            code := code == 0 ? k : code
             bDone := true
         else if bRetestShort
-            [c, w] = f_tryB(-1)
+            [c, w, k] = f_tryB(-1)
             cand := c
             why := why == "" ? w : why
+            code := code == 0 ? k : code
             bDone := true
     if not na(cand)
         tr := cand
@@ -539,7 +575,8 @@ if barstate.isconfirmed and canOpen and tradingAllowed
         bShortTrig := cand.setup == "B" and cand.dir == -1
     else if why != ""
         lastReason := "NO TRADE — " + why
-else if barstate.isconfirmed and not tradingAllowed and (lonLoTrig or asiaLoTrig or lonHiTrig or asiaHiTrig or bRetestLong or bRetestShort)
+        array.set(rejN, code, array.get(rejN, code) + 1)
+else if barstate.isconfirmed and not tradingAllowed and (anyARaw or anyBRaw)
     lastReason := isSkipDay ? "NO TRADE — no-trade date" : consecLoss >= maxConsecLoss ? "DONE — consecutive losses" : dayR <= -dailyLossR ? "DONE — daily loss limit" : "DONE — max trades today"
 
 armed := lonLoArm ? "London low swept, waiting for reclaim" : asiaLoArm ? "Asia low swept, waiting for reclaim" : lonHiArm ? "London high swept, waiting for reclaim" : asiaHiArm ? "Asia high swept, waiting for reclaim" : bBrokeUp and not bDone ? "OR broke up, waiting for retest" : bBrokeDn and not bDone ? "OR broke down, waiting for retest" : ""
@@ -757,7 +794,7 @@ f_stat(int i) =>
     n = array.get(trigN, i)
     n == 0 ? "—" : str.tostring(math.round(array.get(t1N, i) * 100.0 / n)) + "% T1, " + str.tostring(math.round(array.get(winN, i) * 100.0 / n)) + "% win (n=" + str.tostring(n) + ")"
 
-var table pnl = table.new(position.top_right, 2, 16, bgcolor=color.new(color.black, 20), border_color=color.new(color.gray, 60), border_width=1)
+var table pnl = table.new(position.top_right, 2, 17, bgcolor=color.new(color.black, 20), border_color=color.new(color.gray, 60), border_width=1)
 txtSize = panelSize == "tiny" ? size.tiny : panelSize == "small" ? size.small : size.normal
 f_row(int r, string k, string v, color vc) =>
     table.cell(pnl, 0, r, k, text_color=color.new(color.silver, 0), text_size=txtSize, text_halign=text.align_left)
@@ -808,4 +845,5 @@ if showPanel and barstate.islast
     f_row(12, "Today", str.tostring(tradesToday) + "/" + str.tostring(maxTradesDay) + " trades  " + f_r(dayR) + "  losses in a row " + str.tostring(consecLoss), color.white)
     f_row(13, "A long / short", f_stat(0) + "  |  " + f_stat(1), color.silver)
     f_row(14, "B long / short", f_stat(2) + "  |  " + f_stat(3), color.silver)
-    f_row(15, "Note", timeframe.period == "5" ? "levels from " + esSym + " scaled ×" + str.tostring(na(ratio) ? 0 : 1 / ratio, "#.####") : "tuned for the 5-minute chart", color.gray)
+    f_row(15, "Diag", "raw A " + str.tostring(array.get(rawN, 0)) + " · B " + str.tostring(array.get(rawN, 1)) + "  rejected: R/EM " + str.tostring(array.get(rejN, 1)) + ", confl " + str.tostring(array.get(rejN, 2)) + ", bar " + str.tostring(array.get(rejN, 3)) + ", bias " + str.tostring(array.get(rejN, 4)) + ", range " + str.tostring(array.get(rejN, 5)) + ", level " + str.tostring(array.get(rejN, 6)), color.silver)
+    f_row(16, "Note", timeframe.period == "5" ? "levels from " + esSym + " scaled ×" + str.tostring(na(ratio) ? 0 : 1 / ratio, "#.####") : "tuned for the 5-minute chart", color.gray)

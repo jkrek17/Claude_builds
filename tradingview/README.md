@@ -7,7 +7,7 @@ Two Pine Script v6 files that implement `SPY_SESSION_RANGE_STRATEGY.md`:
 | `spy_session_ranges.pine` | Indicator. Draws the levels, computes bias, detects setups, gates on risk/reward, prints direction / entry / stop / targets / contract in a panel, fires alerts. |
 | `spy_session_ranges_strategy.pine` | Strategy twin. Same logic plus `strategy.entry` / `strategy.exit`, so the Strategy Tester reports win rate, expectancy and drawdown per setup on SPY shares. |
 
-**Status: written from the spec, not yet compiled in TradingView.** Pine has no offline compiler. Paste each file into the Pine Editor; if it reports an error, copy the message and line back and it will be fixed. Expect a first round of compile fixes.
+**Status: both scripts compile in TradingView (Pine v6).** The strategy twin is generated from the indicator by `build_strategy.py`; edit the indicator, run the script, paste both.
 
 ## Setup
 
@@ -40,6 +40,8 @@ Today       1/2 trades  +0.0R  losses in a row 0
 A long/short  58% T1, 52% win (n=31)  |  44% T1, 40% win (n=18)
 B long/short  ...
 ```
+
+The **Diag** row counts raw triggers per setup since the start of the loaded history and how many were rejected by each gate (R/EM, confluence, bar quality, bias, range, level). If the strategy shows few trades, this row says which gate is binding.
 
 `NO TRADE — ...` in the Setup row means a raw trigger happened but a gate failed (R too small, confluence, weak reclaim bar, against bias, chop, range too small). `ARMED — ...` means a sweep or OR break is in progress and the script is waiting for the reclaim or retest.
 

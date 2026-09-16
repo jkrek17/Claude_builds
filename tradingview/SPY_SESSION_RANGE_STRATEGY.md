@@ -69,7 +69,7 @@ The overnight range edges are where stops sit. Price often runs them, then rever
 - **Trigger:** a 5-minute bar trades through the London high (or low) or the Asia high (or low) by at least 0.05% and then, within the same bar or the next two bars, **closes back inside** the range.
 - **Direction:** opposite the sweep. Sweep of a low → LONG.
 - **Entry:** close of the reclaim bar (market or a limit at that close, cancel if not filled in one bar).
-- **Stop:** the sweep extreme ± 0.25 × ATR(14, 5m). Never tighter than 0.10% of price.
+- **Stop:** the sweep extreme ± 0.25 × ATR(14, 5m). Never tighter than 0.05% of price (0.10% proved too wide on a $750 SPY: it made the London midpoint unreachable at 1.5R).
 - **T1:** range midpoint, or VWAP if it is closer and in the way. Take 50% here and move stop to entry.
 - **T2:** opposite side of the swept range, or the next level in the list (PDH/PDL, overnight high/low), whichever comes first.
 - **Time window:** 09:35–11:00 only. Reversal sweeps after 11:00 have far worse follow-through.
@@ -78,7 +78,7 @@ The overnight range edges are where stops sit. Price often runs them, then rever
 
 - **Trigger:** after 09:45, a 5-minute close outside the OR in the direction of the bias, then a pullback that touches the OR edge (± 0.15 × ATR) and closes back on the breakout side. That retest bar is the entry bar.
 - **Entry:** close of the retest bar.
-- **Stop:** OR midpoint (aggressive) or the far side of the OR (conservative, default).
+- **Stop:** OR midpoint (default). The far side of the OR is available as an option but makes the 1.5R gate unreachable when T1 is one OR-height away, so it is off by default.
 - **T1:** entry + 1 × OR height, or the first session level in the way if it is at least 1.5R.
 - **T2:** entry + 2 × OR height, or the overnight high/low.
 - **Time window:** 09:45–11:30. No new entries after 11:30.
@@ -184,7 +184,8 @@ If step 1 shows no edge, the strategy is not rescued by better option selection.
 | Opening range | 09:30–09:45 |
 | Chart timeframe | 5 minutes |
 | Sweep buffer | 0.05% |
-| Stop buffer | 0.25 × ATR(14) |
+| Stop buffer | 0.25 × ATR(14), min 0.05% |
+| Setup B stop | OR midpoint |
 | T1 / T2 minimum R | 1.5 / 2.5 |
 | Risk per trade | 0.5% of account |
 | Setup A window | 09:35–11:00 |
@@ -203,7 +204,7 @@ Each item says whether it fits in Pine, needs the Python side, or is a testing d
 v1 targets are structural (range edges, OR multiples) with no check against what the market thinks today's range will be. Pull `CBOE:VIX1D` (one-day implied vol) via `request.security`; the expected move for the session is roughly `SPY × VIX1D / 100 / sqrt(252)`. Then:
 
 - Cap T2 at the expected-move boundary from the open. A target beyond it is a hope, not a plan.
-- Skip a setup whose T1 is less than 20% of the expected move. That is noise, and the option's spread eats it.
+- Skip a setup whose T1 is less than 15% of the expected move. That is noise, and the option's spread eats it.
 - Show "T2 uses 65% of today's expected move" in the panel.
 
 This is the single biggest fix because it makes targets consistent with what 0DTE premium is actually pricing.
