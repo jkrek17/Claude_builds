@@ -10,7 +10,8 @@ This is a plan for a personal, advisory-only system that:
 2. Reads overall market sentiment and structure every day and classifies the market into a **regime** (risk-on / neutral / risk-off).
 3. Tells you, per position, when the rules say **buy more, hold, trim, or sell**, and why.
 4. Tells you when to **dial risk down or back up in your TSP** (Thrift Savings Plan), within the TSP's own transfer rules.
-5. Keeps a log of every recommendation and scores itself against what actually happened.
+5. Reads the posts from your paid stock-advice subscription (The Long Investor on Patreon), extracts the levels and theses, watches those levels against live prices, and tells you what each post means for what you own.
+6. Keeps a log of every recommendation, yours and the subscription's, and scores both against what actually happened.
 
 It never places orders. You act; it advises.
 
@@ -49,6 +50,10 @@ It never places orders. You act; it advises.
 | U7 | See a scorecard of past recommendations vs. what happened | I can tell whether the advisor is actually helping |
 | U8 | Ask "why is the regime neutral today?" in plain English | I get an explanation grounded in the actual numbers |
 | U9 | Get an out-of-cycle alert when something breaks (VIX spike, stop hit, credit spreads jump) | I'm not surprised by a big move between briefs |
+| U10 | Have each new Patreon post turned into a structured thesis (ticker, stance, levels, confirmation, invalidation) | I don't have to re-read posts to remember what level mattered |
+| U11 | Be alerted when price hits a level the advisor named ("HIMS closed above the 200-day at $28") | The advisor's "watch for X" becomes an actual notification |
+| U12 | See the advisor's calls next to my own rules and the market regime, with disagreements flagged | I can weigh three opinions instead of following one blindly |
+| U13 | See the advisor's track record: how often theses confirmed vs. invalidated, and what happened after | I know whether the subscription is worth keeping |
 
 ---
 
@@ -71,6 +76,15 @@ It never places orders. You act; it advises.
 - Daily share prices for every fund are published on tsp.gov with a downloadable history back to 2003. That is the backtest dataset, so no ETF proxies are needed for the TSP module.
 - Consequence for the design: TSP signals must be **slow and hysteretic**. A regime model that flips three times a month is useless here, so the TSP module deliberately lags and debounces the daily regime score.
 
+### Patreon subscription (The Long Investor)
+
+- Posts are text plus a TradingView chart image. The text names a ticker, a pattern (wedge, Elliott wave count), moving-average levels, Fibonacci targets and a bull/bear line. Explicit "buy at X, stop at Y" calls are rare; the content is **levels and conditions**. The example post for HIMS: reclaim the 200-day MA at $28, then the 50-day and $30, wedge breakout, target $39 (1.618 Fib), with further targets visible only on the chart.
+- The creator also maintains a **Top 10 list for 2026** (ZETA, NVO, PEP, BIDU, ETH, UNH, HIMS, JD, UPS, SE at the time of writing). That list seeds the watchlist automatically.
+- Patreon's official API serves creators, not patrons. It cannot read a creator's posts on your behalf. The supported patron-side channels are the email notification for each post (often with full text and the image) and a private RSS link for audio posts only.
+- The plan's primary channel is therefore **Gmail**: a filter labels Patreon post emails, the ingest job reads them, and the chart image is fetched from the email or the post link. Automating a logged-in browser session against patreon.com works but breaches Patreon's terms, so it stays a manual fallback: paste a post into the dashboard.
+- Comments on posts (for example a reader challenging the wave count) are ignored by default. They are noise for extraction.
+- The extracted data (levels, stance, targets) is stored for personal use. The system never republishes the creator's text or charts.
+
 ### Data
 
 - Free daily prices via `yfinance` are fine for prototyping but break without notice. The plan treats the price source as pluggable and uses the Schwab market data endpoint once the API is connected.
@@ -88,17 +102,17 @@ It never places orders. You act; it advises.
                  │   (cron / APScheduler: 6:30 ET daily + intraday)    │
                  └───────────────┬────────────────────────────────────┘
                                  ▼
-┌──────────────┐   ┌──────────────────────┐   ┌────────────────────────┐
-│  Portfolio   │   │   Market data ingest  │   │   Macro / sentiment    │
-│  ingest      │   │  prices, VIX, breadth │   │   FRED, Cboe P/C, AAII │
-│ manual/CSV/  │   │  (Schwab / yfinance)  │   │   NAAIM, news headlines│
-│ Schwab API   │   └──────────┬───────────┘   └───────────┬────────────┘
-└──────┬───────┘              │                           │
-       ▼                      ▼                           ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                     Store  (SQLite/DuckDB + parquet)                  │
-│   positions · lots · prices · indicators · regime history · recs      │
-└──────────────────────────────┬───────────────────────────────────────┘
+┌──────────────┐ ┌──────────────────┐ ┌────────────────────┐ ┌──────────────────┐
+│  Portfolio   │ │ Market data      │ │ Macro / sentiment  │ │ Advisor feed     │
+│  ingest      │ │ prices, VIX,     │ │ FRED, Cboe P/C,    │ │ Patreon posts via│
+│ manual/CSV/  │ │ breadth (Schwab/ │ │ AAII, NAAIM, news  │ │ Gmail → Claude   │
+│ Schwab API   │ │ yfinance)        │ │ headlines          │ │ vision extraction│
+└──────┬───────┘ └────────┬─────────┘ └─────────┬──────────┘ └────────┬─────────┘
+       ▼                  ▼                     ▼                     ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                       Store  (SQLite/DuckDB + parquet)                        │
+│  positions · lots · prices · indicators · regime history · recs · theses      │
+└──────────────────────────────────┬───────────────────────────────────────────┘
                                ▼
         ┌──────────────────────────────────────────────────┐
         │                  Signal engine                    │
@@ -109,7 +123,11 @@ It never places orders. You act; it advises.
         │  │ sentiment      │   └────────────────────────┘  │
         │  │                │   ┌────────────────────────┐  │
         │  │                │──▶│ TSP risk dial          │  │
-        │  └────────────────┘   │ debounced, IFT-aware   │  │
+        │  │                │   │ debounced, IFT-aware   │  │
+        │  │                │   └────────────────────────┘  │
+        │  │                │   ┌────────────────────────┐  │
+        │  │                │──▶│ Advisor level monitor  │  │
+        │  └────────────────┘   │ thesis status, alerts  │  │
         │                       └────────────────────────┘  │
         └──────────────────────────┬───────────────────────┘
                                    ▼
@@ -135,9 +153,10 @@ It never places orders. You act; it advises.
 | Regime model | Composite 0–100 score and a discrete regime with hysteresis | See §5 |
 | Position rules | Buy / hold / trim / sell per holding, with triggering rule and tax-lot awareness | See §6 |
 | TSP risk dial | Target equity-exposure multiplier and a concrete IFT instruction | See §7 |
+| Advisor feed | Reads Patreon post emails from Gmail, extracts a structured thesis per ticker with Claude (text + chart image), monitors the named levels daily, tracks thesis status and the creator's record | See §8 |
 | Narrative layer | Claude turns the structured signals into a readable brief and answers questions | Claude Opus 5 (`claude-opus-5`) for the daily brief and Q&A; Claude Haiku 4.5 for bulk headline tagging. The model never invents numbers: it only sees the computed signal table |
 | Delivery | Email (SMTP) and/or Telegram bot; Streamlit dashboard | Telegram is easiest for push alerts |
-| Recommendation log | Every rec with inputs, timestamp, and later outcome | Feeds the scorecard in §9 |
+| Recommendation log | Every rec with inputs, timestamp, and later outcome | Feeds the scorecard in §10 |
 | Backtester | Replays the regime model and TSP dial over history | Uses tsp.gov share prices and SPY/VXF/IEFA-style proxies for validation |
 
 ---
@@ -229,7 +248,119 @@ Backtest target before this module is enabled: over 2003–present using tsp.gov
 
 ---
 
-## 8. Data sources and costs
+## 8. Subscription advisor feed (Patreon: The Long Investor)
+
+The subscription is treated as a **third opinion** with its own track record, alongside your rules (§6) and the regime model (§5). Nothing from it is auto-merged into a recommendation.
+
+### 8.1 Ingest
+
+1. Gmail filter: from Patreon, subject or body mentioning the creator → label `advisor/long-investor`. The ingest job polls the label, dedupes by post URL, stores the text, and downloads the chart image.
+2. If the email is only a "new post" stub, the job records the URL and the brief shows "1 new post, paste it in" with a dashboard text box. Pasting a post (text and optional image) is the manual path and is always available.
+3. The Top 10 collection is entered once by hand and refreshed when the creator posts an update. Its tickers are added to the watchlist with source `advisor`.
+
+### 8.2 Extraction
+
+Each post goes to Claude Opus 5 with the text and the chart image, and returns one structured thesis per ticker mentioned (structured output, schema-validated):
+
+```json
+{
+  "creator": "The Long Investor",
+  "post_date": "2026-09-16",
+  "post_url": "...",
+  "ticker": "HIMS",
+  "stance": "bullish",
+  "timeframe": "weeks_to_months",
+  "in_top10": true,
+  "pattern": "falling wedge; Elliott wave (C) of 4 completing",
+  "levels": [
+    {"type": "resistance", "price": 28.0,  "label": "200-day MA",        "role": "confirmation_1"},
+    {"type": "resistance", "price": 30.0,  "label": "50-day MA / round number", "role": "confirmation_2"},
+    {"type": "breakout",   "price": null,  "label": "upper wedge trendline",    "role": "confirmation_3"},
+    {"type": "target",     "price": 39.0,  "label": "1.618 Fib",         "role": "target_1"},
+    {"type": "target",     "price": 46.0,  "label": "2.618 Fib (chart only)", "role": "target_2"},
+    {"type": "support",    "price": 25.8,  "label": "bull/bear line (chart)",  "role": "invalidation"}
+  ],
+  "confirmation": "daily close above 200-day MA that then holds as support; then reclaim $30; then wedge breakout",
+  "invalidation": "daily close below the bull/bear line / lower wedge support",
+  "action_implied": "hold or accumulate on confirmation; no explicit entry or stop given",
+  "confidence": 0.8
+}
+```
+
+Rules for the extractor:
+
+- Only numbers present in the text or legible on the chart may appear. Chart-only numbers are labeled as such and carry lower confidence.
+- Trendline levels with no fixed price are stored as `null` and evaluated by the monitor using the system's own moving averages and a simple trendline fit, marked as approximations.
+- Sarcasm, hedging, and "we would likely see" are mapped to stance and confidence, never to a buy/sell action. The advisor never issues a "buy" on the creator's behalf unless the post literally says so.
+- A post that updates a prior thesis on the same ticker supersedes it; the old one is kept for the scorecard.
+
+### 8.3 Level monitor and thesis status
+
+Daily, after prices load, each open thesis is evaluated against the close:
+
+| Status | Meaning | Example |
+|---|---|---|
+| `watching` | No named level reached yet | HIMS still below the 200-day |
+| `confirming` | One or more confirmation levels reached and holding | Two closes above $28 |
+| `confirmed` | All confirmation conditions met | Above $30 and through the wedge |
+| `target_hit` | A target reached | Close ≥ $39 |
+| `invalidated` | Invalidation level breached on a close | Close below $25.8 |
+| `stale` | No update from the creator in 60 days and price far from every level | |
+
+Every status change fires a brief line and, for `confirmed`, `target_hit`, and `invalidated`, an immediate alert (U11). The alert text quotes the creator's condition, not a paraphrase of the whole post.
+
+### 8.4 Reconciliation with your positions and rules
+
+The brief shows one row per ticker that appears in either your holdings, the watchlist, or an open thesis:
+
+```
+HIMS   you: 0%     rules: no signal (below 200d)     regime: neutral
+       advisor: bullish, confirming (2 closes > $28); next $30; target $39; invalidation $25.8
+       → Watch. Rules and advisor agree once $30 is reclaimed. Position size cap: 5%.
+
+UNH    you: 6%     rules: HOLD, above 50d/200d        regime: neutral
+       advisor: Top 10, no open thesis since 2026-07-02
+       → Hold.
+
+XYZ    you: 4%     rules: SELL, trailing stop hit     regime: risk-off
+       advisor: bullish, watching
+       → DISAGREEMENT. Your stop rule says sell; the advisor's thesis is intact. Default: follow your stop, log the override if you don't.
+```
+
+The default on a disagreement is your own risk rules, because they are the ones you backtested. That default is a config switch.
+
+### 8.5 Advisor scorecard
+
+For every thesis: days to confirmation, whether a target or the invalidation was hit first, and return from post date to resolution. Rolled up per creator: confirmation rate, target-before-invalidation rate, median return of confirmed theses vs. buy-and-hold of the same ticker, and Top 10 list performance vs. SPY since publication. This is what answers "is the subscription worth it".
+
+### 8.6 What this does not do
+
+- It does not follow the creator into a position. The most it produces is "advisor thesis confirmed; your rules allow a buy; size cap X".
+- It does not read comments, Discord, or livestreams in v1. Each of those can be added later as another ingest path into the same thesis schema.
+- It does not redistribute the creator's content. Stored text stays local; the brief quotes at most one sentence per post.
+
+### 8.7 Elliott Wave tooling
+
+The creator's method is Elliott Wave Theory (EWT): wave counts, a wedge, and Fibonacci extensions off the labeled pivots. Fully automated wave counting is an open problem. Counts are subjective, several valid counts usually exist at once, and degrees nest fractally, so every automated counter emits many candidates and a human still picks one. The open-source options are hobby-grade:
+
+| Project | What it does | State |
+|---|---|---|
+| `drstevendev/ElliottWaveAnalyzer` (Python) | Builds monowaves from local extrema, enumerates 5-wave and 3-wave chains, validates each against pluggable rules | ~200 stars, parts marked "not working at the moment", no license file |
+| `DrEdwardPCB/python-taew` (PyPI `taew`, MIT) | Iterative impulse labeling with Fibonacci checks | Small, 4 commits, author disclaims accuracy |
+| `ESJavadex/elliot-waves-auto` (MIT) | Web app: wave detection plus Fib zones and entry/stop/target suggestions, Yahoo data | Educational, explicitly not for live use |
+| `philippe-ostiguy/PyBacktesting` (MIT) | EWT-flavored entries tuned by a genetic algorithm | Author's own out-of-sample test collapsed; a cautionary example |
+| TradingView `Elliott Wave [LuxAlgo]`, `UAlgo` scripts | Pine indicators that enforce the hard rules and draw counts | Locked to TradingView; usable only via TradingView alerts |
+| MotiveWave, WaveBasis | Commercial auto-counting | Paid, closed |
+
+Decision: **the system does not count waves as a signal.** It uses EWT mechanics in three narrow, testable ways:
+
+1. **Rule checker for the creator's count.** Extraction (§8.2) also records the labeled pivots the creator drew (wave label, approximate date and price, read from the chart). A small module checks the three hard rules on those pivots: wave 2 never retraces more than 100% of wave 1; wave 3 is never the shortest of 1, 3, 5; wave 4 does not enter wave 1's price territory except in a diagonal. The brief shows "count passes hard rules" or names the violation. This is exactly the challenge a reader raised in the comments on the HIMS post, and it takes ~100 lines of our own code, no dependency.
+2. **Fibonacci level calculator.** From the same pivots, compute the standard retracements and extensions (0.382, 0.5, 0.618, 0.786, 1.0, 1.618, 2.618) and confirm the creator's targets ($39 = 1.618 in the HIMS post) or flag a mismatch. Those levels then feed the level monitor (§8.3) like any other level.
+3. **Alternative counts as context (optional, Phase 7+).** Run a zigzag pivot finder plus the rule set over the last 12 months to list other counts consistent with the rules, shown as "alt counts" in the dashboard, never as a recommendation. If a mature library proves useful here we can adopt it, but the fallback is our own zigzag on `pandas` pivots.
+
+The bar for anything EWT-derived to influence a recommendation is the same as for every other signal: it must improve the out-of-sample backtest in §10.
+
+## 9. Data sources and costs
 
 | Data | Source | Cost | Cadence | Fallback |
 |---|---|---|---|---|
@@ -242,13 +373,14 @@ Backtest target before this module is enabled: over 2003–present using tsp.gov
 | S&P 500 constituent list | Wikipedia table or a maintained CSV | Free | Monthly | pinned list in repo |
 | TSP share prices | tsp.gov share price history CSV | Free | Daily | none needed |
 | News headlines | RSS (Reuters/AP/CNBC feeds) | Free | Daily | skip narrative news section |
-| Narrative and Q&A | Claude API (`claude-opus-5`; Haiku 4.5 for headline tagging) | Roughly $5–15/month at one brief per day plus questions | Daily | Template-only brief |
+| Advisor posts | Patreon post emails via Gmail (text + chart image) | Subscription already paid | Per post | Paste into dashboard |
+| Narrative, Q&A, post extraction | Claude API (`claude-opus-5`; Haiku 4.5 for headline tagging) | Roughly $5–20/month at one brief per day, a few posts per week, plus questions | Daily / per post | Template-only brief; manual level entry |
 
 Everything runs on free data in v1. The paid fallback is a switch, not a rewrite.
 
 ---
 
-## 9. Evaluation: how we know it works
+## 10. Evaluation: how we know it works
 
 - **Backtests** (regime model and TSP dial): CAGR, max drawdown, Sortino, number of trades, time in equities, versus buy-and-hold C Fund and the closest L Fund. Walk-forward with parameters fit on 2003–2017 and tested on 2018–present, so 2020, 2022 and April 2025 are all out-of-sample.
 - **Live scorecard** (from day one of running): every recommendation is logged with the inputs. After 20 and 60 trading days the log records what the position or index did. The dashboard shows hit rate, average outcome of "sell" recs vs. holding, and drawdown avoided or return forgone on TSP moves.
@@ -257,7 +389,7 @@ Everything runs on free data in v1. The paid fallback is a switch, not a rewrite
 
 ---
 
-## 10. Tech stack
+## 11. Tech stack
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -267,6 +399,7 @@ Everything runs on free data in v1. The paid fallback is a switch, not a rewrite
 | Scheduling | cron or APScheduler on the host | Simple; GitHub Actions cron is an option for the CSV-only phase |
 | Brokerage | `schwab-py` (or `schwabdev`) | Handles Schwab OAuth and token refresh |
 | Macro | `fredapi` | Thin wrapper over FRED |
+| Advisor feed | Gmail API (`google-api-python-client`) with a read-only scope; Claude vision + structured outputs for extraction | Terms-friendly path to Patreon posts; the schema is validated on every response |
 | Indicators | `pandas-ta` or hand-written (ATR, RSI, MAs are short) | Avoid heavy TA-Lib build |
 | Backtesting | Custom vectorized loop (regime → allocation → daily returns) | Simpler and more transparent than a general framework for allocation-level tests |
 | LLM | `anthropic` SDK, `claude-opus-5` with adaptive thinking, structured signal table in the prompt | Narrative quality; never used for the numeric decision |
@@ -288,9 +421,10 @@ stock-advisor/
     settings.example.toml      # weights, thresholds, baseline TSP allocation, caps
     watchlist.csv
   src/advisor/
-    ingest/        portfolio.py  schwab_csv.py  schwab_api.py  prices.py  fred.py  sentiment.py  tsp_prices.py
+    ingest/        portfolio.py  schwab_csv.py  schwab_api.py  prices.py  fred.py  sentiment.py  tsp_prices.py  patreon_gmail.py
     store/         db.py  models.py
-    signals/       indicators.py  regime.py  positions.py  tsp.py
+    signals/       indicators.py  regime.py  positions.py  tsp.py  advisor_levels.py
+    advisor/       extract.py  schema.py  scorecard.py  ewt_rules.py  fib.py
     narrative/     brief.py  prompts.py  qa.py
     delivery/      telegram.py  email.py
     backtest/      engine.py  reports.py
@@ -302,13 +436,13 @@ stock-advisor/
 
 ---
 
-## 11. Phased roadmap
+## 12. Phased roadmap
 
-Estimates assume part-time work with Claude Code doing most of the typing. "Done when" is the acceptance test for each phase.
+Estimates (about 13 weeks) assume part-time work with Claude Code doing most of the typing. "Done when" is the acceptance test for each phase.
 
 ### Phase 0 — Decisions and skeleton (week 1)
 
-- Answer the open questions in §13.
+- Answer the open questions in §14.
 - Register the Schwab developer app now so approval runs in the background.
 - Get a FRED API key. Create a Telegram bot if that is the delivery channel.
 - Scaffold the repo layout, config schema, SQLite models, CLI, CI job (ruff + pytest).
@@ -357,7 +491,16 @@ Done when: a simulated risk-off day produces a correct, executable interfund tra
 
 Done when: positions sync without manual export for 7 consecutive days and the brief shows breadth indicators.
 
-### Phase 6 — LLM narrative, news and Q&A (week 11)
+### Phase 6 — Subscription advisor feed (week 11)
+
+- Gmail label and read-only ingest; post dedupe; chart image download; manual paste box in the dashboard.
+- Claude extraction to the §8.2 schema with structured outputs; a fixture set of 10 real posts (starting with the HIMS post) as regression tests, checking that every extracted number appears in the text or chart.
+- Level monitor, thesis status, alerts, and the three-opinion row in the brief.
+- Advisor scorecard tab; Top 10 list as watchlist source.
+
+Done when: a new Patreon post shows up in the next brief as a thesis with levels, and a level crossing in the market produces an alert the same day.
+
+### Phase 7 — LLM narrative, news and Q&A (week 12)
 
 - Claude-written brief from the structured signal table, with a strict rule that every number in the prose comes from the table.
 - Headline ingest via RSS; Haiku 4.5 tags headlines by sector and tone; Opus 5 summarizes what matters for your holdings.
@@ -365,7 +508,7 @@ Done when: positions sync without manual export for 7 consecutive days and the b
 
 Done when: the brief reads well, a spot-check of 10 briefs finds zero numbers not present in the signal table, and monthly LLM cost is under budget.
 
-### Phase 7 — Hardening (week 12)
+### Phase 8 — Hardening (week 13)
 
 - Alerting for failed runs and stale data; retries and backoff for every source.
 - Backups of the SQLite file; restore test.
@@ -375,7 +518,7 @@ Done when: you can rebuild the machine from the README and be back in service in
 
 ---
 
-## 12. Risks and mitigations
+## 13. Risks and mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
@@ -388,10 +531,13 @@ Done when: you can rebuild the machine from the README and be back in service in
 | Tax surprises from sell recs in a taxable account | Medium | Lot-aware flags, short-term gain and wash-sale warnings |
 | Secrets leak (tokens in the repo) | High | `.env` and `data/` gitignored, pre-commit secret scan, no order-endpoint code |
 | Scope creep into a trading bot | Medium | Non-goals in §1; execution is explicitly out of v1 |
+| Patreon emails stop carrying full text, or the creator moves to Discord/video | Medium | Manual paste path always works; ingest is one adapter behind the thesis schema |
+| Extractor misreads a chart level | Medium | Chart-only numbers flagged with lower confidence; every extracted number checked against text/chart in tests; you can edit a thesis in the dashboard |
+| Following the creator instead of your rules | High | Disagreements are flagged, your rules win by default, and the scorecard shows the creator's record |
 
 ---
 
-## 13. Decisions needed from you (open questions)
+## 14. Decisions needed from you (open questions)
 
 These change the plan materially, so please answer before Phase 0 starts. Each has a default I will assume if you don't say otherwise.
 
@@ -403,12 +549,15 @@ These change the plan materially, so please answer before Phase 0 starts. Each h
 6. **TSP specifics.** Your current allocation, the baseline you want to hold in normal times, and what "reduce risk" means to you (all to G, or a G/F mix; max shift in one move)? *Default: baseline 60/20/20 C/S/I, risk-off floor 50% G, max 30 points of equity per move.*
 7. **Budget.** Free data only, or is ~$30/month for a paid price feed acceptable if the free one breaks? LLM spend ceiling? *Default: free data, $15/month LLM cap.*
 8. **Language.** Python is the recommendation. Kotlin would be possible for an Android client later but not for the analytics core. *Default: Python.*
+9. **Patreon emails.** Do the notification emails for The Long Investor contain the full post text and the chart, or just a link? *Default: full text; if only a link, the manual paste path is primary until we find a better channel.*
+10. **Other channels.** Does the creator also post in a Discord or do livestreams that carry calls the posts don't? *Default: posts only in v1.*
+11. **Disagreement default.** When the creator's thesis and your own stop or trend rule disagree, should the brief default to your rules (recommended) or to the creator? *Default: your rules.*
 
 ---
 
-## 14. First two weeks, concretely
+## 15. First two weeks, concretely
 
-1. You: answer §13; register at developer.schwab.com; request a FRED key.
+1. You: answer §14; register at developer.schwab.com; request a FRED key; forward one Patreon notification email so we can see what it carries.
 2. Scaffold `stock-advisor/` with `uv`, `pyproject.toml`, config schema, SQLite models, CLI, ruff + pytest in CI.
 3. Implement manual and CSV portfolio import with a fixture built from a real (redacted) Schwab export.
 4. Implement price ingest (yfinance behind a provider interface) and FRED ingest; cache to parquet.
