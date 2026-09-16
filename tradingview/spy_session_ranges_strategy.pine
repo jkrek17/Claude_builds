@@ -1,0 +1,811 @@
+//@version=6
+// SPY Session Ranges + Setups — STRATEGY twin (backtest on SPY shares)
+// Generated from spy_session_ranges.pine: identical logic, plus strategy orders.
+// Tests the setups on the underlying so the tester reports win rate and expectancy per setup.
+// Options P&L is NOT modeled here; see the spec §8 for the Python options overlay.
+strategy("SPY Session Ranges + Setups [strategy]", shorttitle="SPY Sessions STRAT", overlay=true, initial_capital=30000, default_qty_type=strategy.fixed, default_qty_value=1, commission_type=strategy.commission.cash_per_order, commission_value=0, slippage=1, process_orders_on_close=true, calc_on_every_tick=false, max_lines_count=500, max_labels_count=200, max_boxes_count=100)
+
+const string TZ = "America/New_York"
+
+// ───────────────────────────── Inputs ─────────────────────────────
+grpS = "Sessions (ET)"
+asiaSess     = input.session("2000-0000", "Asia", group=grpS)
+lonSess      = input.session("0200-0500", "London", group=grpS)
+onSess       = input.session("1800-0930", "Overnight (ONH / ONL)", group=grpS)
+orSess       = input.session("0930-0945", "NY opening range", group=grpS)
+rthSess      = input.session("0930-1600", "Regular hours", group=grpS)
+esSym        = input.symbol("CME_MINI:ES1!", "Futures for overnight levels", group=grpS)
+lonFromChart = input.bool(false, "London from chart symbol (needs extended hours on)", group=grpS)
+
+grpA = "Setup A: sweep + reclaim"
+useA        = input.bool(true, "Enable", group=grpA)
+sweepBufPct = input.float(0.05, "Sweep buffer (% beyond level)", step=0.01, minval=0, group=grpA)
+reclaimBars = input.int(2, "Reclaim within N bars after the sweep bar", minval=0, group=grpA)
+minConfl    = input.int(2, "Minimum confluence at the swept level", minval=1, group=grpA)
+volMult     = input.float(1.5, "Reclaim bar volume ≥ x 20-bar average", step=0.1, group=grpA)
+aStartHHMM  = input.int(935, "First entry (HHMM ET)", group=grpA)
+aEndHHMM    = input.int(1100, "Last entry (HHMM ET)", group=grpA)
+aStopHHMM   = input.int(1130, "Time stop (HHMM ET)", group=grpA)
+
+grpB = "Setup B: OR break + retest"
+useB        = input.bool(true, "Enable", group=grpB)
+retestATR   = input.float(0.15, "Retest tolerance (x ATR)", step=0.05, group=grpB)
+bStartHHMM  = input.int(945, "First entry (HHMM ET)", group=grpB)
+bEndHHMM    = input.int(1130, "Last entry (HHMM ET)", group=grpB)
+bStopHHMM   = input.int(1200, "Time stop (HHMM ET)", group=grpB)
+orWideMax   = input.float(60, "Skip B if OR height > % of avg daily range", group=grpB)
+chopMax     = input.int(3, "Skip B if OR edge crossings before 10:15 ≥", minval=1, group=grpB)
+
+grpR = "Risk / reward"
+minR1          = input.float(1.5, "Minimum T1 (R)", step=0.1, group=grpR)
+minR2          = input.float(2.5, "Minimum T2 (R)", step=0.1, group=grpR)
+stopBufATR     = input.float(0.25, "Stop buffer beyond sweep extreme (x ATR)", step=0.05, group=grpR)
+stopMinPct     = input.float(0.10, "Minimum stop distance (%)", step=0.01, group=grpR)
+stopThruPct    = input.float(0.10, "Intrabar stop-through tolerance (%)", step=0.01, group=grpR)
+riskDollars    = input.float(150, "Risk $ per trade", group=grpR)
+deltaAssume    = input.float(0.50, "Assumed option delta", step=0.05, group=grpR)
+slipContract   = input.float(8, "Slippage $ per contract (round trip)", group=grpR)
+maxContracts   = input.int(10, "Max contracts", minval=1, group=grpR)
+maxTradesDay   = input.int(2, "Max trades per day", minval=1, group=grpR)
+maxConsecLoss  = input.int(2, "Stop after consecutive losses", minval=1, group=grpR)
+dailyLossR     = input.float(3.0, "Stop for the day after losing (R)", step=0.5, group=grpR)
+zeroDteHHMM    = input.int(1030, "0DTE if entry before (HHMM), else 1DTE", group=grpR)
+
+grpF = "Filters"
+emSym       = input.symbol("CBOE:VIX1D", "1-day implied vol index (expected move)", group=grpF)
+emMinT1Pct  = input.float(20, "Skip if T1 < % of expected move", group=grpF)
+onRangeMin  = input.float(35, "Skip A if overnight range < % of avg daily range", group=grpF)
+onRangeMax  = input.float(150, "Half size if overnight range > % of avg daily range", group=grpF)
+gapTrendPct = input.float(0.5, "Trend day: gap ≥ %", step=0.1, group=grpF)
+confTolPct  = input.float(0.10, "Confluence tolerance (%)", step=0.01, group=grpF)
+skipDates   = input.string("", "No-trade dates (YYYY-MM-DD, comma separated)", group=grpF)
+lateDates   = input.string("", "Setup A starts 10:00 on these dates", group=grpF)
+
+grpV = "Display"
+showLevels = input.bool(true, "Draw levels", group=grpV)
+showPanel  = input.bool(true, "Show panel", group=grpV)
+showTrades = input.bool(true, "Draw trade lines", group=grpV)
+panelSize  = input.string("small", "Panel text size", options=["tiny", "small", "normal"], group=grpV)
+
+// ───────────────────────────── Helpers ─────────────────────────────
+f_hhmm(int x) => math.floor(x / 100) * 60 + x % 100
+
+// Session high/low tracker. Works in the chart context or inside request.security.
+f_sess(string sess) =>
+    var float hi = na
+    var float lo = na
+    inS = not na(time(timeframe.period, sess, TZ))
+    if inS and not inS[1]
+        hi := high
+        lo := low
+    else if inS
+        hi := math.max(hi, high)
+        lo := math.min(lo, low)
+    [hi, lo]
+
+f_nearestAbove(array<float> arr, float ref) =>
+    float best = na
+    for v in arr
+        if not na(v) and v > ref and (na(best) or v < best)
+            best := v
+    best
+
+f_nearestBelow(array<float> arr, float ref) =>
+    float best = na
+    for v in arr
+        if not na(v) and v < ref and (na(best) or v > best)
+            best := v
+    best
+
+f_fmt(float x) => na(x) ? "—" : str.tostring(x, "#.##")
+f_sgn(int x) => x > 0 ? "+" + str.tostring(x) : str.tostring(x)
+f_pct(float x) => (x >= 0 ? "+" : "") + str.tostring(x, "#.##") + "%"
+f_r(float x) => na(x) ? "—" : (x >= 0 ? "+" : "") + str.tostring(x, "#.#") + "R"
+
+// ───────────────────────────── Time ─────────────────────────────
+tmin     = hour(time, TZ) * 60 + minute(time, TZ)
+todayStr = str.format_time(time, "yyyy-MM-dd", TZ)
+newDay   = nz(ta.change(dayofmonth(time, TZ))) != 0
+rth      = not na(time(timeframe.period, rthSess, TZ))
+firstRth = rth and (not rth[1] or newDay)
+isSkipDay = skipDates != "" and str.contains(skipDates, todayStr)
+isLateDay = lateDates != "" and str.contains(lateDates, todayStr)
+
+aStartM = isLateDay ? 600 : f_hhmm(aStartHHMM)
+aEndM   = f_hhmm(aEndHHMM)
+aStopM  = f_hhmm(aStopHHMM)
+bStartM = f_hhmm(bStartHHMM)
+bEndM   = f_hhmm(bEndHHMM)
+bStopM  = f_hhmm(bStopHHMM)
+zeroDteM = f_hhmm(zeroDteHHMM)
+
+// ───────────────────────────── Data ─────────────────────────────
+[asiaHiES, asiaLoES] = request.security(esSym, timeframe.period, f_sess(asiaSess))
+[lonHiES,  lonLoES]  = request.security(esSym, timeframe.period, f_sess(lonSess))
+[onHiES,   onLoES]   = request.security(esSym, timeframe.period, f_sess(onSess))
+esClose = request.security(esSym, timeframe.period, close)
+[lonHiC, lonLoC] = f_sess(lonSess)
+[orHiRaw, orLoRaw] = f_sess(orSess)
+
+[pdh, pdl, pdc] = request.security(syminfo.tickerid, "D", [high[1], low[1], close[1]], lookahead=barmerge.lookahead_on)
+avgDR = request.security(syminfo.tickerid, "D", ta.sma(high - low, 20)[1], lookahead=barmerge.lookahead_on)
+vix1d = request.security(emSym, "D", close)
+
+atr    = ta.atr(14)
+volAvg = ta.sma(volume, 20)
+low6   = ta.lowest(low, 6)
+high6  = ta.highest(high, 6)
+
+// ES → SPY scale, frozen at the first regular-hours bar of the day
+var float ratio = na
+if firstRth and not na(esClose) and close > 0
+    ratio := esClose / close
+scale(float esLevel) => na(ratio) ? na : esLevel / ratio
+
+asiaHi = scale(asiaHiES)
+asiaLo = scale(asiaLoES)
+onHi   = scale(onHiES)
+onLo   = scale(onLoES)
+lonHi  = lonFromChart and not na(lonHiC) ? lonHiC : scale(lonHiES)
+lonLo  = lonFromChart and not na(lonLoC) ? lonLoC : scale(lonLoES)
+asiaMid = (asiaHi + asiaLo) / 2
+lonMid  = (lonHi + lonLo) / 2
+
+// Opening range: frozen once the OR session ends
+var float orHi = na
+var float orLo = na
+inOR = not na(time(timeframe.period, orSess, TZ))
+if newDay
+    orHi := na
+    orLo := na
+if inOR
+    orHi := orHiRaw
+    orLo := orLoRaw
+orDone = not na(orHi) and not inOR and rth
+orMid  = (orHi + orLo) / 2
+orH    = orHi - orLo
+
+// Session VWAP from 09:30
+var float cumPV = 0.0
+var float cumV  = 0.0
+if firstRth
+    cumPV := 0.0
+    cumV  := 0.0
+if rth
+    cumPV += hlc3 * volume
+    cumV  += volume
+vwap = cumV > 0 ? cumPV / cumV : na
+
+// Day open and expected move
+var float dayOpen = na
+if firstRth
+    dayOpen := open
+emDollars = not na(vix1d) and not na(dayOpen) ? dayOpen * vix1d / 100 / math.sqrt(252) : avgDR
+emHi = dayOpen + emDollars
+emLo = dayOpen - emDollars
+
+onRange     = onHi - onLo
+onRangePct  = avgDR > 0 ? onRange / avgDR * 100 : na
+orPct       = avgDR > 0 ? orH / avgDR * 100 : na
+
+// ───────────────────────────── Bias ─────────────────────────────
+var int bias = 0
+var int biasScore = 0
+var int vPdc = 0
+var int vLon = 0
+var int vEs = 0
+if rth and tmin >= 570 and tmin < 585
+    px = close
+    vPdc := px > pdc * 1.001 ? 1 : px < pdc * 0.999 ? -1 : 0
+    vLon := px > lonMid * 1.001 ? 1 : px < lonMid * 0.999 ? -1 : 0
+    asiaMidES = (asiaHiES + asiaLoES) / 2
+    vEs := esClose > asiaMidES * 1.001 ? 1 : esClose < asiaMidES * 0.999 ? -1 : 0
+    biasScore := vPdc + vLon + vEs
+    bias := biasScore >= 2 ? 1 : biasScore <= -2 ? -1 : 0
+
+// ───────────────────────────── Trend day / chop ─────────────────────────────
+var int   trendDay = 0
+var float minSinceOR = na
+var float maxSinceOR = na
+var int   chopCount = 0
+if newDay
+    trendDay := 0
+    minSinceOR := na
+    maxSinceOR := na
+    chopCount := 0
+if orDone and tmin < 615
+    minSinceOR := na(minSinceOR) ? low : math.min(minSinceOR, low)
+    maxSinceOR := na(maxSinceOR) ? high : math.max(maxSinceOR, high)
+    crossed = (close > orHi and close[1] <= orHi) or (close < orHi and close[1] >= orHi) or (close < orLo and close[1] >= orLo) or (close > orLo and close[1] <= orLo)
+    if crossed
+        chopCount += 1
+gapPct = not na(dayOpen) and pdc > 0 ? (dayOpen - pdc) / pdc * 100 : 0
+if orDone and tmin == 600 and trendDay == 0
+    vwapUp = not na(vwap) and vwap > vwap[3]
+    vwapDn = not na(vwap) and vwap < vwap[3]
+    if gapPct >= gapTrendPct and minSinceOR > orHi and vwapUp
+        trendDay := 1
+    else if gapPct <= -gapTrendPct and maxSinceOR < orLo and vwapDn
+        trendDay := -1
+isChop = chopCount >= chopMax
+
+// ───────────────────────────── Level lists ─────────────────────────────
+f_confluence(float lvl) =>
+    int n = 0
+    if not na(lvl)
+        tol = lvl * confTolPct / 100
+        for v in array.from(asiaHi, asiaLo, lonHi, lonLo, onHi, onLo, pdh, pdl, pdc)
+            if not na(v) and math.abs(v - lvl) <= tol
+                n += 1
+        strike5 = math.round(lvl / 5) * 5
+        if math.abs(strike5 - lvl) <= tol
+            n += 1
+    n
+
+// ───────────────────────────── Trade state ─────────────────────────────
+type Trade
+    string setup
+    int    dir
+    float  entry
+    float  stop
+    float  t1
+    float  t2
+    float  r1
+    float  r2
+    float  rDist
+    int    entryBar
+    int    entryTime
+    string status
+    bool   t1Hit
+    int    contracts
+    string expiry
+    int    strike
+    int    statIdx
+    float  resultR
+
+var Trade tr = na
+var int   tradesToday = 0
+var int   consecLoss = 0
+var float dayR = 0.0
+var string lastReason = ""
+var string armed = ""
+var bool  bDone = false
+var bool  bBrokeUp = false
+var bool  bBrokeDn = false
+var int   bBreakBar = na
+
+// stats: 0 A-long, 1 A-short, 2 B-long, 3 B-short
+var trigN = array.new_int(4, 0)
+var t1N   = array.new_int(4, 0)
+var winN  = array.new_int(4, 0)
+
+if newDay
+    tradesToday := 0
+    consecLoss := 0
+    dayR := 0.0
+    lastReason := ""
+    armed := ""
+    bDone := false
+    bBrokeUp := false
+    bBrokeDn := false
+    bBreakBar := na
+    if not na(tr)
+        if tr.status == "OPEN" or tr.status == "T1"
+            tr.status := "TIME"
+
+bool trActive = false
+if not na(tr)
+    trActive := tr.status == "OPEN" or tr.status == "T1"
+tradingAllowed = not isSkipDay and tradesToday < maxTradesDay and consecLoss < maxConsecLoss and dayR > -dailyLossR
+canOpen = not trActive
+halfSize = not na(onRangePct) and onRangePct > onRangeMax
+
+// ───────────────────────────── Setup A detection ─────────────────────────────
+// Low-side sweep tracker (one per level). Returns [reclaimTriggered, sweepExtreme, sweeping]
+f_sweepLow(float lvl, bool active) =>
+    var int   sBar = na
+    var float ext = na
+    var bool  done = false
+    if newDay
+        sBar := na
+        ext := na
+        done := false
+    bool trig = false
+    if active and not done and not na(lvl)
+        if low < lvl * (1 - sweepBufPct / 100)
+            if na(sBar)
+                sBar := bar_index
+                ext := low
+            else
+                ext := math.min(ext, low)
+        if not na(sBar) and close > lvl and bar_index - sBar <= reclaimBars
+            trig := true
+            done := true
+        else if not na(sBar) and bar_index - sBar > reclaimBars and close <= lvl
+            sBar := na
+            ext := na
+    [trig, ext, not na(sBar) and not done]
+
+f_sweepHigh(float lvl, bool active) =>
+    var int   sBar = na
+    var float ext = na
+    var bool  done = false
+    if newDay
+        sBar := na
+        ext := na
+        done := false
+    bool trig = false
+    if active and not done and not na(lvl)
+        if high > lvl * (1 + sweepBufPct / 100)
+            if na(sBar)
+                sBar := bar_index
+                ext := high
+            else
+                ext := math.max(ext, high)
+        if not na(sBar) and close < lvl and bar_index - sBar <= reclaimBars
+            trig := true
+            done := true
+        else if not na(sBar) and bar_index - sBar > reclaimBars and close >= lvl
+            sBar := na
+            ext := na
+    [trig, ext, not na(sBar) and not done]
+
+aWindow = useA and rth and tmin >= aStartM and tmin < aEndM
+[lonLoTrig, lonLoExt, lonLoArm]   = f_sweepLow(lonLo, aWindow)
+[asiaLoTrig, asiaLoExt, asiaLoArm] = f_sweepLow(asiaLo, aWindow)
+[lonHiTrig, lonHiExt, lonHiArm]   = f_sweepHigh(lonHi, aWindow)
+[asiaHiTrig, asiaHiExt, asiaHiArm] = f_sweepHigh(asiaHi, aWindow)
+
+// ───────────────────────────── Setup B detection ─────────────────────────────
+bWindow = useB and rth and orDone and tmin >= bStartM and tmin < bEndM and not bDone
+if bWindow and barstate.isconfirmed
+    if not bBrokeUp and not bBrokeDn
+        if close > orHi and (bias == 1 or trendDay == 1)
+            bBrokeUp := true
+            bBreakBar := bar_index
+        else if close < orLo and (bias == -1 or trendDay == -1)
+            bBrokeDn := true
+            bBreakBar := bar_index
+bRetestLong  = bWindow and bBrokeUp and bar_index > bBreakBar and (trendDay == 1 ? (low <= vwap + retestATR * atr and close > vwap and close > orHi) : (low <= orHi + retestATR * atr and close > orHi))
+bRetestShort = bWindow and bBrokeDn and bar_index > bBreakBar and (trendDay == -1 ? (high >= vwap - retestATR * atr and close < vwap and close < orLo) : (high >= orLo - retestATR * atr and close < orLo))
+
+// ───────────────────────────── Trade construction ─────────────────────────────
+f_contracts(float rDist) =>
+    perContract = rDist * deltaAssume * 100 + slipContract
+    n = math.floor(riskDollars / perContract)
+    n := halfSize ? math.floor(n / 2) : n
+    math.max(1, math.min(maxContracts, n))
+
+// Build a candidate trade, or return na and a reason.
+f_build(string setup, int dir, float entry, float stop, float t1, float t2) =>
+    string reason = ""
+    Trade t = na
+    rDist = math.abs(entry - stop)
+    if na(t1)
+        reason := "no T1 level in the way"
+    else if na(t2)
+        reason := "no T2 level"
+    else
+        r1 = math.abs(t1 - entry) / rDist
+        r2 = math.abs(t2 - entry) / rDist
+        emPct = emDollars > 0 ? math.abs(t1 - entry) / emDollars * 100 : 100
+        if r1 < minR1
+            reason := "T1 only " + str.tostring(r1, "#.#") + "R (need " + str.tostring(minR1, "#.#") + ")"
+        else if r2 < minR2
+            reason := "T2 only " + str.tostring(r2, "#.#") + "R (need " + str.tostring(minR2, "#.#") + ")"
+        else if emPct < emMinT1Pct
+            reason := "T1 is " + str.tostring(emPct, "#") + "% of expected move (noise)"
+        else
+            t := Trade.new()
+            t.setup := setup
+            t.dir := dir
+            t.entry := entry
+            t.stop := stop
+            t.t1 := t1
+            t.t2 := t2
+            t.r1 := r1
+            t.r2 := r2
+            t.rDist := rDist
+            t.entryBar := bar_index
+            t.entryTime := time
+            t.status := "OPEN"
+            t.t1Hit := false
+            t.contracts := f_contracts(rDist)
+            t.expiry := tmin < zeroDteM ? "0DTE" : "1DTE"
+            t.strike := math.round(entry)
+            t.statIdx := (setup == "A" ? 0 : 2) + (dir == 1 ? 0 : 1)
+            t.resultR := na
+    [t, reason]
+
+// Setup A candidate
+f_tryA(int dir, float lvl, float ext, float rangeHi, float rangeLo) =>
+    string reason = ""
+    Trade t = na
+    confl = f_confluence(lvl)
+    qualityOk = dir == 1 ? (close >= low + (high - low) * 2 / 3 and ext <= low6) : (close <= high - (high - low) * 2 / 3 and ext >= high6)
+    volOk = volume >= volAvg * volMult
+    if not na(onRangePct) and onRangePct < onRangeMin
+        reason := "overnight range too small (" + str.tostring(onRangePct, "#") + "% of avg)"
+    else if (dir == 1 and bias == -1) or (dir == -1 and bias == 1)
+        reason := "A against strong bias"
+    else if (dir == 1 and trendDay == -1) or (dir == -1 and trendDay == 1)
+        reason := "A against trend day"
+    else if confl < minConfl
+        reason := "confluence " + str.tostring(confl) + " < " + str.tostring(minConfl)
+    else if not qualityOk
+        reason := "weak reclaim bar (close not in outer third / extreme not 6-bar extreme)"
+    else if not volOk
+        reason := "reclaim volume below " + str.tostring(volMult, "#.#") + "x average"
+    else
+        entry = close
+        buf = math.max(stopBufATR * atr, entry * stopMinPct / 100)
+        stop = dir == 1 ? ext - buf : ext + buf
+        mid = (rangeHi + rangeLo) / 2
+        float t1 = na
+        float t2 = na
+        if dir == 1
+            t1 := f_nearestAbove(array.from(mid, vwap), entry)
+            t2 := f_nearestAbove(array.from(rangeHi, pdh, onHi, pdc, asiaHi, lonHi), nz(t1, entry))
+            t2 := na(t2) ? na : math.min(t2, emHi)
+        else
+            t1 := f_nearestBelow(array.from(mid, vwap), entry)
+            t2 := f_nearestBelow(array.from(rangeLo, pdl, onLo, pdc, asiaLo, lonLo), nz(t1, entry))
+            t2 := na(t2) ? na : math.max(t2, emLo)
+        [tt, rr] = f_build("A", dir, entry, stop, t1, t2)
+        t := tt
+        reason := rr
+    [t, reason]
+
+// Setup B candidate
+f_tryB(int dir) =>
+    string reason = ""
+    Trade t = na
+    if not na(orPct) and orPct > orWideMax
+        reason := "OR too wide (" + str.tostring(orPct, "#") + "% of avg daily range)"
+    else if isChop
+        reason := "chop: " + str.tostring(chopCount) + " OR edge crossings"
+    else
+        entry = close
+        stop = dir == 1 ? orLo : orHi
+        float t1 = na
+        float t2 = na
+        if dir == 1
+            lvl1 = f_nearestAbove(array.from(pdh, onHi, asiaHi, lonHi, pdc), entry)
+            t1 := entry + orH
+            if not na(lvl1) and lvl1 < t1 and (lvl1 - entry) / (entry - stop) >= minR1
+                t1 := lvl1
+            t2 := entry + 2 * orH
+            t2 := na(onHi) ? t2 : math.min(t2, onHi > t1 ? onHi : t2)
+            t2 := math.min(t2, emHi)
+        else
+            lvl1 = f_nearestBelow(array.from(pdl, onLo, asiaLo, lonLo, pdc), entry)
+            t1 := entry - orH
+            if not na(lvl1) and lvl1 > t1 and (entry - lvl1) / (stop - entry) >= minR1
+                t1 := lvl1
+            t2 := entry - 2 * orH
+            t2 := na(onLo) ? t2 : math.max(t2, onLo < t1 ? onLo : t2)
+            t2 := math.max(t2, emLo)
+        [tt, rr] = f_build("B", dir, entry, stop, t1, t2)
+        t := tt
+        reason := rr
+    [t, reason]
+
+// ───────────────────────────── Signal evaluation ─────────────────────────────
+bool aLongTrig  = false
+bool aShortTrig = false
+bool bLongTrig  = false
+bool bShortTrig = false
+
+if barstate.isconfirmed and canOpen and tradingAllowed
+    Trade cand = na
+    string why = ""
+    // Setup A, London levels first
+    if useA
+        if lonLoTrig
+            [c, w] = f_tryA(1, lonLo, lonLoExt, lonHi, lonLo)
+            cand := c
+            why := w
+        if na(cand) and asiaLoTrig
+            [c, w] = f_tryA(1, asiaLo, asiaLoExt, asiaHi, asiaLo)
+            cand := c
+            why := why == "" ? w : why
+        if na(cand) and lonHiTrig
+            [c, w] = f_tryA(-1, lonHi, lonHiExt, lonHi, lonLo)
+            cand := c
+            why := why == "" ? w : why
+        if na(cand) and asiaHiTrig
+            [c, w] = f_tryA(-1, asiaHi, asiaHiExt, asiaHi, asiaLo)
+            cand := c
+            why := why == "" ? w : why
+    if na(cand) and useB
+        if bRetestLong
+            [c, w] = f_tryB(1)
+            cand := c
+            why := why == "" ? w : why
+            bDone := true
+        else if bRetestShort
+            [c, w] = f_tryB(-1)
+            cand := c
+            why := why == "" ? w : why
+            bDone := true
+    if not na(cand)
+        tr := cand
+        tradesToday += 1
+        lastReason := ""
+        array.set(trigN, cand.statIdx, array.get(trigN, cand.statIdx) + 1)
+        aLongTrig  := cand.setup == "A" and cand.dir == 1
+        aShortTrig := cand.setup == "A" and cand.dir == -1
+        bLongTrig  := cand.setup == "B" and cand.dir == 1
+        bShortTrig := cand.setup == "B" and cand.dir == -1
+    else if why != ""
+        lastReason := "NO TRADE — " + why
+else if barstate.isconfirmed and not tradingAllowed and (lonLoTrig or asiaLoTrig or lonHiTrig or asiaHiTrig or bRetestLong or bRetestShort)
+    lastReason := isSkipDay ? "NO TRADE — no-trade date" : consecLoss >= maxConsecLoss ? "DONE — consecutive losses" : dayR <= -dailyLossR ? "DONE — daily loss limit" : "DONE — max trades today"
+
+armed := lonLoArm ? "London low swept, waiting for reclaim" : asiaLoArm ? "Asia low swept, waiting for reclaim" : lonHiArm ? "London high swept, waiting for reclaim" : asiaHiArm ? "Asia high swept, waiting for reclaim" : bBrokeUp and not bDone ? "OR broke up, waiting for retest" : bBrokeDn and not bDone ? "OR broke down, waiting for retest" : ""
+
+// ───────────────────────────── Trade management ─────────────────────────────
+bool t1Event = false
+bool t2Event = false
+bool stopEvent = false
+bool timeEvent = false
+
+bool manage = false
+if trActive
+    manage := barstate.isconfirmed and bar_index > tr.entryBar
+if manage
+    long = tr.dir == 1
+    stopLvl = tr.t1Hit ? tr.entry : tr.stop
+    stopHit = long ? (close < stopLvl or low < stopLvl * (1 - stopThruPct / 100)) : (close > stopLvl or high > stopLvl * (1 + stopThruPct / 100))
+    t1Hit = long ? high >= tr.t1 : low <= tr.t1
+    t2Hit = long ? high >= tr.t2 : low <= tr.t2
+    timeUp = tmin >= (tr.setup == "A" ? aStopM : bStopM)
+    closeR = (close - tr.entry) / tr.rDist * tr.dir
+    if stopHit
+        tr.resultR := tr.t1Hit ? 0.5 * tr.r1 : -1.0
+        tr.status := tr.t1Hit ? "WIN" : "LOSS"
+        stopEvent := true
+    else if t2Hit and tr.t1Hit
+        tr.resultR := 0.5 * tr.r1 + 0.5 * tr.r2
+        tr.status := "WIN"
+        t2Event := true
+    else if t1Hit and not tr.t1Hit
+        tr.t1Hit := true
+        tr.status := "T1"
+        t1Event := true
+        array.set(t1N, tr.statIdx, array.get(t1N, tr.statIdx) + 1)
+        if t2Hit
+            tr.resultR := 0.5 * tr.r1 + 0.5 * tr.r2
+            tr.status := "WIN"
+            t2Event := true
+    else if timeUp
+        tr.resultR := tr.t1Hit ? 0.5 * tr.r1 + 0.5 * closeR : closeR
+        tr.status := "TIME"
+        timeEvent := true
+    if tr.status == "WIN" or tr.status == "LOSS" or tr.status == "TIME"
+        dayR += tr.resultR
+        consecLoss := tr.resultR < 0 ? consecLoss + 1 : 0
+        if tr.resultR > 0
+            array.set(winN, tr.statIdx, array.get(winN, tr.statIdx) + 1)
+
+
+// ───────────────────────────── Strategy execution ─────────────────────────────
+// Entry at the close of the trigger bar (process_orders_on_close). Exits are resting
+// limit/stop orders so fills are intrabar like a real bracket. Shares sized so that
+// one full stop-out loses riskDollars, which keeps the tester's P&L in R units.
+if not na(tr)
+    if aLongTrig or aShortTrig or bLongTrig or bShortTrig
+        sharesQty = math.max(1, math.floor(riskDollars / tr.rDist))
+        oid = tr.dir == 1 ? "L" : "S"
+        strategy.entry(oid, tr.dir == 1 ? strategy.long : strategy.short, qty=sharesQty, comment=tr.setup + (tr.dir == 1 ? " long" : " short"))
+        strategy.exit(oid + "-T1", oid, qty_percent=50, limit=tr.t1, stop=tr.stop, comment_profit="T1", comment_loss="stop")
+        strategy.exit(oid + "-T2", oid, limit=tr.t2, stop=tr.stop, comment_profit="T2", comment_loss="stop")
+    if t1Event and tr.status == "T1"
+        oid = tr.dir == 1 ? "L" : "S"
+        strategy.exit(oid + "-T2", oid, limit=tr.t2, stop=tr.entry, comment_profit="T2", comment_loss="BE")
+    if timeEvent and strategy.position_size != 0
+        strategy.close_all(comment="time")
+
+// ───────────────────────────── Alerts ─────────────────────────────
+f_json(Trade t, string event) =>
+    '{"symbol":"' + syminfo.ticker + '","event":"' + event + '","setup":"' + t.setup + '","dir":"' + (t.dir == 1 ? "long" : "short") + '","entry":' + f_fmt(t.entry) + ',"stop":' + f_fmt(t.stop) + ',"t1":' + f_fmt(t.t1) + ',"t2":' + f_fmt(t.t2) + ',"r1":' + str.tostring(t.r1, "#.#") + ',"r2":' + str.tostring(t.r2, "#.#") + ',"expiry":"' + t.expiry + '","strike":' + str.tostring(t.strike) + ',"contracts":' + str.tostring(t.contracts) + ',"price":' + f_fmt(close) + ',"ts":"' + str.format_time(time, "yyyy-MM-dd HH:mm", TZ) + '"}'
+
+if not na(tr)
+    if aLongTrig or aShortTrig or bLongTrig or bShortTrig
+        alert(f_json(tr, "TRIGGERED"), alert.freq_once_per_bar_close)
+    if t1Event
+        alert(f_json(tr, "T1_HIT"), alert.freq_once_per_bar_close)
+    if t2Event
+        alert(f_json(tr, "T2_HIT"), alert.freq_once_per_bar_close)
+    if stopEvent
+        alert(f_json(tr, "STOP_HIT"), alert.freq_once_per_bar_close)
+    if timeEvent
+        alert(f_json(tr, "TIME_STOP"), alert.freq_once_per_bar_close)
+
+alertcondition(aLongTrig,  "A long triggered",  "Setup A LONG triggered on {{ticker}} at {{close}}")
+alertcondition(aShortTrig, "A short triggered", "Setup A SHORT triggered on {{ticker}} at {{close}}")
+alertcondition(bLongTrig,  "B long triggered",  "Setup B LONG triggered on {{ticker}} at {{close}}")
+alertcondition(bShortTrig, "B short triggered", "Setup B SHORT triggered on {{ticker}} at {{close}}")
+alertcondition(t1Event,    "T1 hit",   "T1 hit on {{ticker}}")
+alertcondition(t2Event,    "T2 hit",   "T2 hit on {{ticker}}")
+alertcondition(stopEvent,  "Stop hit", "Stop hit on {{ticker}}")
+alertcondition(timeEvent,  "Time stop", "Time stop on {{ticker}}")
+
+// ───────────────────────────── Drawing: levels ─────────────────────────────
+var line lAsiaHi = na
+var line lAsiaLo = na
+var line lLonHi = na
+var line lLonLo = na
+var line lOnHi = na
+var line lOnLo = na
+var line lPdh = na
+var line lPdl = na
+var line lPdc = na
+var line lEmHi = na
+var line lEmLo = na
+var box  bOR = na
+var label lbAsiaHi = na
+var label lbAsiaLo = na
+var label lbLonHi = na
+var label lbLonLo = na
+var label lbPdc = na
+
+f_mk(float y, color c, string st, int w) =>
+    line l = na
+    if not na(y)
+        l := line.new(bar_index, y, bar_index, y, xloc=xloc.bar_index, color=c, style=st, width=w)
+    l
+f_mklbl(float y, color c) =>
+    label lb = na
+    if not na(y)
+        lb := label.new(bar_index, y, "", style=label.style_label_left, color=color.new(color.black, 100), textcolor=c, size=size.small)
+    lb
+f_ext(line l) =>
+    if not na(l)
+        line.set_x2(l, bar_index)
+f_lbl(label lb, string txt, float y, color c) =>
+    if not na(lb) and not na(y)
+        label.set_xy(lb, bar_index, y)
+        label.set_text(lb, txt)
+        label.set_textcolor(lb, c)
+
+colAsia = color.new(color.orange, 0)
+colLon  = color.new(color.teal, 0)
+colOn   = color.new(color.gray, 30)
+colPd   = color.new(color.blue, 20)
+colEm   = color.new(color.purple, 40)
+
+if showLevels and firstRth
+    lAsiaHi := f_mk(asiaHi, colAsia, line.style_solid, 1)
+    lAsiaLo := f_mk(asiaLo, colAsia, line.style_solid, 1)
+    lLonHi  := f_mk(lonHi, colLon, line.style_solid, 2)
+    lLonLo  := f_mk(lonLo, colLon, line.style_solid, 2)
+    lOnHi   := f_mk(onHi, colOn, line.style_dotted, 1)
+    lOnLo   := f_mk(onLo, colOn, line.style_dotted, 1)
+    lPdh    := f_mk(pdh, colPd, line.style_dashed, 1)
+    lPdl    := f_mk(pdl, colPd, line.style_dashed, 1)
+    lPdc    := f_mk(pdc, colPd, line.style_dashed, 1)
+    lEmHi   := f_mk(emHi, colEm, line.style_dotted, 1)
+    lEmLo   := f_mk(emLo, colEm, line.style_dotted, 1)
+    label.delete(lbAsiaHi)
+    label.delete(lbAsiaLo)
+    label.delete(lbLonHi)
+    label.delete(lbLonLo)
+    label.delete(lbPdc)
+    lbAsiaHi := f_mklbl(asiaHi, colAsia)
+    lbAsiaLo := f_mklbl(asiaLo, colAsia)
+    lbLonHi := f_mklbl(lonHi, colLon)
+    lbLonLo := f_mklbl(lonLo, colLon)
+    lbPdc := f_mklbl(pdc, colPd)
+
+if showLevels and rth
+    f_ext(lAsiaHi)
+    f_ext(lAsiaLo)
+    f_ext(lLonHi)
+    f_ext(lLonLo)
+    f_ext(lOnHi)
+    f_ext(lOnLo)
+    f_ext(lPdh)
+    f_ext(lPdl)
+    f_ext(lPdc)
+    f_ext(lEmHi)
+    f_ext(lEmLo)
+    f_lbl(lbAsiaHi, "Asia H " + f_fmt(asiaHi), asiaHi, colAsia)
+    f_lbl(lbAsiaLo, "Asia L " + f_fmt(asiaLo), asiaLo, colAsia)
+    f_lbl(lbLonHi, "London H " + f_fmt(lonHi), lonHi, colLon)
+    f_lbl(lbLonLo, "London L " + f_fmt(lonLo), lonLo, colLon)
+    f_lbl(lbPdc, "PDC " + f_fmt(pdc), pdc, colPd)
+
+if showLevels and inOR and not na(orHi)
+    if na(bOR) or newDay or (inOR and not inOR[1])
+        bOR := box.new(bar_index, orHi, bar_index, orLo, border_color=color.new(color.yellow, 30), bgcolor=color.new(color.yellow, 88))
+    box.set_top(bOR, orHi)
+    box.set_bottom(bOR, orLo)
+    box.set_right(bOR, bar_index)
+if showLevels and orDone and not na(bOR)
+    box.set_right(bOR, bar_index)
+
+plot(showLevels and rth ? vwap : na, "VWAP", color=color.new(color.fuchsia, 0), linewidth=1)
+
+// ───────────────────────────── Drawing: trades ─────────────────────────────
+var line tEntry = na
+var line tStop = na
+var line tT1 = na
+var line tT2 = na
+if showTrades and not na(tr)
+    if aLongTrig or aShortTrig or bLongTrig or bShortTrig
+        c = tr.dir == 1 ? color.green : color.red
+        label.new(bar_index, tr.dir == 1 ? low : high, tr.setup + (tr.dir == 1 ? " LONG " : " SHORT ") + f_fmt(tr.entry), style=tr.dir == 1 ? label.style_label_up : label.style_label_down, color=c, textcolor=color.white, size=size.small)
+        tEntry := f_mk(tr.entry, color.new(color.white, 30), line.style_solid, 1)
+        tStop  := f_mk(tr.stop, color.new(color.red, 0), line.style_solid, 2)
+        tT1    := f_mk(tr.t1, color.new(color.green, 30), line.style_dashed, 1)
+        tT2    := f_mk(tr.t2, color.new(color.green, 0), line.style_dashed, 2)
+    if trActive
+        f_ext(tEntry)
+        f_ext(tStop)
+        f_ext(tT1)
+        f_ext(tT2)
+        if tr.t1Hit and not na(tStop)
+            line.set_y1(tStop, tr.entry)
+            line.set_y2(tStop, tr.entry)
+    if t1Event or t2Event or stopEvent or timeEvent
+        txt = t2Event ? "T2 ✓" : t1Event ? "T1 ✓" : stopEvent ? (tr.t1Hit ? "BE stop" : "STOP") : "TIME"
+        label.new(bar_index, tr.dir == 1 ? high : low, txt + " " + f_r(nz(tr.resultR, tr.t1Hit ? 0.5 * tr.r1 : 0)), style=tr.dir == 1 ? label.style_label_down : label.style_label_up, color=color.new(color.gray, 20), textcolor=color.white, size=size.tiny)
+
+// ───────────────────────────── Panel ─────────────────────────────
+f_stat(int i) =>
+    n = array.get(trigN, i)
+    n == 0 ? "—" : str.tostring(math.round(array.get(t1N, i) * 100.0 / n)) + "% T1, " + str.tostring(math.round(array.get(winN, i) * 100.0 / n)) + "% win (n=" + str.tostring(n) + ")"
+
+var table pnl = table.new(position.top_right, 2, 16, bgcolor=color.new(color.black, 20), border_color=color.new(color.gray, 60), border_width=1)
+txtSize = panelSize == "tiny" ? size.tiny : panelSize == "small" ? size.small : size.normal
+f_row(int r, string k, string v, color vc) =>
+    table.cell(pnl, 0, r, k, text_color=color.new(color.silver, 0), text_size=txtSize, text_halign=text.align_left)
+    table.cell(pnl, 1, r, v, text_color=vc, text_size=txtSize, text_halign=text.align_left)
+
+if showPanel and barstate.islast
+    biasTxt = bias == 1 ? "LONG" : bias == -1 ? "SHORT" : "NEUTRAL"
+    biasCol = bias == 1 ? color.lime : bias == -1 ? color.red : color.yellow
+    f_row(0, "Bias", biasTxt + " (" + f_sgn(biasScore) + ")  PDC " + f_sgn(vPdc) + " · Lon " + f_sgn(vLon) + " · ES " + f_sgn(vEs), biasCol)
+    f_row(1, "Day", "gap " + f_pct(gapPct) + "  trend " + (trendDay == 1 ? "UP" : trendDay == -1 ? "DOWN" : "none") + "  chop " + str.tostring(chopCount) + (isChop ? " ✗" : ""), color.white)
+    f_row(2, "Exp. move", "±" + f_fmt(emDollars) + "  (" + f_fmt(emLo) + " – " + f_fmt(emHi) + ")  VIX1D " + f_fmt(vix1d), color.new(color.purple, 0))
+    f_row(3, "Overnight", "range " + f_fmt(onRange) + " = " + str.tostring(nz(onRangePct), "#") + "% of avg DR" + (halfSize ? "  → HALF SIZE" : ""), color.white)
+    f_row(4, "Asia", f_fmt(asiaLo) + " – " + f_fmt(asiaHi) + "  mid " + f_fmt(asiaMid), colAsia)
+    f_row(5, "London", f_fmt(lonLo) + " – " + f_fmt(lonHi) + "  mid " + f_fmt(lonMid), colLon)
+    f_row(6, "OR / PD", "OR " + f_fmt(orLo) + " – " + f_fmt(orHi) + "  PDH " + f_fmt(pdh) + "  PDL " + f_fmt(pdl) + "  PDC " + f_fmt(pdc), color.white)
+    string st = ""
+    color stc = color.white
+    if trActive
+        st := "TRIGGERED " + str.format_time(tr.entryTime, "HH:mm", TZ) + "  " + tr.setup + " " + (tr.dir == 1 ? "LONG" : "SHORT") + (tr.t1Hit ? "  (T1 taken, stop at entry)" : "")
+        stc := tr.dir == 1 ? color.lime : color.red
+    else if lastReason != ""
+        st := lastReason
+        stc := color.orange
+    else if armed != ""
+        st := "ARMED — " + armed
+        stc := color.yellow
+    else if not rth
+        st := "outside regular hours"
+        stc := color.gray
+    else
+        st := "waiting"
+    f_row(7, "Setup", st, stc)
+    if trActive
+        f_row(8, "Entry / Stop", f_fmt(tr.entry) + "  /  " + f_fmt(tr.t1Hit ? tr.entry : tr.stop) + "  (R = " + f_fmt(tr.rDist) + ")", color.white)
+        f_row(9, "Targets", "T1 " + f_fmt(tr.t1) + " (" + str.tostring(tr.r1, "#.#") + "R)   T2 " + f_fmt(tr.t2) + " (" + str.tostring(tr.r2, "#.#") + "R)", color.lime)
+        f_row(10, "Contract", tr.expiry + " " + str.tostring(tr.strike) + (tr.dir == 1 ? "C" : "P") + "  Δ≈" + str.tostring(deltaAssume, "#.##") + "  risk $" + str.tostring(riskDollars, "#") + " → " + str.tostring(tr.contracts) + " contract(s)", color.white)
+        f_row(11, "Exit by", str.tostring(tr.setup == "A" ? aStopHHMM : bStopHHMM) + " ET", color.white)
+    else if not na(tr)
+        f_row(8, "Last trade", tr.setup + " " + (tr.dir == 1 ? "LONG" : "SHORT") + " " + tr.status + "  " + f_r(nz(tr.resultR)), tr.resultR > 0 ? color.lime : color.red)
+        f_row(9, "Targets", "—", color.gray)
+        f_row(10, "Contract", "—", color.gray)
+        f_row(11, "Exit by", "—", color.gray)
+    else
+        f_row(8, "Entry / Stop", "—", color.gray)
+        f_row(9, "Targets", "—", color.gray)
+        f_row(10, "Contract", "—", color.gray)
+        f_row(11, "Exit by", "—", color.gray)
+    f_row(12, "Today", str.tostring(tradesToday) + "/" + str.tostring(maxTradesDay) + " trades  " + f_r(dayR) + "  losses in a row " + str.tostring(consecLoss), color.white)
+    f_row(13, "A long / short", f_stat(0) + "  |  " + f_stat(1), color.silver)
+    f_row(14, "B long / short", f_stat(2) + "  |  " + f_stat(3), color.silver)
+    f_row(15, "Note", timeframe.period == "5" ? "levels from " + esSym + " scaled ×" + str.tostring(na(ratio) ? 0 : 1 / ratio, "#.####") : "tuned for the 5-minute chart", color.gray)
