@@ -308,53 +308,84 @@ halfSize = not na(onRangePct) and onRangePct > onRangeMax
 var bool vsBiasHalf = false
 
 // ───────────────────────────── Setup A detection ─────────────────────────────
-// Low-side sweep tracker (one per level). Returns [reclaimTriggered, sweepExtreme, sweeping]
+// Low-side sweep tracker (one per level). A sweep arms only when the previous close was
+// inside the range; if price stays beyond the level past the reclaim window it is a
+// breakout, not a sweep, and the level cannot re-arm until 3 closes back inside.
+// Returns [reclaimTriggered, sweepExtreme, sweeping]
 f_sweepLow(float lvl, bool active) =>
     var int   sBar = na
     var float ext = na
     var bool  done = false
+    var bool  inside = true
+    var int   insideN = 0
     if newDay
         sBar := na
         ext := na
         done := false
+        inside := true
+        insideN := 0
     bool trig = false
-    if active and not done and not na(lvl)
-        if low < lvl * (1 - sweepBufPct / 100)
-            if na(sBar)
+    if not na(lvl)
+        if na(sBar)
+            if close > lvl
+                insideN += 1
+                if insideN >= 3
+                    inside := true
+            else
+                insideN := 0
+            if active and not done and inside and close[1] > lvl and low < lvl * (1 - sweepBufPct / 100)
                 sBar := bar_index
                 ext := low
-            else
-                ext := math.min(ext, low)
-        if not na(sBar) and close > lvl and bar_index - sBar <= reclaimBars
-            trig := true
-            done := true
-        else if not na(sBar) and bar_index - sBar > reclaimBars and close <= lvl
+        else
+            ext := math.min(ext, low)
+        if not na(sBar) and bar_index - sBar <= reclaimBars and close > lvl
+            trig := active and not done
+            done := done or trig
             sBar := na
             ext := na
+        else if not na(sBar) and bar_index - sBar > reclaimBars
+            sBar := na
+            ext := na
+            inside := false
+            insideN := 0
     [trig, ext, not na(sBar) and not done]
 
 f_sweepHigh(float lvl, bool active) =>
     var int   sBar = na
     var float ext = na
     var bool  done = false
+    var bool  inside = true
+    var int   insideN = 0
     if newDay
         sBar := na
         ext := na
         done := false
+        inside := true
+        insideN := 0
     bool trig = false
-    if active and not done and not na(lvl)
-        if high > lvl * (1 + sweepBufPct / 100)
-            if na(sBar)
+    if not na(lvl)
+        if na(sBar)
+            if close < lvl
+                insideN += 1
+                if insideN >= 3
+                    inside := true
+            else
+                insideN := 0
+            if active and not done and inside and close[1] < lvl and high > lvl * (1 + sweepBufPct / 100)
                 sBar := bar_index
                 ext := high
-            else
-                ext := math.max(ext, high)
-        if not na(sBar) and close < lvl and bar_index - sBar <= reclaimBars
-            trig := true
-            done := true
-        else if not na(sBar) and bar_index - sBar > reclaimBars and close >= lvl
+        else
+            ext := math.max(ext, high)
+        if not na(sBar) and bar_index - sBar <= reclaimBars and close < lvl
+            trig := active and not done
+            done := done or trig
             sBar := na
             ext := na
+        else if not na(sBar) and bar_index - sBar > reclaimBars
+            sBar := na
+            ext := na
+            inside := false
+            insideN := 0
     [trig, ext, not na(sBar) and not done]
 
 aWindow = useA and rth and tmin >= aStartM and tmin < aEndM
@@ -754,12 +785,13 @@ if showLevels and rth
 
 if showLevels and inOR and not na(orHi)
     if na(bOR) or newDay or (inOR and not inOR[1])
-        bOR := box.new(bar_index, orHi, bar_index, orLo, border_color=color.new(color.yellow, 30), bgcolor=color.new(color.yellow, 88))
+        bOR := box.new(bar_index, orHi, bar_index, orLo, border_color=color.new(color.yellow, 30), bgcolor=color.new(color.yellow, 80))
     box.set_top(bOR, orHi)
     box.set_bottom(bOR, orLo)
     box.set_right(bOR, bar_index)
 if showLevels and orDone and not na(bOR)
     box.set_right(bOR, bar_index)
+    box.set_bgcolor(bOR, color.new(color.yellow, 94))
 
 plot(showLevels and rth ? vwap : na, "VWAP", color=color.new(color.fuchsia, 0), linewidth=1)
 
