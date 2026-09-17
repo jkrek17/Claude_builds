@@ -192,6 +192,8 @@ All weights and thresholds live in one config file and are what the backtester t
 
 ## 6. Position-level rules
 
+> Idea generation (which stocks to consider owning) now lives in `TITANS_PLAYBOOK.md`. This section covers the rules applied to what you already own and to candidates the playbook surfaces.
+
 Runs on every holding and watchlist name, using the regime as context.
 
 **Sell / trim triggers**
