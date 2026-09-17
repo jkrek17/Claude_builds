@@ -1,0 +1,13 @@
+{
+ "label": "risk-on",
+ "on_streak": 3,
+ "last_transfer": null,
+ "transfers": [],
+ "history": [
+  {
+   "date": "2026-09-16",
+   "score": 70.0,
+   "label": "risk-on"
+  }
+ ]
+}

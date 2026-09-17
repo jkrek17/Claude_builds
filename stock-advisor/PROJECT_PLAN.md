@@ -228,10 +228,12 @@ XYZ    SELL     trailing stop hit (close $x < stop $y), 3 confirming closes
 
 ## 7. TSP risk dial
 
+> **Status (2026-09-17): backtested and enabled on a weekly cadence.** Results in `reports/tsp-backtest-2026-09-17.md`. The decision runs Saturday with the weekly report; you submit any transfer Monday before noon ET. Weekly rather than daily because the TSP's two-transfers-a-month rule and the regime model's hysteresis both favor slow decisions, and because it ties the dial to the same market-sentiment read as the rest of the report. The live dial uses the tested three-group model (trend, volatility, credit); the fuller score with breadth is shown as context until it can be backtested. Config in `config/tsp.json`, state in `state/tsp_state.json`.
+
 The TSP module does not pick funds. It moves an **equity-exposure multiplier** on top of a baseline allocation you define.
 
 1. You set a baseline (for example 60% C / 20% S / 20% I) and a "floor" allocation for full risk-off (for example 30% C / 10% S / 10% I / 50% G).
-2. The daily regime score is smoothed with a 10-day average and then mapped to a target multiplier: risk-on 100%, neutral 70%, risk-off 40% of baseline equity. The remainder goes to G (or a G/F split you choose).
+2. The weekly regime score (Friday close) is mapped through hysteresis to a target multiplier: risk-on 100%, neutral 70%, risk-off 40% of baseline equity. The remainder goes to G (or a G/F split you choose).
 3. A recommendation is issued **only if all of these hold**:
    - The target differs from the current TSP allocation by at least 10 points of equity.
    - At least 15 calendar days have passed since the last recommended transfer, unless a circuit breaker fired.

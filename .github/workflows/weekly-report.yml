@@ -1,0 +1,53 @@
+name: Weekly market report
+
+on:
+  schedule:
+    - cron: "0 12 * * 6"   # Saturday 12:00 UTC (08:00 ET)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      HAS_MAIL: ${{ secrets.MAIL_USERNAME != '' && secrets.MAIL_PASSWORD != '' && secrets.MAIL_TO != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r stock-advisor/requirements.txt
+      - name: Pull data, run TSP dial, render report
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -e
+          echo "REPORT_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
+          mkdir -p /tmp/wk
+          python stock-advisor/scripts/weekly_report_data.py /tmp/wk
+          python stock-advisor/scripts/tsp_dial.py /tmp/wk
+          python stock-advisor/scripts/render_report.py /tmp/wk stock-advisor/reports/$(date -u +%F)-weekly.md
+          cp /tmp/wk/data.json stock-advisor/reports/$(date -u +%F)-data.json
+      - name: Commit report
+        run: |
+          git config user.name "weekly-report-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add stock-advisor/reports stock-advisor/state
+          git commit -m "Weekly report $(date -u +%F)" || echo "nothing to commit"
+          git push
+      - name: Email report (optional; needs SMTP secrets)
+        if: env.HAS_MAIL == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Weekly market report ${{ env.REPORT_DATE }}"
+          to: ${{ secrets.MAIL_TO }}
+          from: Weekly Report <${{ secrets.MAIL_USERNAME }}>
+          convert_markdown: true
+          html_body: file://stock-advisor/reports/${{ env.REPORT_DATE }}-weekly.md
