@@ -11,6 +11,10 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "."
 PORTFOLIO = ["MSTR", "ASST", "NBIS", "ASTS", "BABA", "HIMS", "TSLA"]
 CLUSTERS = {"MSTR": "Bitcoin beta", "ASST": "Bitcoin beta", "NBIS": "AI infrastructure", "ASTS": "Space/telecom",
             "BABA": "China internet", "HIMS": "Telehealth/consumer", "TSLA": "EV/AI/robotics"}
+# Names that get talked about: curated retail/X favorites plus whatever Yahoo lists as trending this week.
+POPULAR = ["NVDA", "TSLA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "AMD", "AVGO", "PLTR", "MSTR", "COIN", "HOOD", "SOFI", "HIMS",
+           "NBIS", "ASTS", "RKLB", "IONQ", "SMCI", "NFLX", "ORCL", "CRWD", "UBER", "SHOP", "ARM", "MU", "INTC", "BA", "JPM", "GS",
+           "LLY", "NVO", "UNH", "XOM", "OKLO", "APP", "CRWV", "BABA", "ASST", "MELI", "COST", "WMT", "DIS", "PYPL", "SNAP", "LITE", "VRT"]
 INDEX = ["SPY", "QQQ", "IWM", "RSP", "DIA", "^VIX", "^VIX3M", "HYG", "IEI", "TLT", "GLD", "USO", "BTC-USD", "UUP"]
 SECTORS = {"XLK": "Technology", "XLC": "Communication", "XLY": "Consumer Disc.", "XLP": "Consumer Staples",
            "XLV": "Health Care", "XLF": "Financials", "XLI": "Industrials", "XLE": "Energy", "XLB": "Materials",
@@ -185,6 +189,67 @@ def titan_lenses(ustats, funda, sectors, aaa_yield=5.5, regime_label="neutral"):
                 rotation=washed[:20], value=value[:15], canslim=cans[:15], market_direction=regime_label,
                 counts=dict(buffett=len(buffett), greenblatt=len(mf), lynch=len(lynch), value=len(value), canslim=len(cans), longterm=len(longterm)))
 
+def trending():
+    try:
+        d = json.load(urllib.request.urlopen(urllib.request.Request("https://query1.finance.yahoo.com/v1/finance/trending/US?count=25", headers={"User-Agent": "Mozilla/5.0"}), timeout=20))
+        return [q["symbol"] for q in d["finance"]["result"][0]["quotes"] if "-" not in q["symbol"] and "." not in q["symbol"] and q["symbol"] != "SPY"]
+    except Exception as e:
+        print("trending failed", e); return []
+
+def action_for(r):
+    """One-line action from where price sits. r has price, ma50, ma200, above50, above200, pct_from_hi, base_high, trend_template, dist_200."""
+    px = r["price"]; bh = r.get("base_high"); d200 = r.get("dist_200")
+    if r.get("trend_template") and bh and px >= bh * 0.97:
+        return f"BREAKOUT WATCH above {bh} on volume; stop 8% below"
+    if r.get("trend_template") and r["above50"]:
+        return f"PULLBACK ENTRY at the 50-day ({r['ma50']}); stop 8% below"
+    if r["above200"] and d200 is not None and -0.03 <= d200 <= 0.05:
+        return f"BUY ZONE at the 200-day ({r['ma200']}); stop below it"
+    if r["above200"] and not r["above50"]:
+        return f"WAIT for reclaim of the 50-day ({r['ma50']})"
+    if not r["above200"] and r["above50"]:
+        return f"EARLY TURN: above 50-day, below 200-day ({r['ma200']}); half size until 200-day reclaimed"
+    if not r["above200"]:
+        return f"NO TRADE yet: below both; trigger = close above 50-day ({r['ma50']})"
+    if r["above50"] and r["above200"]:
+        return f"UPTREND: don't chase; add on a pullback to the 50-day ({r['ma50']})"
+    return "hold"
+
+def bluf(T, screen_top, ustats, pstats, popular, funda, sectors):
+    pts = {}; why = {}
+    def add(t, p, w):
+        pts[t] = pts.get(t, 0) + p; why.setdefault(t, []).append(w)
+    for x in T["value"]: add(x["ticker"], 2, f"below fair value (MoS {x['mos']*100:+.0f}%)")
+    for x in T["longterm"]: add(x["ticker"], 2, "quality compounder")
+    for x in T["buffett"]: add(x["ticker"], 2, "Buffett list")
+    for x in T["greenblatt"]: add(x["ticker"], 1, "Magic Formula top 12")
+    for x in T["lynch"]: add(x["ticker"], 1, f"GARP (PEG {x['peg']:.2f})")
+    for x in T["canslim"]: add(x["ticker"], 2, f"CANSLIM {x['canslim']}")
+    for x in T["tudor_jones"]: add(x["ticker"], 1, "fresh 200-day reclaim")
+    for x in T["rotation"]:
+        if x["status"] == "TURNING": add(x["ticker"], 2, "washed out and turning")
+    for x in screen_top[:25]: add(x["ticker"], 1, f"trend leader (RS 3m {x['rs_3m']*100:+.0f}%)")
+    rows = []
+    for t, p in pts.items():
+        st = ustats.get(t) or pstats.get(t)
+        if not st: continue
+        r = dict(st); r["ticker"] = t; r["points"] = p; r["why"] = "; ".join(why[t]); r["dist_200"] = (st["price"] / st["ma200"] - 1) if st.get("ma200") else None
+        r["name"] = (funda.get(t) or {}).get("shortName"); r["sector"] = sectors.get(t, ""); r["action"] = action_for(r)
+        rows.append(r)
+    rows.sort(key=lambda r: (-r["points"], -(r.get("rs_3m") or 0)))
+    # popular-names check
+    pop = []
+    for t in popular:
+        st = ustats.get(t) or pstats.get(t)
+        if not st: continue
+        mc = (funda.get(t) or {}).get("marketCap") or 0
+        if t not in POPULAR and t not in PORTFOLIO and (mc < 2e9 or st["price"] < 5): continue   # trending penny names
+        r = dict(st); r["ticker"] = t; r["name"] = (funda.get(t) or {}).get("shortName"); r["dist_200"] = (st["price"] / st["ma200"] - 1) if st.get("ma200") else None
+        r["hits"] = "; ".join(why.get(t, [])) or "—"; r["points"] = pts.get(t, 0); r["action"] = action_for(r)
+        pop.append(r)
+    pop.sort(key=lambda r: (-r["points"], -(r.get("rs_3m") or 0)))
+    return rows[:12], pop
+
 def stats(df, spy):
     c = df["Close"]; h = df["High"]; l = df["Low"]; v = df["Volume"]
     last = float(c.iloc[-1])
@@ -211,7 +276,9 @@ def stats(df, spy):
 def main():
     out = {"asof": str(dt.date.today())}
     uni, sectors = universe(); print("universe", len(uni))
-    px = download(sorted(set(uni + PORTFOLIO + INDEX + list(SECTORS) + list(THEMES))))
+    trend_list = trending(); popular = list(dict.fromkeys(POPULAR + trend_list + PORTFOLIO))
+    out["trending"] = trend_list
+    px = download(sorted(set(uni + PORTFOLIO + INDEX + list(SECTORS) + list(THEMES) + popular)))
     spy = px["SPY"]["Close"]
     out["asof_price"] = str(spy.index[-1].date())
     # ---- FRED ----
@@ -286,6 +353,10 @@ def main():
     funda = fundamentals(list(ustats.keys()))
     aaa = fr.get("AAA", {}).get("last") or 5.5
     out["titans"] = titan_lenses(ustats, funda, sectors, aaa_yield=aaa, regime_label=out["regime"]["label"])
+    # popular names outside the universe: stats + fundamentals
+    pstats = {t: stats(px[t], spy) for t in popular if t in px and t not in ustats}
+    funda.update(fundamentals([t for t in pstats]))
+    out["bluf"], out["popular"] = bluf(out["titans"], top, ustats, pstats, popular, funda, sectors)
     # rotation at sector/theme level: 6m RS bottom half and 1m RS > 0 and above 50-day
     def rot(d):
         rows = []

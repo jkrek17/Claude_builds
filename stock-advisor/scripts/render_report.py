@@ -14,6 +14,17 @@ posture = {"risk-on": "RISK-ON: full size on new entries; momentum sleeve at 100
 L = []
 L.append(f"# Weekly Report — {d['asof']}\n\nPrices through {d['asof_price']}. Generated automatically; fundamentals from Yahoo Finance are approximate.\n")
 L.append(f"**Posture: {posture}** Regime score {r['score']} ({r['label']}).\n")
+# ---- BLUF ----
+L.append("## Bottom line up front\n")
+tsp_line = "TSP: no move this week." if not (t and t.get("move")) else f"TSP: {t['instruction']}"
+L.append(f"- {tsp_line}\n- Regime {r['label']} at {r['score']}; breadth {b['pct_above50']*100:.0f}% above 50-day; HY spread {num(fr.get('BAMLH0A0HYM2', {}).get('last'))}%; VIX {idx['^VIX']['price']}.\n")
+L.append("### Top names to look at (most screens hit, with the action the rules give)\n\n| # | Symbol | Price | Screens | Action | Why | vs 50d | vs 200d | From high |\n|---|---|---|---|---|---|---|---|---|")
+for i, x in enumerate(d.get("bluf", []), 1):
+    L.append(f"| {i} | **{x['ticker']}** {x.get('name') or ''} | {x['price']} | {x['points']} | {x['action']} | {x['why']} | {'above' if x['above50'] else 'below'} | {'above' if x['above200'] else 'below'} | {pct(x['pct_from_hi'])} |")
+L.append("\n### Popular names check (X favorites, S&P megacaps, and this week's Yahoo trending list)\n\n| Symbol | Price | 1m | 3m | vs 50d | vs 200d | From high | Screens hit | Action |\n|---|---|---|---|---|---|---|---|---|")
+for x in d.get("popular", []):
+    L.append(f"| **{x['ticker']}** | {x['price']} | {pct(x['ret_1m'])} | {pct(x['ret_3m'])} | {'above' if x['above50'] else 'below'} | {('above' if x['above200'] else 'below') if x.get('ma200') else 'n/a'} | {pct(x['pct_from_hi'])} | {x['hits']} | {x['action']} |")
+L.append(f"\nTrending on Yahoo this week: {', '.join(d.get('trending', [])) or '—'}\n")
 L.append("## 1. Market analysis\n\n### Regime\n\n| Group | Vote | Reading |\n|---|---|---|")
 spy = idx["SPY"]
 L.append(f"| Trend | {r['votes']['trend']:+.2f} | SPY {'above' if spy['above200'] else 'below'} 200-day ({'rising' if spy['ma200_rising'] else 'falling'}), {'above' if spy['above50'] else 'below'} 50-day; equal-weight RS 3m {pct(idx['RSP']['rs_3m'])} |")
