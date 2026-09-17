@@ -162,3 +162,117 @@ Doesn't: pick the stocks, set the score, or change a stop. Every number in a bri
 5. Entry and stop alerts (reuse the Telegram delivery from the plan) and the recommendation log.
 6. Claude weekly briefs.
 7. TradingView: a small Pine script that draws the trend template, base highs and the 50-day for any symbol, so chart review on Saturday is fast. The day-trading scripts stay in the repo but are parked.
+
+---
+
+## 10. The weekly report
+
+One document, Saturday morning, in this order. Everything below the market section is conditional on it.
+
+### 10.1 Market analysis (the "should I be doing anything at all" section)
+
+| Block | Content | Source |
+|---|---|---|
+| Regime | Score 0–100, regime label, change vs last week, which of the five groups moved it (trend, breadth, volatility, credit/macro, sentiment) | `PROJECT_PLAN.md` §5 |
+| Breadth and leadership | % of S&P 500 above 200-day and 50-day; equal-weight vs cap-weight; new highs minus lows; small caps vs large | Constituent prices |
+| Sector and theme rotation | 11 sectors plus tracked themes (AI infrastructure, crypto/BTC-beta, space, biotech, energy) ranked by 4-week and 13-week relative strength, with arrows for who is gaining and losing rank | ETF and basket prices |
+| Volatility and credit | VIX level and term structure, high-yield spreads, 20-day realized vs implied | Cboe, FRED |
+| Rates and liquidity | 10-year yield and 4-week change, curve, Fed balance sheet trend, next FOMC | FRED |
+| Calendar for the coming week | CPI, PPI, NFP, FOMC, opex, early closes; earnings dates for every holding and every armed candidate | Manual list plus earnings calendar feed |
+| What changed | Three to five bullets: the facts that moved the regime or leadership this week, written by Claude from the signal table | Claude, numbers only from the table |
+| What would change my mind | The specific readings that would flip the regime up or down next week (e.g. "risk-on if breadth clears 60% and HY spreads stay under 350 bp") | Rules |
+| Posture | One line: "Risk-on: full size on new entries. Momentum sleeve at 100% of cap." or "Neutral: pullback entries only, momentum sleeve 50%." or "Risk-off: no new longs, trail everything to the 50-day, TSP dial shows a move." | Rules |
+
+### 10.2 Your portfolio
+
+Holdings table: symbol, sleeve (core or momentum), size at market, action (hold / add / trim / sell / stop), stop level and distance, thesis status (from titans score or momentum criteria, and Patreon thesis if one exists), days to next earnings. Then exposure vs caps: momentum sleeve % of equity, each theme cluster % (see §11.4), single-name maximums, cash.
+
+### 10.3 Core candidates
+
+Top 10 from the four-lens score with the one-page Claude briefs. Up to three marked "arm this week" with the entry trigger and stop.
+
+### 10.4 Momentum/growth candidates and sleeve health
+
+Top 5 from §11 with briefs, plus a sleeve scorecard: sleeve return vs QQQ and vs the equal-weight ARK-style basket, current drawdown, and whether the sleeve is at, above, or below its regime-adjusted target.
+
+### 10.5 TSP dial, Patreon theses, scorecard, to-do
+
+The TSP recommendation if any (`PROJECT_PLAN.md` §7), the status of each open Patreon thesis (§8.3 there), the running scorecard of past recommendations, and a checklist of alerts to set on Sunday.
+
+---
+
+## 11. Sleeve B: higher-risk momentum and growth
+
+The titans' lenses deliberately reject pre-profit, story-driven, high-beta names. You own some and want to keep playing them. The right answer is not to bend the core rules but to run a second sleeve with its own admission rules, its own risk budget, and a hard cap, so a blow-up in the sleeve cannot hurt the core.
+
+### 11.1 Admission (any three, and no red flag)
+
+| Criterion | Threshold |
+|---|---|
+| Revenue growth | > 30% year over year, or accelerating for two consecutive quarters |
+| Unit economics | Rule of 40 (revenue growth % + FCF margin % ≥ 40) **or** gross margin > 50% and improving |
+| Relative strength | top 10% of the universe over 3 and 6 months |
+| Stage 2 | Minervini trend template passes (see §2, Lens 3) |
+| Institutional sponsorship | number of 13F holders rising two quarters in a row, or a new position by a growth manager on the curated list (Baillie Gifford, Coatue, Tiger Global, Whale Rock, ARK for signal only) |
+| Catalyst | a dated event inside 6 months (launch, approval, contract, index inclusion, earnings inflection) that Claude can cite from a filing or transcript |
+
+**Red flags (any one blocks admission and forces a review of an existing holding):**
+
+- Cash runway under 12 months at the current burn with no financing announced.
+- Share count up more than 15% in the trailing year, or stock-based comp above 25% of revenue.
+- Lock-up expiry or large secondary inside the next 60 days.
+- Going-concern language, restatement, or auditor change.
+- Price more than 100% above the 200-day moving average (parabolic; wait for a base).
+
+Pre-revenue names (ASTS today, some biotech) can qualify only through the catalyst plus relative strength plus sponsorship route, at half the normal size.
+
+### 11.2 Sizing and risk budget
+
+| Rule | Default |
+|---|---|
+| Sleeve cap | 20% of the equity portfolio at market (input). Hard cap, checked weekly. |
+| Position cap | 5% at cost, 8% at market before a mandatory trim |
+| Risk per position | 0.5% of the whole portfolio (half the core's 1%), because stops are wider |
+| Stop | wider than core: max(2.5 × ATR(20), 12%) below entry, never wider than 20%. Size = risk ÷ stop distance, so a 15% stop means a 3.3% position |
+| Buy zone | only within 5% above the breakout pivot or at the 50-day pullback. Never chase |
+| Adds | only after a +1R move and a new base; never average down in this sleeve |
+
+### 11.3 Selling (mechanical, because these are the names where emotions cost the most)
+
+- Close below the 10-week moving average on above-average volume: sell half.
+- Two consecutive closes below the 50-day: out.
+- Climax run: up more than 25% in three weeks after a long advance, or the largest weekly gain of the move on the largest volume: sell half into it (O'Neil).
+- Relative strength falling for three straight weeks while the market rises: out. Momentum that fades against a rising tape is finished.
+- Earnings: the night before, size must be one you could hold through a 30% gap. Otherwise trim to that size or exit. This sleeve does not hold full size through earnings.
+- Regime risk-off: the sleeve target drops to 50% of its cap; the weakest names by relative strength go first. High-beta names lead on the way down.
+- Red flag appears on a holding: sell within the week regardless of price.
+
+### 11.4 Theme clusters (the rule your current watchlist needs most)
+
+Several of your names are the same bet in different wrappers. The sleeve counts exposure by cluster, not by ticker, and caps each cluster at 10% of the portfolio:
+
+| Cluster | Examples on your watchlist | Note |
+|---|---|---|
+| Bitcoin beta | BTC, IBIT, MSTR, COIN, STRF/STRC/STRK/STRD | The Strategy preferreds are BTC-backed income instruments; they count here, not as bonds |
+| AI infrastructure | NBIS, NVDA | |
+| Space and telecom | ASTS | |
+| Crypto ex-BTC | SOL | |
+| Ad-tech and software | ZETA | |
+
+If Bitcoin beta is already 12% of your portfolio, the system will not add MSTR no matter how it scores. That is the single most useful thing this sleeve will do.
+
+### 11.5 Crypto
+
+BTC and SOL are priced 24/7 and have no fundamentals in the SEC sense. They are admitted to the sleeve on trend and relative strength only (200-day, stage 2, RS vs the S&P), sized by the same ATR rule with a 20% maximum stop, and counted in their clusters. The regime score gets a sixth input for this sleeve only: BTC vs its 200-day, since crypto is the market's risk-appetite thermometer.
+
+### 11.6 Sleeve backtest
+
+Same universe rules as §6 but market cap > $500M, 2015–present, with the admission rules and §11.3 exits, versus QQQ and versus an equal-weight basket of the same names held without rules. The sleeve has to show a smaller max drawdown than the unmanaged basket with most of its upside. If the rules cut drawdowns by less than a third, they are not earning their complexity and the sleeve reverts to a simple 200-day and 10-week rule.
+
+---
+
+## 12. Additional open questions (for this section)
+
+7. **Sleeve cap.** Is 20% of equities right for the momentum sleeve, or do you want it higher? Higher than 30% makes the core rules mostly decorative.
+8. **Which names are in the sleeve today?** From the watchlist I would guess ASTS, NBIS, ZETA, MSTR, COIN, IBIT, the Strategy preferreds, BTC and SOL. Confirm, and tell me the rough sizes so the cluster check has a starting point.
+9. **Crypto in scope?** If yes, spot on which exchange or app, so the position import knows where to look.
