@@ -276,3 +276,15 @@ Same universe rules as §6 but market cap > $500M, 2015–present, with the admi
 7. **Sleeve cap.** Is 20% of equities right for the momentum sleeve, or do you want it higher? Higher than 30% makes the core rules mostly decorative.
 8. **Which names are in the sleeve today?** From the watchlist I would guess ASTS, NBIS, ZETA, MSTR, COIN, IBIT, the Strategy preferreds, BTC and SOL. Confirm, and tell me the rough sizes so the cluster check has a starting point.
 9. **Crypto in scope?** If yes, spot on which exchange or app, so the position import knows where to look.
+
+---
+
+## 13. Added 2026-09-17: fair value, long-term list, per-titan lists, CANSLIM, rotation-ahead
+
+All of these are now produced by `scripts/weekly_report_data.py` and rendered by `scripts/render_report.py`.
+
+- **Good companies below fair value.** Fair value is the average of a two-stage DCF (five years at the company's revenue growth capped at 15%, then 3% terminal, 10% discount) and Graham's 1974 formula with growth capped at 10% and the 4.4/AAA-yield adjustment, so higher rates lower every fair value. Financials and real estate are excluded until a book-value model exists. Listed when the margin of safety is at least 20% behind a quality floor (ROE > 12%, operating margin > 10%, FCF yield > 3%). Energy and materials are flagged cyclical because peak margins inflate both models.
+- **Own for years.** Quality first (ROE > 18%, operating margin > 18%, gross margin > 45%, low debt, positive FCF, growing), valuation second, and the entry label says whether the price is at the 200-day, in a 15–30% pullback, or extended. A pullback is the entry. Sold on a broken thesis, not a price.
+- **Per-titan lists.** Buffett (quality at a fair price), Greenblatt (Magic Formula rank on earnings yield and return on assets, ex-financials), Lynch (PEG < 1.2 with 15–60% EPS growth), O'Neil (CANSLIM), Tudor Jones (fresh 200-day reclaims), Druckenmiller (narrative from the sector and rotation tables, 12–18 months out). Insider buying joins when the SEC Form 4 parser exists.
+- **CANSLIM.** C: quarterly EPS growth ≥ 25%. A: annual EPS growth ≥ 25% (year-over-year proxy until multi-year data exists). N: within 15% of the 52-week high. S: recent volume above the 50-day average (demand proxy). L: 12-month relative-strength percentile ≥ 80. I: institutional ownership 30–95%. M: the regime label; O'Neil does not buy in risk-off. Listed at five or more letters.
+- **Ahead of the rotation.** At the sector and theme level: relative strength negative over six months, positive over one month, above the 50-day = TURNING; negative over six months and not yet = washed out. At the stock level: bottom-quartile 12-month performers more than 25% off their high, marked TURNING when above the 50-day with positive one-month relative strength. The list exists so that a BABA-type idea has an objective trigger instead of a hunch, and so the report can say "not yet".

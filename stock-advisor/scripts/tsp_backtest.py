@@ -8,7 +8,9 @@ import sys, io, json, math, urllib.request, datetime as dt
 import numpy as np, pandas as pd, yfinance as yf
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
-BASELINE = {"C": 0.60, "S": 0.20, "I": 0.20}          # equity baseline
+import pathlib as _pl, json as _json
+_cfg = _json.load(open(_pl.Path(__file__).resolve().parent.parent / "config" / "tsp.json"))
+BASELINE = _cfg["baseline"]                                   # equity baseline from config
 import os
 _m = [float(x) for x in os.environ.get("TSP_MULT", "1.0,0.7,0.4").split(",")]
 MULT = {"risk-on": _m[0], "neutral": _m[1], "risk-off": _m[2]}
@@ -107,14 +109,14 @@ def buyhold(funds, start, end, w):
 def main():
     funds, vix = load_prices()
     score, parts = regime(funds, vix)
-    base_bh = {"C": 0.6, "S": 0.2, "I": 0.2, "G": 0.0, "F": 0.0}
+    base_bh = {k: BASELINE.get(k, 0.0) for k in ["C", "S", "I", "G", "F"]}
     out = {"asof": str(funds.index[-1].date()), "score_now": float(score.iloc[-1]), "periods": {}}
     for name, (a, b) in {"full 2004-2026": ("2004-01-01", "2026-12-31"), "in-sample 2004-2017": ("2004-01-01", "2017-12-31"),
                          "out-of-sample 2018-2026": ("2018-01-01", "2026-12-31")}.items():
         eq, lab, eqw, xfers = run(funds, score, a, b)
         yrs = (eq.index[-1] - eq.index[0]).days / 365.25
         res = {"dial": metrics(eq), "C fund (SPY)": metrics(buyhold(funds, a, b, {"C": 1, "S": 0, "I": 0, "G": 0, "F": 0})),
-               "baseline 60/20/20 buy-and-hold": metrics(buyhold(funds, a, b, base_bh)),
+               "baseline buy-and-hold": metrics(buyhold(funds, a, b, base_bh)),
                "transfers_per_year": len(xfers) / yrs, "avg_equity_weight": float(eqw.mean()),
                "time_risk_on": float((lab == "risk-on").mean()), "time_risk_off": float((lab == "risk-off").mean())}
         out["periods"][name] = res
@@ -134,7 +136,7 @@ def main():
     tag = os.environ.get("TSP_MULT", "1.0,0.7,0.4").replace(",", "_")
     json.dump(out, open(f"{OUT}/tsp_backtest_{tag}.json", "w"), indent=1, default=str)
     for per, r in out["periods"].items():
-        print(f"{tag:12} {per:26} dial CAGR {r['dial']['cagr']*100:5.1f}% DD {r['dial']['max_dd']*100:6.1f}% Sh {r['dial']['sharpe']:.2f} | C CAGR {r['C fund (SPY)']['cagr']*100:5.1f}% DD {r['C fund (SPY)']['max_dd']*100:6.1f}% Sh {r['C fund (SPY)']['sharpe']:.2f} | 60/20/20 CAGR {r['baseline 60/20/20 buy-and-hold']['cagr']*100:5.1f}% DD {r['baseline 60/20/20 buy-and-hold']['max_dd']*100:6.1f}% | xfers/yr {r['transfers_per_year']:.1f} avgEq {r['avg_equity_weight']:.2f}")
+        print(f"{tag:12} {per:26} dial CAGR {r['dial']['cagr']*100:5.1f}% DD {r['dial']['max_dd']*100:6.1f}% Sh {r['dial']['sharpe']:.2f} | C CAGR {r['C fund (SPY)']['cagr']*100:5.1f}% DD {r['C fund (SPY)']['max_dd']*100:6.1f}% Sh {r['C fund (SPY)']['sharpe']:.2f} | baseline CAGR {r['baseline buy-and-hold']['cagr']*100:5.1f}% DD {r['baseline buy-and-hold']['max_dd']*100:6.1f}% | xfers/yr {r['transfers_per_year']:.1f} avgEq {r['avg_equity_weight']:.2f}")
 
 if __name__ == "__main__":
     main()

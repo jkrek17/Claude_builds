@@ -18,7 +18,7 @@ SECTORS = {"XLK": "Technology", "XLC": "Communication", "XLY": "Consumer Disc.",
 THEMES = {"SMH": "Semis", "IBIT": "Bitcoin", "ARKK": "Spec. growth", "XBI": "Biotech", "ITA": "Defense",
           "KWEB": "China internet", "URA": "Uranium", "XME": "Metals/mining", "XHB": "Homebuilders", "IGV": "Software"}
 FRED = {"BAMLH0A0HYM2": "HY OAS", "T10Y2Y": "10y-2y", "T10Y3M": "10y-3m", "DGS10": "10y", "DGS2": "2y",
-        "SAHMREALTIME": "Sahm", "WALCL": "Fed balance sheet", "DFF": "Fed funds"}
+        "SAHMREALTIME": "Sahm", "WALCL": "Fed balance sheet", "DFF": "Fed funds", "AAA": "Moody's AAA yield"}
 
 def fred(series):
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"
@@ -63,6 +63,127 @@ def download(tickers, period="2y"):
         time.sleep(1)
     pickle.dump(frames, open(cache, "wb"))
     return frames
+
+INFO_FIELDS = ["shortName", "sector", "industry", "marketCap", "enterpriseValue", "forwardPE", "trailingPE", "pegRatio",
+               "revenueGrowth", "earningsGrowth", "returnOnEquity", "returnOnAssets", "grossMargins", "operatingMargins",
+               "freeCashflow", "totalRevenue", "ebitda", "debtToEquity", "totalCash", "totalDebt", "priceToBook",
+               "dividendYield", "heldPercentInsiders", "earningsTimestamp", "forwardEps", "trailingEps", "sharesOutstanding",
+               "earningsQuarterlyGrowth", "heldPercentInstitutions", "targetMeanPrice", "numberOfAnalystOpinions", "beta"]
+
+def fundamentals(tickers):
+    """yfinance .info for the universe, cached 7 days. Slow (~0.4s/name) but free."""
+    import pickle, os
+    cache = f"{OUT}/info_cache.pkl"
+    data = pickle.load(open(cache, "rb")) if os.path.exists(cache) and time.time() - os.path.getmtime(cache) < 7 * 86400 else {}
+    todo = [t for t in tickers if t not in data]
+    for i, t in enumerate(todo):
+        try:
+            info = yf.Ticker(t).info
+            data[t] = {k: info.get(k) for k in INFO_FIELDS}
+        except Exception:
+            data[t] = {}
+        if i % 50 == 49:
+            pickle.dump(data, open(cache, "wb")); time.sleep(1)
+    pickle.dump(data, open(cache, "wb"))
+    return data
+
+def fair_value(f, price, aaa_yield, sector=""):
+    """Two transparent models. Returns (fair, dcf_model, graham_model). None for financials/real estate.
+    DCF: 5 years of FCF growth at g1 = revenue growth clamped 0-15%, then 3% terminal, 10% discount rate.
+    Graham (1974 revision): EPS * (8.5 + 2g) * 4.4 / AAA yield, g = EPS growth clamped 0-10 (in %), so the
+    multiple never exceeds 28.5 before the rate adjustment. Fair = average of the two when both exist."""
+    if sector in ("Financials", "Real Estate"): return None, None, None
+    sh = f.get("sharesOutstanding"); fcf = f.get("freeCashflow"); eps = f.get("forwardEps") or f.get("trailingEps")
+    g_rev = f.get("revenueGrowth"); g_eps = f.get("earningsGrowth")
+    dcf = None
+    if sh and fcf and fcf > 0:
+        g1 = min(max(g_rev if g_rev is not None else 0.04, 0.0), 0.15); r, g2 = 0.10, 0.03
+        cf = fcf / sh; pv = 0.0
+        for t in range(1, 6):
+            cf *= (1 + g1); pv += cf / (1 + r) ** t
+        pv += cf * (1 + g2) / (r - g2) / (1 + r) ** 5
+        dcf = pv
+    gr = None
+    if eps and eps > 0:
+        g = min(max((g_eps if g_eps is not None else 0.0) * 100, 0), 10)
+        gr = eps * (8.5 + 2 * g) * 4.4 / max(aaa_yield, 3.0)
+    vals = [v for v in (dcf, gr) if v]
+    return (sum(vals) / len(vals) if vals else None), dcf, gr
+
+def titan_lenses(ustats, funda, sectors, aaa_yield=5.5, regime_label="neutral"):
+    """Per-titan candidate lists. Each returns rows sorted best-first with the lens's own key metrics."""
+    rows = []
+    for t, st in ustats.items():
+        f = funda.get(t) or {}
+        ev = f.get("enterpriseValue"); rev = f.get("totalRevenue"); opm = f.get("operatingMargins")
+        ebit = opm * rev if (opm is not None and rev) else None
+        r = dict(ticker=t, name=f.get("shortName"), sector=sectors.get(t, ""), price=st["price"], mcap=f.get("marketCap"),
+                 pe_fwd=f.get("forwardPE"), peg=f.get("pegRatio"), rev_growth=f.get("revenueGrowth"), eps_growth=f.get("earningsGrowth"),
+                 roe=f.get("returnOnEquity"), roa=f.get("returnOnAssets"), gm=f.get("grossMargins"), opm=opm,
+                 fcf_yield=(f["freeCashflow"] / ev) if (f.get("freeCashflow") and ev) else None,
+                 earnings_yield=(ebit / ev) if (ebit and ev) else None, de=f.get("debtToEquity"), div=f.get("dividendYield"),
+                 pct_from_hi=st["pct_from_hi"], above50=st["above50"], above200=st["above200"], ma200_rising=st["ma200_rising"],
+                 rs_1m=st["rs_1m"], rs_3m=st["rs_3m"], rs_6m=st["rs_6m"], rs_12m=(st["ret_12m"] or 0) - 0, ma50=st["ma50"], ma200=st["ma200"],
+                 trend_template=st["trend_template"], dist_200=(st["price"] / st["ma200"] - 1) if st["ma200"] else None,
+                 eps_q_growth=f.get("earningsQuarterlyGrowth"), inst=f.get("heldPercentInstitutions"), target=f.get("targetMeanPrice"),
+                 n_analysts=f.get("numberOfAnalystOpinions"), vol_ratio=st.get("vol_ratio"), ret_12m=st["ret_12m"])
+        fv, fcf_v, gr_v = fair_value(f, st["price"], aaa_yield, sectors.get(t, ""))
+        r.update(fair=fv, fair_fcf=fcf_v, fair_graham=gr_v, mos=(fv / st["price"] - 1) if fv else None,
+                 target_upside=(r["target"] / st["price"] - 1) if r.get("target") else None)
+        rows.append(r)
+    # 12-month RS percentile for CANSLIM "L"
+    ranked = sorted([r for r in rows if r.get("rs_12m") is not None], key=lambda r: r["rs_12m"])
+    for i, r in enumerate(ranked): r["rs_pct"] = int(100 * i / max(1, len(ranked) - 1))
+    fin = {"Financials", "Utilities", "Real Estate"}
+    g = lambda r, k, d=0: r[k] if r.get(k) is not None else d
+    buffett = [r for r in rows if g(r, "mcap") > 10e9 and g(r, "roe") > 0.15 and g(r, "opm") > 0.15 and g(r, "gm") > 0.40
+               and g(r, "de", 999) < 120 and g(r, "fcf_yield") > 0.035 and g(r, "pe_fwd", 99) < 25 and g(r, "eps_growth", 0) > 0]
+    buffett.sort(key=lambda r: -(g(r, "fcf_yield") * (1 + g(r, "roe"))))
+    mf = [r for r in rows if r["sector"] not in fin and g(r, "mcap") > 2e9 and r.get("earnings_yield") and r.get("roa")]
+    n = len(mf)
+    ey_rank = {r["ticker"]: i for i, r in enumerate(sorted(mf, key=lambda r: -r["earnings_yield"]))}
+    roc_rank = {r["ticker"]: i for i, r in enumerate(sorted(mf, key=lambda r: -r["roa"]))}
+    for r in mf: r["mf_rank"] = ey_rank[r["ticker"]] + roc_rank[r["ticker"]]
+    greenblatt = sorted(mf, key=lambda r: r["mf_rank"])
+    lynch = [r for r in rows if g(r, "peg", 99) < 1.2 and 0.15 <= g(r, "eps_growth") <= 0.60 and g(r, "rev_growth") > 0.08 and g(r, "de", 999) < 100 and g(r, "mcap") > 2e9]
+    lynch.sort(key=lambda r: g(r, "peg", 99))
+    # Tudor Jones: fresh reclaim of the 200-day (above now, was below 10 trading days ago) -- approximated by above200 and dist_200 < 5%
+    ptj = [r for r in rows if r["above200"] and r.get("dist_200") is not None and 0 <= r["dist_200"] < 0.05 and not r["trend_template"] and g(r, "rs_1m") > 0]
+    ptj.sort(key=lambda r: -g(r, "rs_1m"))
+    # Long-term "own for years": quality first, then valuation, then a pullback entry is a feature
+    longterm = [r for r in rows if g(r, "mcap") > 10e9 and g(r, "roe") > 0.18 and g(r, "opm") > 0.18 and g(r, "gm") > 0.45
+                and g(r, "de", 999) < 150 and g(r, "fcf_yield") > 0.025 and g(r, "rev_growth") > 0.04 and g(r, "pe_fwd", 99) < 32]
+    for r in longterm:
+        r["quality"] = g(r, "roe") + g(r, "opm") + g(r, "gm") / 2
+        r["note"] = "cyclical" if r["sector"] in ("Energy", "Materials") or g(r, "rev_growth") > 1.0 else ""
+        r["entry"] = ("BUY ZONE: at/near 200-day" if r["dist_200"] is not None and -0.05 <= r["dist_200"] <= 0.05 else
+                      "BUY ZONE: 15-30% pullback in a quality name" if -0.30 <= r["pct_from_hi"] <= -0.15 else
+                      "wait: extended" if r["dist_200"] is not None and r["dist_200"] > 0.15 else "accumulate on weakness")
+    longterm.sort(key=lambda r: -(r["quality"] * (1 + g(r, "fcf_yield") * 10)))
+    # Rotation-ahead: washed out (12m RS bottom quartile, >25% off high) and turning (1m RS > 0, above 50-day, 50-day rising)
+    rs12 = sorted(g(r, "rs_12m") for r in rows); q1 = rs12[len(rs12) // 4] if rs12 else 0
+    def turning(r): return r["above50"] and g(r, "rs_1m") > 0
+    washed = [r for r in rows if g(r, "rs_12m") <= q1 and r["pct_from_hi"] < -0.25 and g(r, "mcap") > 5e9]
+    for r in washed: r["status"] = "TURNING" if turning(r) else "washed out, not yet"
+    washed.sort(key=lambda r: (r["status"] != "TURNING", -g(r, "rs_1m")))
+    # Good companies below fair value: quality floor, then margin of safety >= 20%
+    value = [r for r in rows if r.get("mos") is not None and r.get("fair_fcf") and r.get("fair_graham") and g(r, "mcap") > 5e9
+             and g(r, "roe") > 0.12 and g(r, "opm") > 0.10 and g(r, "fcf_yield") > 0.03 and g(r, "de", 999) < 200 and r["mos"] >= 0.20]
+    for r in value: r["note"] = "cyclical: check peak margins" if r["sector"] in ("Energy", "Materials") else ""
+    value.sort(key=lambda r: -r["mos"])
+    # CANSLIM: C quarterly EPS growth >=25%, A annual EPS growth >=25% (yoy proxy), N within 15% of high, S demand (recent volume above 50-day avg),
+    # L RS percentile >= 80, I institutional sponsorship 30-95%. M = market direction from the regime (global flag).
+    cans = []
+    for r in rows:
+        checks = dict(C=g(r, "eps_q_growth") >= 0.25, A=g(r, "eps_growth") >= 0.25, N=r["pct_from_hi"] >= -0.15,
+                      S=g(r, "vol_ratio") >= 1.0, L=g(r, "rs_pct") >= 80, I=0.30 <= g(r, "inst") <= 0.95)
+        n = sum(checks.values())
+        if n >= 5 and g(r, "mcap") > 2e9:
+            r2 = dict(r); r2["canslim"] = "".join(k for k, v in checks.items() if v); r2["canslim_n"] = n; cans.append(r2)
+    cans.sort(key=lambda r: (-r["canslim_n"], -g(r, "rs_pct")))
+    return dict(buffett=buffett[:12], greenblatt=greenblatt[:12], lynch=lynch[:12], tudor_jones=ptj[:12], longterm=longterm[:15],
+                rotation=washed[:20], value=value[:15], canslim=cans[:15], market_direction=regime_label,
+                counts=dict(buffett=len(buffett), greenblatt=len(mf), lynch=len(lynch), value=len(value), canslim=len(cans), longterm=len(longterm)))
 
 def stats(df, spy):
     c = df["Close"]; h = df["High"]; l = df["Low"]; v = df["Volume"]
@@ -161,6 +282,19 @@ def main():
             r["name"] = None
         time.sleep(0.3)
     out["screen_top"] = top
+    # ---- titan lenses, long-term list, rotation-ahead ----
+    funda = fundamentals(list(ustats.keys()))
+    aaa = fr.get("AAA", {}).get("last") or 5.5
+    out["titans"] = titan_lenses(ustats, funda, sectors, aaa_yield=aaa, regime_label=out["regime"]["label"])
+    # rotation at sector/theme level: 6m RS bottom half and 1m RS > 0 and above 50-day
+    def rot(d):
+        rows = []
+        for t in d:
+            if t not in idx: continue
+            v = idx[t]; rows.append(dict(etf=t, name=d[t], rs_1m=v["rs_1m"], rs_3m=v["rs_3m"], rs_6m=v["rs_6m"], above50=v["above50"], above200=v["above200"], pct_from_hi=v["pct_from_hi"],
+                                          status="TURNING" if (v["rs_6m"] < 0 and v["rs_1m"] > 0 and v["above50"]) else "washed out, not yet" if v["rs_6m"] < 0 else "leading"))
+        return sorted(rows, key=lambda r: (r["status"] == "leading", r["status"] != "TURNING", -r["rs_1m"]))
+    out["rotation_sectors"] = rot({**SECTORS, **THEMES})
     # ---- portfolio ----
     port = {}
     for t in PORTFOLIO:

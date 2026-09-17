@@ -1,8 +1,26 @@
 {
-  "_comment": "Fill current_allocation with your actual TSP mix (fractions summing to 1). Baseline is the equity mix you hold in risk-on. Multipliers scale baseline equity by regime; the remainder goes to G.",
-  "baseline": {"C": 0.60, "S": 0.20, "I": 0.20},
-  "multipliers": {"risk-on": 1.0, "neutral": 0.7, "risk-off": 0.4},
-  "current_allocation": {"C": 0.60, "S": 0.20, "I": 0.20, "G": 0.20, "F": 0.0},
-  "min_change": 0.10, "min_days_between": 15, "max_per_month": 2,
-  "thresholds": {"on": 70, "off": 35, "hysteresis": 5}
+ "_comment": "Baseline = 100% C. The dial scales C by regime and puts the remainder in G: risk-on 100/0, neutral 70/30, risk-off 40/60 (C/G).",
+ "baseline": {
+  "C": 1.0
+ },
+ "multipliers": {
+  "risk-on": 1.0,
+  "neutral": 0.7,
+  "risk-off": 0.4
+ },
+ "current_allocation": {
+  "C": 1.0,
+  "S": 0.0,
+  "I": 0.0,
+  "G": 0.0,
+  "F": 0.0
+ },
+ "min_change": 0.1,
+ "min_days_between": 15,
+ "max_per_month": 2,
+ "thresholds": {
+  "on": 70,
+  "off": 35,
+  "hysteresis": 5
+ }
 }

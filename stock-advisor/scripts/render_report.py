@@ -60,6 +60,44 @@ mom = [x for x in d["screen_top"] if (x.get("rev_growth") or 0) > 0.25 and (x.ge
 L.append("\n## 5. Momentum / growth targets (rev growth >25%, gross margin >40%, within 15% of high)\n\n| Symbol | Price | Rev growth | Gross margin | RS 3m | From high | Base high | Stop (12%) |\n|---|---|---|---|---|---|---|---|")
 for x in mom:
     L.append(f"| {x['ticker']} {x.get('name') or ''} | {x['price']} | {pct(x.get('rev_growth'),0)} | {pct(x.get('gross_margin'),0)} | {pct(x['rs_3m'])} | {pct(x['pct_from_hi'])} | {x['base_high']} | {x['price']*0.88:.2f} |")
+# ---- Titans, value, long-term, rotation ----
+T = d.get("titans", {})
+def row(x, cols):
+    return "| " + " | ".join(cols(x)) + " |"
+L.append(f"\n## 6. Good companies below fair value (quality floor, margin of safety ≥ 20%; {T.get('counts', {}).get('value', 0)} qualify)\n")
+L.append("Fair value = average of a two-stage DCF (5 years at the company's revenue growth capped at 15%, then 3%, discounted at 10%) and Graham's rate-adjusted earnings formula (growth capped at 10%, AAA yield " + num(fr.get("AAA", {}).get("last")) + "%). Financials and real estate excluded (different economics). Analyst target for reference only.\n")
+L.append("| Symbol | Price | Fair value | Margin of safety | DCF | Graham | Analyst target | ROE | FCF yield | Fwd P/E | vs 200d | From high | Note |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+for x in T.get("value", []):
+    L.append(f"| {x['ticker']} {x.get('name') or ''} | {x['price']} | {num(x['fair'])} | {pct(x['mos'],0)} | {num(x.get('fair_fcf'))} | {num(x.get('fair_graham'))} | {num(x.get('target'))} | {pct(x.get('roe'),0)} | {pct(x.get('fcf_yield'))} | {num(x.get('pe_fwd'),1)} | {'above' if x['above200'] else 'below'} | {pct(x['pct_from_hi'])} | {x.get('note','')} |")
+L.append(f"\n## 7. Own for years (quality compounders; a pullback is the entry, not a disqualifier; {T.get('counts', {}).get('longterm', 0)} qualify)\n")
+L.append("| Symbol | Price | ROE | Op margin | Gross margin | FCF yield | Rev growth | Fwd P/E | Fair value | MoS | vs 200d | From high | Entry | Note |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+for x in T.get("longterm", []):
+    L.append(f"| {x['ticker']} {x.get('name') or ''} | {x['price']} | {pct(x.get('roe'),0)} | {pct(x.get('opm'),0)} | {pct(x.get('gm'),0)} | {pct(x.get('fcf_yield'))} | {pct(x.get('rev_growth'),0)} | {num(x.get('pe_fwd'),1)} | {num(x.get('fair'))} | {pct(x.get('mos'),0)} | {pct(x.get('dist_200'))} | {pct(x['pct_from_hi'])} | {x['entry']} | {x.get('note','')} |")
+L.append("\n## 8. What each titan would like this week\n")
+L.append("### Buffett / Munger — wonderful businesses at a fair price\n\n| Symbol | Price | ROE | Op margin | Gross margin | FCF yield | Fwd P/E | Debt/Eq | MoS |\n|---|---|---|---|---|---|---|---|---|")
+for x in T.get("buffett", []):
+    L.append(f"| {x['ticker']} {x.get('name') or ''} | {x['price']} | {pct(x.get('roe'),0)} | {pct(x.get('opm'),0)} | {pct(x.get('gm'),0)} | {pct(x.get('fcf_yield'))} | {num(x.get('pe_fwd'),1)} | {num(x.get('de'),0)} | {pct(x.get('mos'),0)} |")
+L.append("\n### Greenblatt — Magic Formula (earnings yield + return on capital, ex-financials)\n\n| Rank | Symbol | Price | Earnings yield | ROA | Fwd P/E | vs 200d |\n|---|---|---|---|---|---|---|")
+for i, x in enumerate(T.get("greenblatt", []), 1):
+    L.append(f"| {i} | {x['ticker']} {x.get('name') or ''} | {x['price']} | {pct(x.get('earnings_yield'))} | {pct(x.get('roa'))} | {num(x.get('pe_fwd'),1)} | {'above' if x['above200'] else 'below'} |")
+L.append("\n### Lynch — growth at a reasonable price (PEG < 1.2, EPS growth 15–60%)\n\n| Symbol | Price | PEG | EPS growth | Rev growth | Fwd P/E | Debt/Eq | vs 200d |\n|---|---|---|---|---|---|---|---|")
+for x in T.get("lynch", []):
+    L.append(f"| {x['ticker']} {x.get('name') or ''} | {x['price']} | {num(x.get('peg'),2)} | {pct(x.get('eps_growth'),0)} | {pct(x.get('rev_growth'),0)} | {num(x.get('pe_fwd'),1)} | {num(x.get('de'),0)} | {'above' if x['above200'] else 'below'} |")
+md = T.get("market_direction", "neutral")
+md_note = " (O'Neil would not be buying)" if md == "risk-off" else ""
+L.append(f"\n### O'Neil — CANSLIM (at least 5 of C, A, N, S, L, I; M = market direction is **{md}**{md_note})\n\n| Symbol | Price | Letters | Qtr EPS growth | Annual EPS growth | RS pct | Inst. | From high |\n|---|---|---|---|---|---|---|---|")
+for x in T.get("canslim", []):
+    L.append(f"| {x['ticker']} {x.get('name') or ''} | {x['price']} | {x['canslim']} | {pct(x.get('eps_q_growth'),0)} | {pct(x.get('eps_growth'),0)} | {x.get('rs_pct')} | {pct(x.get('inst'),0)} | {pct(x['pct_from_hi'])} |")
+L.append("\n### Tudor Jones — fresh reclaims of the 200-day (trend turning, not yet a leader)\n\n| Symbol | Price | Above 200d by | RS 1m | RS 3m | From high |\n|---|---|---|---|---|---|")
+for x in T.get("tudor_jones", []):
+    L.append(f"| {x['ticker']} {x.get('name') or ''} | {x['price']} | {pct(x.get('dist_200'))} | {pct(x.get('rs_1m'))} | {pct(x.get('rs_3m'))} | {pct(x['pct_from_hi'])} |")
+L.append("\n### Druckenmiller — top-down, 12–18 months out\n\nSee the sector table in §1 and the rotation table below. His rule is to position for where liquidity and the cycle will be, not where they are; the narrative for this week is written from those tables.\n")
+L.append("\n## 9. Ahead of the rotation\n\n### Sectors and themes: washed out and turning?\n\n| Status | Sector / theme | RS 1m | RS 3m | RS 6m | vs 50d | vs 200d | From high |\n|---|---|---|---|---|---|---|---|")
+for x in d.get("rotation_sectors", []):
+    L.append(f"| {x['status']} | {x['name']} ({x['etf']}) | {pct(x['rs_1m'])} | {pct(x['rs_3m'])} | {pct(x['rs_6m'])} | {'above' if x['above50'] else 'below'} | {'above' if x['above200'] else 'below'} | {pct(x['pct_from_hi'])} |")
+L.append("\n### Stocks: bottom-quartile 12-month performers, >25% off their high, with a turn starting (above 50-day, 1-month RS positive)\n\n| Status | Symbol | Price | 12m return | RS 1m | RS 3m | From high | vs 200d | ROE | FCF yield | Fwd P/E | MoS |\n|---|---|---|---|---|---|---|---|---|---|---|---|")
+for x in T.get("rotation", []):
+    L.append(f"| {x['status']} | {x['ticker']} {x.get('name') or ''} | {x['price']} | {pct(x.get('ret_12m'),0)} | {pct(x.get('rs_1m'))} | {pct(x.get('rs_3m'))} | {pct(x['pct_from_hi'])} | {'above' if x['above200'] else 'below'} | {pct(x.get('roe'),0)} | {pct(x.get('fcf_yield'))} | {num(x.get('pe_fwd'),1)} | {pct(x.get('mos'),0)} |")
 # Claude narrative
 key = os.environ.get("ANTHROPIC_API_KEY")
 if key:
