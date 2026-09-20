@@ -358,3 +358,60 @@ consensus-moneyline fetch (`OddsApiParser.parse`, 1 request) is counted - so the
 deliberately (e.g. from a dedicated "Refresh Betting Board" action), not folded into every automatic
 refresh, no more often than every 3 hours, and with `includeSharpRegion` turned off in Settings for anyone
 tight on quota who doesn't need the sharp-book checks.
+
+See also [docs/TEASERS.md](TEASERS.md) for the Wong-teaser finder, a separate feature built on top of the
+key-number model below.
+
+## Key numbers
+
+The SPREAD market's model probability (`SideAssessment.modelProbability` for SPREAD, and the model-vs-market
+SPREAD picks in `BettingEngine.evaluate`) is priced with `KeyNumbers` (`engine/.../KeyNumbers.kt`), not a
+plain normal curve. NFL final margins cluster hard on a handful of numbers - a team that led by a field
+goal with the clock running is far likelier to win by exactly 3 than a smooth curve implies, and an exact
+tie is far rarer. `KeyNumbers.marginDistribution` models this as
+
+```
+P(home margin = k | expected home margin s) ~ N(k; s, sigma=13.0) x w(|k|), k integer in -60..60
+```
+
+where `w` is a key-number weight fitted on 4,175 regular-season games (2010-2025, nflverse closing lines):
+
+| \|k\| | w | \|k\| | w | \|k\| | w |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 0.12 | 8 | 0.91 | 16 | 0.83 |
+| 1 | 0.83 | 9 | 0.34 | 17 | 1.22 |
+| 2 | 0.84 | 10 | 1.23 | 18 | 0.98 |
+| 3 | 2.79 | 11 | 0.52 | 19 | 0.48 |
+| 4 | 0.98 | 12 | 0.46 | 20 | 0.97 |
+| 5 | 0.79 | 13 | 0.64 | 21 | 1.32 |
+| 6 | 1.34 | 14 | 1.49 | ≥22 | 1.0 |
+| 7 | 1.83 | 15 | 0.53 | | |
+
+`KeyNumbers.coverProbability(teamSpread, teamIsHome, homeSpreadConsensus)` returns a `CoverOutcome(win,
+push, loss)` (raw fractions of every possible margin, summing to 1.0); `winOfDecided` (`win / (1 - push)`)
+is the number ordinarily quoted as "cover %". `KeyNumbers.winProbability(homeSpread)` gives a straight-up
+win probability the same way (`P(margin > 0) / (1 - P(tie))`). `KeyNumbers.halfPointValue(fromLine, toLine,
+teamIsHome, homeSpreadConsensus)` prices "buying" or "selling" a point at a fixed consensus - used in place
+of the normal curve for the "better number" line-shopping comparison on SPREAD.
+
+**Sign convention:** every "home margin" here is POSITIVE when the home team is favored - the opposite of
+`MarketLine.homeSpread` (negative when the home team is favored). See `KeyNumbers`'s class doc.
+
+**Validation** (all against the model, not a fresh backtest - see docs/TEASERS.md for the separate,
+empirical validation of the teaser windows specifically):
+
+| Line | Result |
+|---|---|
+| Laying -3 | covers ~49.6% of non-pushes, pushes ~8.3% |
+| Laying -7 | pushes ~5.4% |
+| Laying -2.5 | covers ~52.3% (no push) |
+| Half point, -3 -> -2.5 | worth ~+4.2 cover points |
+| Half point, -5 -> -4.5 | worth ~+1.2 cover points |
+| Win probability at -3 / -7 / -10 | ~58.9% / ~70.1% / ~77.6% |
+
+The distribution always sums to 1, and it's symmetric: `P(home covers -3)` at consensus +3 equals `P(away
+covers +3)` at the same consensus, mirrored (see `KeyNumbersTest`).
+
+Survivor win probabilities (`Probability.winProbabilityFromSpread`, sigma = 11.0) are **not** affected by
+any of this - they keep the plain normal curve they always used. `KeyNumbers` is used only inside
+`BettingEngine`'s SPREAD pricing.

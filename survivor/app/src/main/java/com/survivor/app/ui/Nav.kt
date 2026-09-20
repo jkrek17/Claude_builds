@@ -58,12 +58,14 @@ import com.survivor.app.ui.screens.RankingsScreen
 import com.survivor.app.ui.screens.SeasonScreen
 import com.survivor.app.ui.screens.SettingsScreen
 import com.survivor.app.ui.screens.SimulationScreen
+import com.survivor.app.ui.screens.TeasersScreen
 
 object Routes {
     const val DASHBOARD = "dashboard"
     const val RANKINGS = "rankings"
     const val SEASON = "season"
     const val BETS = "bets"
+    const val TEASERS = "teasers"
     const val MORE = "more"
     const val PICKS = "picks"
     const val INPUTS = "inputs"
@@ -151,6 +153,7 @@ fun SurvivorNavHost(vm: AppViewModel) {
             composable(Routes.RANKINGS) { RankingsScreen(vm) }
             composable(Routes.SEASON) { SeasonScreen(vm) }
             composable(Routes.BETS) { BetsScreen(vm, ::go) }
+            composable(Routes.TEASERS) { TeasersScreen(vm) }
             composable(Routes.MORE) { MoreScreen(vm, ::go) }
             composable(Routes.PICKS) { PicksScreen(vm) }
             composable(Routes.INPUTS) { InputsScreen(vm) }
@@ -179,6 +182,7 @@ private fun titleFor(route: String) = when (route) {
     Routes.RANKINGS -> "Rankings"
     Routes.SEASON -> "Season"
     Routes.BETS -> "Bets"
+    Routes.TEASERS -> "Teasers"
     Routes.PICKS -> "Picks & Used Teams"
     Routes.MORE -> "More"
     Routes.INPUTS -> "Weekly Inputs"

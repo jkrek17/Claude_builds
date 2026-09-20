@@ -19,6 +19,10 @@ import com.survivor.engine.RobustPlanner
 import com.survivor.engine.SimulationResult
 import com.survivor.engine.StabilityReport
 import com.survivor.engine.Team
+import com.survivor.engine.TeaserBet
+import com.survivor.engine.TeaserBoard
+import com.survivor.engine.TeaserLedger
+import com.survivor.engine.Teasers
 import com.survivor.engine.data.SavedState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,6 +68,15 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
     private val _ledger = MutableStateFlow<Ledger?>(null)
     val ledger: StateFlow<Ledger?> = _ledger
 
+    /** This week's Wong-teaser legs and candidate pairings - see [Teasers]; entirely separate from
+     *  [betBoard]'s straight-bet board. */
+    private val _teaserBoard = MutableStateFlow<TeaserBoard?>(null)
+    val teaserBoard: StateFlow<TeaserBoard?> = _teaserBoard
+
+    /** Every logged teaser bet, graded from final scores. */
+    private val _teaserLedger = MutableStateFlow<TeaserLedger?>(null)
+    val teaserLedger: StateFlow<TeaserLedger?> = _teaserLedger
+
     init {
         viewModelScope.launch {
             repo.state.collectLatest { s ->
@@ -107,6 +120,22 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
                 }
             }
         }
+        // Teasers: independent of both the survivor evaluation and the straight-bet board above.
+        viewModelScope.launch {
+            repo.state.collectLatest { s ->
+                val season = s.season
+                if (season == null || season.games.isEmpty()) {
+                    _teaserBoard.value = null
+                    _teaserLedger.value = null
+                    return@collectLatest
+                }
+                val now = System.currentTimeMillis()
+                withContext(Dispatchers.Default) {
+                    _teaserBoard.value = runCatching { Teasers.find(season, s.user, now) }.getOrNull()
+                    _teaserLedger.value = runCatching { Teasers.ledger(season, s.user) }.getOrNull()
+                }
+            }
+        }
     }
 
     fun refreshNflData() = viewModelScope.launch { repo.refreshNflData(includeProjections = true) }
@@ -123,6 +152,8 @@ class AppViewModel(private val repo: SurvivorRepository) : ViewModel() {
     fun setWeekOverride(w: Int?) = repo.setWeekOverride(w)
     fun recordBet(bet: Bet) = repo.recordBet(bet)
     fun deleteBet(id: String) = repo.deleteBet(id)
+    fun recordTeaser(bet: TeaserBet) = repo.recordTeaser(bet)
+    fun deleteTeaser(id: String) = repo.deleteTeaser(id)
     fun reset(includeData: Boolean) {
         repo.reset(includeData)
         _simulation.value = emptyList()

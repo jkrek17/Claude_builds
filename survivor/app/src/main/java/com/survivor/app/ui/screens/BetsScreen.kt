@@ -122,6 +122,7 @@ fun BetsScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
             state = state, board = board, refreshing = refresh is RefreshStatus.Running,
             onNavigateInputs = { onNavigate(Routes.INPUTS) },
             onRefreshBoard = { vm.refreshOddsBoard(force = true) },
+            onNavigateTeasers = { onNavigate(Routes.TEASERS) },
         )
 
         SingleChoiceSegmentedButtonRow {
@@ -198,13 +199,16 @@ fun BetsScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
 }
 
 @Composable
-private fun BetsHeaderCard(state: SavedState, board: BetBoard?, refreshing: Boolean, onNavigateInputs: () -> Unit, onRefreshBoard: () -> Unit) {
+private fun BetsHeaderCard(state: SavedState, board: BetBoard?, refreshing: Boolean, onNavigateInputs: () -> Unit, onRefreshBoard: () -> Unit, onNavigateTeasers: () -> Unit) {
     val settings = state.user.settings
     val hasKey = state.user.oddsApiKey.isNotBlank()
     SectionCard {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("Bets", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                OutlinedButton(onClick = onNavigateTeasers, modifier = Modifier.defaultMinSize(minHeight = 40.dp)) { Text("Teasers") }
+                if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
         }
         if (!hasKey || board == null || (board.booksSeen == 0 && board.referenceBooksSeen == 0)) {
             Text("Add a The Odds API key in Weekly Inputs for multi-book fair prices and dispersion - every game is still graded off the ESPN/DraftKings line without one.", style = MaterialTheme.typography.bodyMedium)
