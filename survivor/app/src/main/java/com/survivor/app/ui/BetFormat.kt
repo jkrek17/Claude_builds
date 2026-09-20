@@ -26,13 +26,16 @@ object BetFormat {
         else -> EvTier.LOW
     }
 
-    /** e.g. "moved +1.0" (SPREAD/TOTAL points) or "moved +2.3%" (MONEYLINE, a no-vig probability move);
-     *  "no history" when [points] is null - see [com.survivor.engine.SideAssessment.lineMovePoints]. */
+    /** e.g. "moved +1.0 pt" (SPREAD/TOTAL points) or "price moved +2.3 pp in favour" / "price moved -1.0 pp
+     *  against" (MONEYLINE, a no-vig win-probability move); "no history" when [points] is null - see
+     *  [com.survivor.engine.SideAssessment.lineMovePoints]. */
     fun movedLabel(market: Market, points: Double?): String {
         if (points == null) return "no history"
-        val sign = if (points >= 0) "+" else ""
-        val suffix = if (market == Market.MONEYLINE) "%" else ""
-        return "moved $sign${Fmt.num(points)}$suffix"
+        return if (market == Market.MONEYLINE) {
+            String.format(Locale.US, "price moved %+.1f pp %s", points, if (points >= 0) "in favour" else "against")
+        } else {
+            String.format(Locale.US, "moved %+.1f pt", points)
+        }
     }
 
     /** "+2.2 bps" / "-0.8 bps" for [com.survivor.engine.SideAssessment.expectedGrowthBps] - the

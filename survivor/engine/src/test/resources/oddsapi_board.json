@@ -16,5 +16,11 @@
   ]},
   {"key": "pinnacle", "title": "Pinnacle", "last_update": "2026-09-08T12:02:00Z", "markets": [
     {"key": "h2h", "last_update": "2026-09-08T12:02:00Z", "outcomes": [{"name": "Seattle Seahawks", "price": -165}, {"name": "New England Patriots", "price": 150}]}
+  ]},
+  {"key": "unibet_se", "title": "Unibet (SE)", "last_update": "2026-09-08T12:03:00Z", "markets": [
+    {"key": "h2h", "last_update": "2026-09-08T12:03:00Z", "outcomes": [{"name": "Seattle Seahawks", "price": -172}, {"name": "New England Patriots", "price": 148}]}
+  ]},
+  {"key": "matchbook", "title": "Matchbook", "last_update": "2026-09-08T12:04:00Z", "markets": [
+    {"key": "h2h", "last_update": "2026-09-08T12:04:00Z", "outcomes": [{"name": "New England Patriots", "price": 820}]}
   ]}
 ]}]

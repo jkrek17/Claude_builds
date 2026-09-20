@@ -54,10 +54,11 @@ no line history) never fails a side by itself - only a confirmed *disagreement* 
 | `boardFresh` | The multi-book board is on file (`boardAgeMs` not null) and no more than 6 hours old. |
 
 `GoodBetTests.failedReasons` gives one plain-language sentence per failing test, e.g. *"Edge is within
-fair-price noise (z = 0.6)"*, *"Pinnacle prices this side at -EV (-0.8%)"*, *"Line has moved 1.0 pt against
-this side"*, *"Odds board is 9 h old"*, *"No edge vs the consensus"*. A side that isn't a good bet keeps the
-strongest (first) of these appended to its `rationale`, and stays visible everywhere in the UI with the
-reason in its subtitle - failing a test never hides a side, it just keeps it out of "Good bets".
+fair-price noise (z = 0.6)"*, *"Pinnacle prices this side at -EV (-0.8%)"*, *"Line moved 1.0 pt against this
+side"* (SPREAD/TOTAL) or *"Price moved against this side (-3.1 pp win probability)"* (MONEYLINE), *"Odds
+board is 9 h old"*, *"No edge vs the consensus"*. A side that isn't a good bet keeps the strongest (first) of
+these appended to its `rationale`, and stays visible everywhere in the UI with the reason in its subtitle -
+failing a test never hides a side, it just keeps it out of "Good bets".
 
 ### Confidence and the standard error of the fair price (`fairProbabilitySe`, `edgeZ`, `Confidence`)
 
@@ -177,11 +178,53 @@ only - the model's **cover** probability and its break-even (e.g. *"LAC -9.5 at 
 consensus -9.5 at fair -108 from 7 books; model has LAC covering 56% (break-even 51.2%)."*) - a spread's
 model number is a cover probability, never described as a moneyline win probability.
 
+## Book roles
+
+Adding the `eu` region for Pinnacle (see above) also pulls in books a US bettor cannot use at all: betting
+exchanges (Matchbook, Betfair, Smarkets - pre-commission, thin, and easily the "best" price on the board for
+the wrong reason) and books not licensed in the US (e.g. Unibet's European entity). Left unfiltered, these
+inflate EV/growth and can push a longshot exchange price to the top of the board, and folding an exchange's
+paired quote into the no-vig consensus overstates how many independent books actually agree (a smaller
+standard error than is really there).
+
+`BookRole` (from `ModelSettings.roleOf(bookKey)`) fixes this by giving every book on the board exactly one
+of four roles:
+
+| Role | Comes from | Can be `bestBook`/`bestPrice`? | Feeds the consensus/fair price? |
+|---|---|:-:|:-:|
+| `BETTABLE` | `ModelSettings.bettableBooks` (The Odds API's US-region bookmaker keys - DraftKings, FanDuel, BetMGM, Caesars, etc.) | Yes | Yes |
+| `SHARP` | `ModelSettings.sharpBooks` (default `["pinnacle"]`) | No | Yes |
+| `REFERENCE` | Any other book (e.g. a legitimate non-US book like Unibet) | No | Yes |
+| `EXCLUDED` | `ModelSettings.excludedBooks` (betting exchanges: Matchbook, Betfair, Smarkets) | No | No - dropped entirely |
+
+`roleOf` checks `sharpBooks`, then `excludedBooks`, then `bettableBooks`, in that order (so a key can't be
+both sharp and excluded), and a blank `bookKey` (a `Quote` saved before that field existed, or the
+ESPN/DraftKings fallback's synthetic quote) is always treated as `BETTABLE` - it's always safe to show as a
+price a bettor can act on.
+
+In `BettingEngine.board`, **best price** (`SideAssessment.bestBook`/`bestPrice`/`bestBookIsSharp`) is chosen
+only among `BETTABLE` quotes for that side; if none exists, the side is skipped for that market rather than
+falling back to a sharp, reference or excluded price (the ESPN/DraftKings fallback, which has no roles at
+all, is unaffected). **Consensus/fair price/dispersion/`booksQuoting`** are built from `BETTABLE` + `SHARP` +
+`REFERENCE` quotes together - an excluded book is dropped before the group is even formed, so it can't widen
+`booksQuoting` or narrow the fair-price standard error either. `SideAssessment.bettableBooks` reports how
+many of `booksQuoting` are actually `BETTABLE`. `BetBoard.booksSeen` is the distinct count of `BETTABLE`
+books across the week's board; `BetBoard.referenceBooksSeen` is the same for `REFERENCE` books. The sharp
+book's own two-sided quote (`sharpProbability`/`sharpEv`/`sharpAgrees`) is unchanged - it was never chosen as
+a best price to begin with.
+
+`ModelSettings.bettableBooks` and `ModelSettings.excludedBooks` are both plain, editable lists (Settings →
+Betting → Advanced: book roles) so a user can add a book The Odds API has since added, or exclude one that
+turns out to be unusable in their market.
+
 ## `evaluate` and the two-signal `BettingBoard` (kept for compatibility)
 
 `BettingEngine.evaluate` and the `BettingBoard`/`BetPick` types it returns still work exactly as before,
 for anything still built against them; the Bets screen itself now uses `board` above. `evaluate` only
-surfaces sides that clear an edge threshold, kept apart as two signals:
+surfaces sides that clear an edge threshold, kept apart as two signals. **`evaluate` does not apply book
+roles** - its own line-shopping consensus (`lineShopMarket`) picks the best price across every quoted book
+regardless of role, unlike `board`'s fixed selection above; it is unused by the app UI, kept only for
+anything still built directly against it.
 
 `BetPick.signal` is either `LINE_SHOP` or `MODEL`. They are **never merged** - the same side of the same
 game can appear once under each, with very different confidence:
@@ -295,6 +338,8 @@ It uses the last known DraftKings line on the game (`Game.line`) as a simple pro
 | `modelWeight` | 0.25 | Weight on the model-vs-market edge inside the Bet Score's blended EV. 0 ignores it; 0.5 weights it the same as the line-shopping edge. |
 | `sharpBooks` | `["pinnacle"]` | The Odds API bookmaker keys treated as a sharp reference price for `sharpAgrees` and the good-bet checks. |
 | `includeSharpRegion` | true | Whether the odds board adds the `eu` region to reach Pinnacle. Doubles the board's request cost (6 instead of 3). |
+| `bettableBooks` | The Odds API's US-region bookmaker keys | Books an ordinary US bettor can actually place a bet at - the only ones a `bestBook`/`bestPrice` can come from. See "Book roles" above. |
+| `excludedBooks` | `betfair_ex_eu, betfair_ex_uk, betfair_ex_au, matchbook, smarkets, betfair_sb_uk` | Betting exchanges and other books dropped from the board entirely - never a best price, never part of the consensus. |
 
 ## The odds board and API quota
 

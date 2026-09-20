@@ -48,6 +48,7 @@ import com.survivor.app.ui.theme.Spacing
 import com.survivor.engine.ModelSettings
 import com.survivor.engine.RouteObjective
 import com.survivor.engine.Strategy
+import java.util.Locale
 
 private data class Param(val key: String, val label: String, val get: (ModelSettings) -> Double, val set: (ModelSettings, Double) -> ModelSettings)
 
@@ -162,6 +163,18 @@ fun SettingsScreen(vm: AppViewModel) {
                 }
                 Switch(checked = settings.includeSharpRegion, onCheckedChange = { vm.updateSettings(settings.copy(includeSharpRegion = it)) })
             }
+            HorizontalDivider()
+            Expandable("Advanced: book roles", subtitle = "Which books can be a best price, and which are dropped entirely") {
+                Text(
+                    "Best prices only ever come from a bettable book. A European or other legitimate book that isn't bettable or sharp still informs the fair price. An excluded book (e.g. a betting exchange) is dropped everywhere.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                BookListField("Bettable books", settings.bettableBooks, descriptions["bettableBooks"] ?: "") { vm.updateSettings(settings.copy(bettableBooks = it)) }
+                BookListField("Excluded books", settings.excludedBooks, descriptions["excludedBooks"] ?: "") { vm.updateSettings(settings.copy(excludedBooks = it)) }
+                OutlinedButton(onClick = { vm.updateSettings(settings.copy(bettableBooks = ModelSettings().bettableBooks, excludedBooks = ModelSettings().excludedBooks)) }) {
+                    Text("Restore defaults")
+                }
+            }
         }
 
         SectionCard("Strategy") {
@@ -209,6 +222,7 @@ fun SettingsScreen(vm: AppViewModel) {
                         bankroll = settings.bankroll, kellyMultiplier = settings.kellyMultiplier, maxStakePct = settings.maxStakePct,
                         minLineShopEdge = settings.minLineShopEdge, minModelEdge = settings.minModelEdge, includeTotals = settings.includeTotals,
                         modelWeight = settings.modelWeight, includeSharpRegion = settings.includeSharpRegion,
+                        bettableBooks = settings.bettableBooks, excludedBooks = settings.excludedBooks,
                     ),
                 )
             }) { Text("Restore defaults") }
@@ -239,6 +253,21 @@ private fun PercentField(label: String, current: Double, description: String, on
             value = text, onValueChange = { text = it; it.toDoubleOrNull()?.let { v -> onChange((v / 100.0).coerceIn(0.0, 1.0)) } },
             label = { Text(label) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        )
+        Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** A [ModelSettings] book-key list (e.g. [ModelSettings.bettableBooks]) edited as one comma-separated
+ *  text field, lowercased and blank-filtered on every change - see [ModelSettings.roleOf]. */
+@Composable
+private fun BookListField(label: String, current: List<String>, description: String, onChange: (List<String>) -> Unit) {
+    var text by remember(current) { mutableStateOf(current.joinToString(", ")) }
+    Column {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it; onChange(it.split(",").map { key -> key.trim().lowercase(Locale.US) }.filter { key -> key.isNotBlank() }) },
+            label = { Text(label) }, modifier = Modifier.fillMaxWidth(),
         )
         Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

@@ -64,6 +64,7 @@ import com.survivor.app.ui.theme.tierContainer
 import com.survivor.engine.Bet
 import com.survivor.engine.BetBoard
 import com.survivor.engine.BetResult
+import com.survivor.engine.BookRole
 import com.survivor.engine.Confidence
 import com.survivor.engine.GameAssessment
 import com.survivor.engine.Ledger
@@ -205,11 +206,16 @@ private fun BetsHeaderCard(state: SavedState, board: BetBoard?, refreshing: Bool
             Text("Bets", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             if (refreshing) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
         }
-        if (!hasKey || board == null || board.booksSeen == 0) {
+        if (!hasKey || board == null || (board.booksSeen == 0 && board.referenceBooksSeen == 0)) {
             Text("Add a The Odds API key in Weekly Inputs for multi-book fair prices and dispersion - every game is still graded off the ESPN/DraftKings line without one.", style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(onClick = onNavigateInputs, modifier = Modifier.defaultMinSize(minHeight = 48.dp)) { Text("Weekly Inputs") }
         } else {
-            Text("Books: ${board.booksSeen} · board updated ${Fmt.durationAgo(board.boardAgeMs)}", style = MaterialTheme.typography.bodyMedium)
+            val sharpSeen = board.games.asSequence().mapNotNull { g -> state.season?.board?.get(g.gameId)?.quotes }
+                .flatten().any { settings.roleOf(it.bookKey) == BookRole.SHARP }
+            Text(
+                "Books: ${board.booksSeen} US · ${board.referenceBooksSeen} reference · Pinnacle ${if (sharpSeen) "✓" else "—"} · board updated ${Fmt.durationAgo(board.boardAgeMs)}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
             OutlinedButton(onClick = onRefreshBoard, modifier = Modifier.defaultMinSize(minHeight = 48.dp)) { Text("Refresh odds board") }
         }
         HorizontalDivider()

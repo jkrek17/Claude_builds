@@ -4,6 +4,7 @@ import com.survivor.engine.data.EspnParser
 import com.survivor.engine.data.OddsApiParser
 import com.survivor.engine.data.StateCodec
 import com.survivor.engine.data.SavedState
+import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -37,9 +38,11 @@ class BettingTest {
         assertEquals(Team.SEA, board.home); assertEquals(Team.NE, board.away)
         assertEquals(kickoff, board.commenceEpochMs)
         assertEquals("abc123", board.gameId)
-        // 3 books x 2 outcomes for h2h/spreads, but BetMGM totals is Over-only, plus Pinnacle's h2h-only entry (the sharp reference).
-        assertEquals(19, board.quotes.size)
-        assertEquals(8, board.quotes.count { it.market == Market.MONEYLINE })
+        // 3 books x 2 outcomes for h2h/spreads, but BetMGM totals is Over-only, plus Pinnacle's h2h-only
+        // entry (the sharp reference), Unibet (SE)'s h2h-only entry (a non-US REFERENCE book) and
+        // Matchbook's single, NE-only h2h entry (an EXCLUDED betting exchange) - see "Book roles" below.
+        assertEquals(22, board.quotes.size)
+        assertEquals(11, board.quotes.count { it.market == Market.MONEYLINE })
         assertEquals(6, board.quotes.count { it.market == Market.SPREAD })
         assertEquals(5, board.quotes.count { it.market == Market.TOTAL })
 
@@ -49,6 +52,12 @@ class BettingTest {
         assertEquals(44.5, dkTotalOver.point); assertEquals(-110, dkTotalOver.price)
         val pinnacleMlSea = board.quotes.single { it.market == Market.MONEYLINE && it.book == "Pinnacle" && it.side == "SEA" }
         assertEquals(-165, pinnacleMlSea.price); assertEquals("pinnacle", pinnacleMlSea.bookKey)
+        // Parsing itself is role-agnostic - it keeps every book's quote as-is; roles only apply at grading time.
+        val unibetMlNe = board.quotes.single { it.market == Market.MONEYLINE && it.book == "Unibet (SE)" && it.side == "NE" }
+        assertEquals(148, unibetMlNe.price); assertEquals("unibet_se", unibetMlNe.bookKey)
+        val matchbookMlNe = board.quotes.single { it.market == Market.MONEYLINE && it.book == "Matchbook" && it.side == "NE" }
+        assertEquals(820, matchbookMlNe.price); assertEquals("matchbook", matchbookMlNe.bookKey)
+        assertTrue(board.quotes.none { it.book == "Matchbook" && it.side == "SEA" }) // exchange, single-sided in this fixture
 
         val game = seaNeGame()
         val attached = OddsApiParser.attachBoard(listOf(game), boards)
@@ -143,9 +152,13 @@ class BettingTest {
         val betBoard = BettingEngine.evaluate(season, UserState(), kickoff - 1000L)
         val lineShop = betBoard.picks.filter { it.signal == Signal.LINE_SHOP }
 
-        // Moneyline: NE at BetMGM (+165) clears the edge; SEA does not.
+        // Moneyline: NE clears the edge; SEA does not. `evaluate`'s own consensus (`lineShopMarket`) does not
+        // apply book roles (see docs/BETTING.md), so its "best price" is Matchbook's +820 - the fixture's
+        // EXCLUDED exchange price - not a bettable book's; this is the legacy, unfixed behavior `evaluate`
+        // is kept around for, and is exactly why `BettingEngine.board` (below) restricts best price to
+        // BETTABLE-role quotes instead.
         val ml = lineShop.single { it.market == Market.MONEYLINE }
-        assertEquals("NE", ml.side); assertEquals("BetMGM", ml.bestBook); assertEquals(165, ml.bestPrice)
+        assertEquals("NE", ml.side); assertEquals("Matchbook", ml.bestBook); assertEquals(820, ml.bestPrice)
         assertEquals("", ml.note)
 
         // Spread: BetMGM hangs SEA -3 (vs. the DraftKings/FanDuel -3.5 consensus) - a "better number".
@@ -197,9 +210,14 @@ class BettingTest {
         assertTrue(model.none { it.signal == Signal.LINE_SHOP })
         // The blended model favors SEA heavily (FPI 75% at 40% weight); the SEA moneyline model pick
         // should show up using the board's best SEA price.
-        val mlModel = model.single { it.market == Market.MONEYLINE }
-        assertEquals("SEA", mlModel.side)
+        val mlModel = model.single { it.market == Market.MONEYLINE && it.side == "SEA" }
         assertEquals("FanDuel", mlModel.bestBook); assertEquals(-160, mlModel.bestPrice)
+        // `evaluate`'s `moneylinePrices` does not apply book roles (see docs/BETTING.md), so NE's own
+        // model pick now also shows up here, priced against Matchbook's fixture-only +820 (an EXCLUDED
+        // exchange price) - a huge, meaningless "edge" that `BettingEngine.board`'s fixed best-price
+        // selection can't produce.
+        val neMlModel = model.single { it.market == Market.MONEYLINE && it.side == "NE" }
+        assertEquals("Matchbook", neMlModel.bestBook); assertEquals(820, neMlModel.bestPrice)
     }
 
     @Test fun `model signal falls back to the ESPN DraftKings line when the board is empty`() {
@@ -580,6 +598,88 @@ class BettingTest {
         assertTrue(ne.sharpEv!! > 0.0)
         assertEquals(true, ne.sharpAgrees)
         assertEquals(0.0, ne.components.sharpPenalty)
+    }
+
+    // ---- Book roles -----------------------------------------------------------------------------
+
+    @Test fun `roleOf maps sharp, excluded, bettable, unknown and blank keys correctly`() {
+        val settings = ModelSettings()
+        assertEquals(BookRole.SHARP, settings.roleOf("pinnacle"))
+        assertEquals(BookRole.SHARP, settings.roleOf("Pinnacle")) // case-insensitive
+        assertEquals(BookRole.EXCLUDED, settings.roleOf("matchbook"))
+        assertEquals(BookRole.EXCLUDED, settings.roleOf("betfair_ex_eu"))
+        assertEquals(BookRole.EXCLUDED, settings.roleOf("SMARKETS"))
+        assertEquals(BookRole.BETTABLE, settings.roleOf("draftkings"))
+        assertEquals(BookRole.BETTABLE, settings.roleOf("fanduel"))
+        assertEquals(BookRole.BETTABLE, settings.roleOf("BetMGM")) // case-insensitive
+        assertEquals(BookRole.REFERENCE, settings.roleOf("unibet_se")) // a legitimate non-US book
+        assertEquals(BookRole.REFERENCE, settings.roleOf("some_future_book_the_odds_api_adds"))
+        assertEquals(BookRole.BETTABLE, settings.roleOf("")) // blank - old Quote/ESPN fallback, always safe
+    }
+
+    @Test fun `board's best price never comes from an excluded exchange or a reference book, but both feed booksQuoting`() {
+        val boards = OddsApiParser.parseBoard(fixture("oddsapi_board.json"), 5L)
+        val game = seaNeGame()
+        val attached = OddsApiParser.attachBoard(listOf(game), boards)
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = 5L).copy(board = attached)
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
+        val sea = ml.sides.single { it.side == "SEA" }
+        val ne = ml.sides.single { it.side == "NE" }
+
+        // Matchbook's NE +820 (an EXCLUDED exchange price) is far better than any bettable book's, and
+        // Unibet (SE) (a non-US REFERENCE book) never beats FanDuel/BetMGM here either - neither is ever
+        // picked as the best price.
+        assertEquals("FanDuel", sea.bestBook); assertEquals(-160, sea.bestPrice)
+        assertEquals("BetMGM", ne.bestBook); assertEquals(165, ne.bestPrice)
+        assertTrue(sea.bestBook != "Unibet (SE)" && sea.bestBook != "Matchbook")
+        assertTrue(ne.bestBook != "Unibet (SE)" && ne.bestBook != "Matchbook")
+
+        // Consensus/booksQuoting includes Unibet (SE) alongside DraftKings, FanDuel, BetMGM and Pinnacle
+        // (5 total) - Matchbook is dropped before the consensus group is even formed.
+        assertEquals(5, sea.booksQuoting); assertEquals(5, ne.booksQuoting)
+        // Only the three US-licensed books (DraftKings, FanDuel, BetMGM) are BETTABLE.
+        assertEquals(3, sea.bettableBooks); assertEquals(3, ne.bettableBooks)
+    }
+
+    @Test fun `ModelSettings without bettableBooks-excludedBooks decodes to the defaults`() {
+        val old = """{"season":null,"user":{"settings":{}},"savedAtEpochMs":1}"""
+        val back = StateCodec.decode(old)
+        assertEquals(ModelSettings().bettableBooks, back.user.settings.bettableBooks)
+        assertEquals(ModelSettings().excludedBooks, back.user.settings.excludedBooks)
+        assertTrue(back.user.settings.bettableBooks.contains("draftkings"))
+        assertTrue(back.user.settings.excludedBooks.contains("matchbook"))
+    }
+
+    @Test fun `moneyline line-moved-against reason states the win-probability move in percentage points`() {
+        val game = seaNeGame() // ESPN fallback -> isMoneyline = true
+        val now = kickoff - 1000L
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = now)
+        // Earliest snapshot had SEA at a much higher no-vig probability than the current -170/142 line.
+        val history = LineHistory(listOf(LineSnapshot(takenAtEpochMs = 0L, currentWeek = 1, lines = listOf(LineRecord(game.id, 1, homeSpread = null, homeMoneyline = -900, awayMoneyline = 700, fpiHome = null)))))
+        val betBoard = BettingEngine.board(season, UserState(), now, history)
+        val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
+        val sea = ml.sides.single { it.side == "SEA" }
+        assertEquals(false, sea.tests.lineNotAgainst)
+        val expectedMove = sea.lineMovePoints!!
+        assertTrue(expectedMove < 0.0)
+        val expectedReason = String.format(Locale.US, "Price moved against this side (%+.1f pp win probability)", expectedMove)
+        assertTrue(
+            sea.tests.failedReasons.contains(expectedReason),
+            "expected \"$expectedReason\", got ${sea.tests.failedReasons}",
+        )
+    }
+
+    @Test fun `spread line-moved-against reason states the point move`() {
+        val game = seaNeGame(line = MarketLine("DraftKings", homeSpread = 7.0, homeMoneyline = -170, awayMoneyline = 142, fetchedAtEpochMs = 1L))
+        val now = kickoff - 1000L
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = now)
+        val history = LineHistory(listOf(LineSnapshot(takenAtEpochMs = 0L, currentWeek = 1, lines = listOf(LineRecord(game.id, 1, homeSpread = -3.0, homeMoneyline = null, awayMoneyline = null, fpiHome = null)))))
+        val betBoard = BettingEngine.board(season, UserState(), now, history)
+        val spread = betBoard.games.single().markets.single { it.market == Market.SPREAD }
+        val away = spread.sides.single { it.side == game.away.abbr }
+        assertEquals(false, away.tests.lineNotAgainst)
+        assertTrue(away.tests.failedReasons.contains("Line moved 10.0 pt against this side"))
     }
 
     @Test fun `line-moved-against reason and boardFresh reason report the actual numbers`() {

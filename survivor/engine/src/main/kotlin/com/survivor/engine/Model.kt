@@ -1,6 +1,7 @@
 package com.survivor.engine
 
 import kotlinx.serialization.Serializable
+import java.util.Locale
 
 const val REGULAR_SEASON_WEEKS = 18
 
@@ -153,6 +154,25 @@ enum class Strategy(val label: String, val description: String) {
     MAX_POOL_EQUITY("Max Pool Equity", "Rank by expected pool equity: win probability divided by the share of the pool that survives with you, using pick shares fetched automatically from Yahoo Survival Football (or your own manual estimate, which overrides Yahoo's)."),
 }
 
+/**
+ * What a book's price counts for in [com.survivor.engine.BettingEngine.board] - see [ModelSettings.roleOf]
+ * and docs/BETTING.md's "Book roles" section. Only [BETTABLE] prices can ever be a
+ * [SideAssessment.bestBook]/[SideAssessment.bestPrice]; [BETTABLE], [SHARP] and [REFERENCE] all feed the
+ * no-vig consensus/fair price/dispersion; [EXCLUDED] is dropped entirely.
+ */
+enum class BookRole {
+    /** A US-licensed sportsbook an ordinary US bettor can actually place a bet at - [ModelSettings.bettableBooks]. */
+    BETTABLE,
+    /** [ModelSettings.sharpBooks] (default Pinnacle) - a reference price, not itself eligible as [SideAssessment.bestBook]. */
+    SHARP,
+    /** A legitimate book that's neither US-licensed nor a sharp reference (e.g. a European book) - informs
+     *  the consensus only, never the best price. */
+    REFERENCE,
+    /** A betting exchange or other book whose prices are unusable by an ordinary bettor (pre-commission,
+     *  thin, or otherwise not a real retail price) - [ModelSettings.excludedBooks]; dropped everywhere. */
+    EXCLUDED,
+}
+
 @Serializable
 data class ModelSettings(
     /**
@@ -231,7 +251,38 @@ data class ModelSettings(
      *  doubles the odds board's request cost against the quota - 6 requests instead of 3 for
      *  `h2h,spreads,totals`. See docs/BETTING.md. */
     val includeSharpRegion: Boolean = true,
+    /** The Odds API bookmaker keys (lowercase) an ordinary US bettor can actually place a bet at - only
+     *  these can ever be [SideAssessment.bestBook]/[SideAssessment.bestPrice]. Defaults to The Odds API's
+     *  US-region bookmaker keys. See [roleOf] and docs/BETTING.md's "Book roles" section. */
+    val bettableBooks: List<String> = listOf(
+        "draftkings", "fanduel", "betmgm", "caesars", "williamhill_us", "pointsbetus", "betrivers", "fanatics",
+        "espnbet", "hardrockbet", "ballybet", "betparx", "bovada", "betonlineag", "lowvig", "mybookieag", "betus",
+        "unibet_us", "superbook", "wynnbet", "twinspires", "sisportsbook", "tipico_us", "fliff", "prizepicks",
+        "underdog", "novig", "prophetx", "rebet", "betanysports",
+    ),
+    /** The Odds API bookmaker keys (lowercase) dropped entirely from the board - betting exchanges
+     *  (pre-commission, thin) and other prices no ordinary bettor can act on. See [roleOf] and
+     *  docs/BETTING.md's "Book roles" section. */
+    val excludedBooks: List<String> = listOf("betfair_ex_eu", "betfair_ex_uk", "betfair_ex_au", "matchbook", "smarkets", "betfair_sb_uk"),
 ) {
+    /**
+     * [BookRole] for a raw The Odds API bookmaker key (from [Quote.bookKey]): [BookRole.SHARP] if it's in
+     * [sharpBooks], [BookRole.EXCLUDED] if in [excludedBooks], [BookRole.BETTABLE] if in [bettableBooks] or
+     * the key is blank (a [Quote] saved before [Quote.bookKey] existed, or an ESPN-fallback synthetic
+     * quote - always safe to treat as bettable), else [BookRole.REFERENCE] (a legitimate non-US book that
+     * informs the consensus only). Checked in that order, so a key can't be both sharp and excluded.
+     */
+    fun roleOf(bookKey: String): BookRole {
+        if (bookKey.isBlank()) return BookRole.BETTABLE
+        val key = bookKey.lowercase(Locale.US)
+        return when {
+            sharpBooks.any { it.lowercase(Locale.US) == key } -> BookRole.SHARP
+            excludedBooks.any { it.lowercase(Locale.US) == key } -> BookRole.EXCLUDED
+            bettableBooks.any { it.lowercase(Locale.US) == key } -> BookRole.BETTABLE
+            else -> BookRole.REFERENCE
+        }
+    }
+
     fun forStrategy(strategy: Strategy): ModelSettings = copy(
         strategy = strategy,
         ownershipLeverageWeight = when (strategy) {
@@ -279,6 +330,8 @@ data class ModelSettings(
             "includeTotals" to "Whether the Betting tab looks at the total (over/under) market at all.",
             "modelWeight" to "Weight on the model-vs-market edge inside the Bet Score's blended EV. 0 ignores the speculative model signal; 0.25 (default) keeps it a minor contributor; 0.5 weights it equally with the reliable line-shopping edge.",
             "includeSharpRegion" to "Use Pinnacle as a sharp reference price for the good-bet checks. Doubles the odds board's cost against The Odds API's monthly quota (6 requests instead of 3).",
+            "bettableBooks" to "The Odds API bookmaker keys (comma-separated) an ordinary US bettor can actually place a bet at. Only these can ever be shown as the best price.",
+            "excludedBooks" to "The Odds API bookmaker keys (comma-separated) dropped entirely - betting exchanges and other books whose prices no ordinary bettor can act on.",
         )
     }
 }
