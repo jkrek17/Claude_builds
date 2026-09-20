@@ -350,6 +350,21 @@ object BettingEngine {
     }
 
     /**
+     * P(team covers point), using the [KeyNumbers] margin model centered on the model's own expected
+     * margin for [team] (from [estimateProbability], the team's straight-up win probability under
+     * [ModelSettings.marginSigma]'s normal curve) rather than a plain normal curve on the cover line
+     * itself - so a model-favored side's cover odds respect the same key-number clustering (3, 7, 10...)
+     * the market itself prices in. See [KeyNumbers] and docs/BETTING.md.
+     */
+    private fun spreadCoverProbability(estimateProbability: Double, team: Team, home: Team, point: Double, settings: ModelSettings): Double {
+        // Points favored FOR [team] (positive = team favored) implied by its win probability.
+        val teamMargin = Probability.spreadFromWinProbability(estimateProbability, settings.marginSigma)
+        // KeyNumbers works in HOME-margin terms (positive = home favored) - the opposite convention.
+        val homeMargin = if (team == home) teamMargin else -teamMargin
+        return KeyNumbers.coverProbability(teamSpread = point, teamIsHome = team == home, homeSpreadConsensus = homeMargin).winOfDecided
+    }
+
+    /**
      * Bankroll stake for a [kellyFraction]: `bankroll × kellyFraction × kellyMultiplier`, capped at
      * `bankroll × maxStakePct` and rounded to whole dollars; zero when [kellyFraction] is not positive.
      */
@@ -687,8 +702,7 @@ object BettingEngine {
             val lineShopEv = fairProbability?.let { it * decimal - 1.0 }
             val sharpEv = sharpProbability?.let { it * decimal - 1.0 }
             val estimate = ProbabilityResolver.resolve(game, team, isCurrentWeek = false, adjustment = null, ratings = ratings, settings = settings)
-            val modelMargin = Probability.spreadFromWinProbability(estimate.probability, settings.marginSigma)
-            val pCover = Probability.winProbabilityFromSpread(modelMargin + point, settings.marginSigma)
+            val pCover = spreadCoverProbability(estimate.probability, team, game.home, point, settings)
             val modelEv = pCover * decimal - 1.0
             val lineMove = spreadMovement(history, game, team)
             val graded = gradeSide(
@@ -1004,8 +1018,16 @@ object BettingEngine {
             if (overallCanonical == consensus.canonical) continue
             val consensusSidePoint = sidePointFromCanonical(market, side, consensus.canonical, game.home) ?: continue
             val newPoint = overallBest.point ?: continue
-            val delta = coverPointDelta(market, side, newPoint, consensusSidePoint)
-            val adjustedFair = Probability.shiftByPoints(fair, delta, sigma)
+            val adjustedFair = if (market == Market.SPREAD) {
+                // Price the point difference off the key-number distribution rather than a plain normal
+                // curve - see KeyNumbers and docs/BETTING.md.
+                val homeConsensusPoint = sidePointFromCanonical(Market.SPREAD, game.home.abbr, consensus.canonical, game.home) ?: consensusSidePoint
+                val teamIsHome = Team.fromAbbr(side) == game.home
+                fair + KeyNumbers.halfPointValue(consensusSidePoint, newPoint, teamIsHome, -homeConsensusPoint) / 100.0
+            } else {
+                val delta = coverPointDelta(market, side, newPoint, consensusSidePoint)
+                Probability.shiftByPoints(fair, delta, sigma)
+            }
             addLineShopPick(picks, game, market, side, newPoint, overallBest.book, overallBest.price, adjustedFair, consensus.pairedBookCount, settings, note = "better number")
         }
         return picks
@@ -1083,8 +1105,7 @@ object BettingEngine {
             val priced = spreadPrice(game, board, team) ?: continue
             val point = priced.point ?: continue
             val estimate = ProbabilityResolver.resolve(game, team, isCurrentWeek = false, adjustment = null, ratings = ratings, settings = settings)
-            val modelMargin = Probability.spreadFromWinProbability(estimate.probability, settings.marginSigma)
-            val pCover = Probability.winProbabilityFromSpread(modelMargin + point, settings.marginSigma)
+            val pCover = spreadCoverProbability(estimate.probability, team, game.home, point, settings)
             addModelPick(picks, game, Market.SPREAD, team, point, priced.price, priced.book, pCover, estimate.marketProbability, settings)
         }
         return picks

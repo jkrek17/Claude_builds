@@ -11,6 +11,7 @@ import com.survivor.engine.Season
 import com.survivor.engine.SimulationResult
 import com.survivor.engine.Strategies
 import com.survivor.engine.Team
+import com.survivor.engine.TeaserBet
 import com.survivor.engine.UserState
 import com.survivor.engine.data.OddsApiParser
 import com.survivor.engine.data.SavedState
@@ -212,6 +213,10 @@ class SurvivorRepository(
     fun recordBet(bet: Bet) = mutateUser { it.copy(bets = it.bets + bet) }
 
     fun deleteBet(id: String) = mutateUser { it.copy(bets = it.bets.filter { b -> b.id != id }) }
+
+    fun recordTeaser(bet: TeaserBet) = mutateUser { it.copy(teaserBets = it.teaserBets + bet) }
+
+    fun deleteTeaser(id: String) = mutateUser { it.copy(teaserBets = it.teaserBets.filter { b -> b.id != id }) }
 
     /** Resets picks, adjustments and settings; keeps downloaded data and line history unless [includeData]. */
     fun reset(includeData: Boolean) = mutate { s ->

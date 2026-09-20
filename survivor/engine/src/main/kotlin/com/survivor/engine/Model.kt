@@ -231,6 +231,19 @@ data class ModelSettings(
      *  doubles the odds board's request cost against the quota - 6 requests instead of 3 for
      *  `h2h,spreads,totals`. See docs/BETTING.md. */
     val includeSharpRegion: Boolean = true,
+    /** Whether the Teasers tab looks for Wong-teaser legs at all. */
+    val includeTeasers: Boolean = true,
+    /** American price your book charges on a 6-point two-team teaser (typically -110 to -130). */
+    val teaserPrice: Int = -120,
+    /** Points bought on a teaser leg. Only 6 is supported today (the empirically validated window),
+     *  but this stays a setting rather than a constant so a future window can be added. */
+    val teaserPoints: Double = 6.0,
+    /** Conservative haircut subtracted from both empirical teaser-leg window rates (73.1% favorites,
+     *  76.4% underdogs, 2010-2025) before pricing a leg - see docs/TEASERS.md. */
+    val teaserLegHaircut: Double = 0.015,
+    /** Wong's original filter: a game total above this is flagged "high total" (a likelier shootout) on
+     *  the Teasers tab, though the leg is still shown - teasing the spread doesn't protect against one. */
+    val teaserMaxTotal: Double = 49.0,
 ) {
     fun forStrategy(strategy: Strategy): ModelSettings = copy(
         strategy = strategy,
@@ -279,6 +292,11 @@ data class ModelSettings(
             "includeTotals" to "Whether the Betting tab looks at the total (over/under) market at all.",
             "modelWeight" to "Weight on the model-vs-market edge inside the Bet Score's blended EV. 0 ignores the speculative model signal; 0.25 (default) keeps it a minor contributor; 0.5 weights it equally with the reliable line-shopping edge.",
             "includeSharpRegion" to "Use Pinnacle as a sharp reference price for the good-bet checks. Doubles the odds board's cost against The Odds API's monthly quota (6 requests instead of 3).",
+            "includeTeasers" to "Whether the Teasers tab looks for Wong-teaser legs at all.",
+            "teaserPrice" to "American price your book charges on a 6-point two-team teaser. Lower (more negative) prices need a higher leg win rate to break even.",
+            "teaserPoints" to "Points bought on a teaser leg. Only 6 is supported today.",
+            "teaserLegHaircut" to "Conservative haircut subtracted from both empirical teaser-leg window rates before pricing - see docs/TEASERS.md.",
+            "teaserMaxTotal" to "Wong's shootout filter: a game total above this flags a qualifying leg as \"high total\" (still shown).",
         )
     }
 }
@@ -293,6 +311,8 @@ data class UserState(
     val weekOverride: Int? = null,
     /** Logged wagers, graded by [BettingEngine.ledger]. */
     val bets: List<Bet> = emptyList(),
+    /** Logged teaser wagers, graded by [Teasers.ledger]. */
+    val teaserBets: List<TeaserBet> = emptyList(),
 ) {
     fun pickFor(week: Int): Pick? = picks.firstOrNull { it.week == week }
     fun adjustment(week: Int, team: Team): Adjustment? = adjustments.firstOrNull { it.week == week && it.team == team }
