@@ -34,6 +34,9 @@ data class Quote(
     val point: Double? = null,
     val price: Int,
     val updatedAtEpochMs: Long? = null,
+    /** The Odds API's own lowercase bookmaker key (e.g. "pinnacle"), used to match [ModelSettings.sharpBooks].
+     *  Defaults to "" so a [Quote] serialized before this field existed still decodes. */
+    val bookKey: String = "",
 )
 
 /** One game's full multi-book odds board (moneyline, spread, total) from The Odds API. */
@@ -145,21 +148,66 @@ data class Ledger(
     val byMarket: Map<Market, LedgerTotals>,
 )
 
+/** How much a [SideAssessment]'s edge is trusted, from the standard error of the multi-book fair price
+ *  ([SideAssessment.edgeZ]): NONE (no board/dispersion data, or the edge is non-positive), LOW (z < 1,
+ *  inside the noise of a 9-book fair price), MEDIUM (1 <= z < 2), HIGH (z >= 2). See docs/BETTING.md. */
+enum class Confidence(val label: String) {
+    NONE("No confidence"), LOW("Low"), MEDIUM("Medium"), HIGH("High"),
+}
+
+/**
+ * The five "is this actually a good bet" checks a [SideAssessment] must clear - see docs/BETTING.md.
+ * [sharpAgrees] and [lineNotAgainst] are nullable because they need data ([ModelSettings.sharpBooks]
+ * quoting this side, or recorded [LineHistory]) that isn't always available; missing data does not fail
+ * [passed] on its own - only a confirmed *disagreement* does (`!= false`, not `== true`).
+ */
+data class GoodBetTests(
+    /** `lineShopEv > 0`: this side beats the multi-book (or ESPN/DraftKings) no-vig consensus at all. */
+    val valueVsConsensus: Boolean,
+    /** `edgeZ >= 1`: the edge is at least one standard error of the fair-price estimate, so it isn't just
+     *  noise in a handful of books' prices. */
+    val edgeConfident: Boolean,
+    /** Null when [ModelSettings.sharpBooks] isn't quoting both sides of this market/point; otherwise
+     *  whether that sharp price also has positive EV against [SideAssessment.bestPrice]. */
+    val sharpAgrees: Boolean?,
+    /** Null with no [LineHistory] for this game; otherwise whether the line hasn't moved meaningfully
+     *  against this side since it was first tracked. */
+    val lineNotAgainst: Boolean?,
+    /** The multi-book board is on file and no more than 6 hours old. */
+    val boardFresh: Boolean,
+    /** One plain-language sentence per failing test (nullable tests only count as failing when `== false`,
+     *  never when null), in the same order as the properties above. */
+    val failedReasons: List<String> = emptyList(),
+) {
+    val passed: Boolean
+        get() = valueVsConsensus && edgeConfident && sharpAgrees != false && lineNotAgainst != false && boardFresh
+}
+
 /** Every term of one [SideAssessment]'s Bet Score, kept separately so the UI can show the full
  *  breakdown - mirrors [SafetyComponents]'s role for the survivor Safety Score. [lineShopEvPct] and
- *  [modelEvPct] are already the exact percentage-point contributions summed (with [ModelSettings.modelWeight]
- *  applied to the model term) into [base], so the model's actual share of the score stays visible even
- *  though it's "speculative" - see docs/BETTING.md. */
+ *  [modelEvPct] are the (model-weighted) percentage-point EV terms shown for context; they no longer feed
+ *  the score directly - [growthPoints] does. See docs/BETTING.md. */
 data class BetScoreComponents(
     val base: Double,
-    val bookConfidencePenalty: Double,
-    val dispersionPenalty: Double,
+    /** clamp([SideAssessment.expectedGrowthBps] / 2, -50, +50) - the Kelly-scaled expected growth rate is
+     *  the score's primary driver, replacing raw EV so a small edge on a long-shot (tiny Kelly stake,
+     *  therefore tiny growth) no longer scores the same as the same EV on a favorite. */
+    val growthPoints: Double,
+    /** 0 when [SideAssessment.edgeZ] >= 2, 4 when 1 <= z < 2, 10 when z < 1 or there's no dispersion data
+     *  to compute it - a low- or no-confidence edge is heavily discounted regardless of its raw size. */
+    val uncertaintyPenalty: Double,
+    /** 8 when the sharp reference book prices this side at negative EV, 0 otherwise (including "no sharp
+     *  quote available"). */
+    val sharpPenalty: Double,
     val movementAdjustment: Double,
     val staleBoardPenalty: Double,
+    val bookConfidencePenalty: Double,
     val lineShopEvPct: Double,
     val modelEvPct: Double,
 ) {
-    val total: Double get() = (base - bookConfidencePenalty - dispersionPenalty + movementAdjustment - staleBoardPenalty).coerceIn(0.0, 100.0)
+    val total: Double
+        get() = (base + growthPoints - uncertaintyPenalty - sharpPenalty + movementAdjustment - staleBoardPenalty - bookConfidencePenalty)
+            .coerceIn(0.0, 100.0)
 }
 
 /**
@@ -174,6 +222,9 @@ data class SideAssessment(
     val point: Double?,
     val bestBook: String,
     val bestPrice: Int,
+    /** True when [bestBook] is itself one of [ModelSettings.sharpBooks] (e.g. Pinnacle had the best
+     *  price) - purely informational, it does not change how [bestBook] is chosen. */
+    val bestBookIsSharp: Boolean,
     val booksQuoting: Int,
     /** Multi-book no-vig mean at the consensus point; the ESPN/DraftKings line's own no-vig
      *  probability (or an assumed 50% at standard juice for SPREAD) when there's no odds board. */
@@ -187,10 +238,40 @@ data class SideAssessment(
     /** Standard deviation of the consensus books' own no-vig probabilities for this side; 0.0 for a
      *  single paired book; null when there's no board to disperse at all. */
     val lineDispersion: Double?,
+    /** Standard error of the multi-book mean no-vig probability: max([lineDispersion], 0.004) /
+     *  sqrt([booksQuoting]); null when [lineDispersion] is null (no board). */
+    val fairProbabilitySe: Double?,
+    /** [lineShopEv] expressed in standard errors of the fair price: `lineShopEv / (fairProbabilitySe x
+     *  decimal(bestPrice))`; null when [fairProbabilitySe] or [lineShopEv] is null. */
+    val edgeZ: Double?,
+    val confidence: Confidence,
+    /** The sharp reference book's ([ModelSettings.sharpBooks]) own no-vig probability for this side, from
+     *  its own two-sided quote at the same consensus point; null when it isn't quoting both sides here. */
+    val sharpProbability: Double?,
+    /** sharpProbability x decimal(bestPrice) - 1; null when [sharpProbability] is null. */
+    val sharpEv: Double?,
+    /** `sharpEv > 0`; null when [sharpProbability] is null (no sharp quote to check against). */
+    val sharpAgrees: Boolean?,
     /** Spread/total point move (positive = better for this side) or, for MONEYLINE, the no-vig
      *  probability move in percentage points, since the earliest [LineHistory] snapshot; null with
      *  no history. */
     val lineMovePoints: Double?,
+    /** [fairProbability] shrunk toward [modelProbability] by [ModelSettings.modelWeight] when both exist,
+     *  else whichever of the two exists; the probability Kelly and the growth ranking are built from. */
+    val blendedProbability: Double?,
+    /** kelly(blendedProbability, decimal(bestPrice)), coerced to >= 0 - a losing edge stakes nothing
+     *  rather than "shorting" the other side. */
+    val kellyFraction: Double,
+    /** kellyFraction x (blendedProbability x decimal(bestPrice) - 1) - proportional to this bet's expected
+     *  log-growth rate at fractional Kelly (an approximation: it drops the higher-order terms of
+     *  log(1 + f x b) for the leading f x b term, fine at the small stakes fractional Kelly actually
+     *  takes). This, not raw EV, is what [BetScoreComponents.growthPoints] and [BetBoard.goodBets] rank on. */
+    val expectedGrowth: Double,
+    /** [expectedGrowth] x 10,000 - expected growth in basis points, the unit the score and UI show. */
+    val expectedGrowthBps: Double,
+    val tests: GoodBetTests,
+    /** `tests.passed && score >= 68` - a rankable, well-supported wager, not just a positive-EV one. */
+    val goodBet: Boolean,
     val score: Double,
     val grade: String,
     val tier: Tier,
@@ -236,19 +317,17 @@ data class BetBoard(
     fun topPicks(n: Int): List<SideAssessment> =
         games.asSequence().flatMap { it.markets.asSequence() }.map { it.best }.sortedByDescending { it.score }.take(n).toList()
 
-    /**
-     * Fractional-Kelly stake for [side] under [settings], zero unless its blended EV (the same
-     * `lineShopEv + modelWeight x modelEv` the Bet Score is built from, recovered from
-     * [SideAssessment.components]) is positive. Uses [SideAssessment.fairProbability], falling back to
-     * [SideAssessment.modelProbability], as Kelly's probability.
-     */
-    fun suggestedStake(side: SideAssessment, settings: ModelSettings): Double {
-        val blendedEv = (side.components.lineShopEvPct + side.components.modelEvPct) / 100.0
-        if (blendedEv <= 0.0) return 0.0
-        val p = side.fairProbability ?: side.modelProbability ?: return 0.0
-        val kelly = BettingEngine.kellyFraction(p, BettingEngine.decimalOdds(side.bestPrice))
-        return BettingEngine.stakeFor(kelly, settings)
-    }
+    /** Every side that clears all five "good bet" checks ([SideAssessment.goodBet]), highest
+     *  [SideAssessment.expectedGrowth] first - the growth-ranked list the Bets screen leads with. */
+    fun goodBets(): List<SideAssessment> =
+        games.asSequence().flatMap { it.markets.asSequence() }.flatMap { it.sides.asSequence() }
+            .filter { it.goodBet }.sortedByDescending { it.expectedGrowth }.toList()
+
+    /** Fractional-Kelly stake for [side] under [settings], already zero whenever [SideAssessment.kellyFraction]
+     *  is zero (a non-positive blended EV). Kelly's probability is [SideAssessment.blendedProbability], the
+     *  same shrunk fair/model blend the growth ranking and [SideAssessment.kellyFraction] itself use. */
+    fun suggestedStake(side: SideAssessment, settings: ModelSettings): Double =
+        BettingEngine.stakeFor(side.kellyFraction, settings)
 }
 
 /**
@@ -387,20 +466,159 @@ object BettingEngine {
         return sqrt(values.sumOf { (it - mean) * (it - mean) } / (values.size - 1))
     }
 
+    /** [ModelSettings.sharpBooks], lowercased, for matching [Quote.bookKey]/[Quote.book]. */
+    private fun sharpBookKeys(settings: ModelSettings): Set<String> = settings.sharpBooks.map { it.lowercase(Locale.US) }.toSet()
+
+    private fun isSharpQuote(q: Quote, keys: Set<String>): Boolean {
+        if (keys.isEmpty()) return false
+        val key = q.bookKey.ifBlank { q.book }.lowercase(Locale.US)
+        return key in keys || q.book.lowercase(Locale.US) in keys
+    }
+
+    /** The sharp reference book's own no-vig probability for [sideAbbr], from its own two-sided quote at
+     *  the same consensus [canonical] point - independent of which book actually has the best price. Null
+     *  when none of [ModelSettings.sharpBooks] is quoting both sides of this market at that point. */
+    private fun sharpProbabilityFor(quotes: List<Quote>, market: Market, home: Team, canonical: Double?, sideAbbr: String, keys: Set<String>): Double? {
+        if (keys.isEmpty()) return null
+        val sharpQuotes = quotes.filter { it.market == market && isSharpQuote(it, keys) && canonicalPoint(market, it.side, it.point, home) == canonical }
+        val sideQuote = sharpQuotes.firstOrNull { it.side == sideAbbr } ?: return null
+        val oppQuote = sharpQuotes.firstOrNull { it.side != sideAbbr } ?: return null
+        return Probability.noVig(sideQuote.price, oppQuote.price)
+    }
+
+    /** Display name for the primary sharp book, e.g. "Pinnacle" from the default `sharpBooks = ["pinnacle"]`. */
+    private fun sharpBookLabel(settings: ModelSettings): String =
+        settings.sharpBooks.firstOrNull()?.replaceFirstChar { it.titlecase(Locale.US) } ?: "Sharp book"
+
+    /** Every derived quantity a [SideAssessment] needs beyond its raw pricing inputs - the growth ranking,
+     *  confidence, the five good-bet tests ([GoodBetTests]), and the Bet Score itself. Shared by all three
+     *  markets so the formula in docs/BETTING.md lives in exactly one place. */
+    private data class GradedSide(
+        val fairProbabilitySe: Double?,
+        val edgeZ: Double?,
+        val confidence: Confidence,
+        val blendedProbability: Double?,
+        val kellyFraction: Double,
+        val expectedGrowth: Double,
+        val expectedGrowthBps: Double,
+        val tests: GoodBetTests,
+        val components: BetScoreComponents,
+        val score: Double,
+        val goodBet: Boolean,
+    )
+
+    /** The shared Bet Score formula - see docs/BETTING.md. */
+    private fun gradeSide(
+        lineShopEv: Double?, fairProbability: Double?, modelProbability: Double?, modelEv: Double?,
+        bestPrice: Int, booksQuoting: Int, dispersion: Double?, sharpEv: Double?,
+        lineMovePoints: Double?, boardAgeMs: Long?, settings: ModelSettings, isMoneyline: Boolean,
+    ): GradedSide {
+        val decimal = decimalOdds(bestPrice)
+
+        // Uncertainty: the standard error of the multi-book fair price, and how many of those the edge is.
+        val fairProbabilitySe = dispersion?.let { maxOf(it, 0.004) / sqrt(booksQuoting.toDouble()) }
+        val edgeZ = if (lineShopEv != null && fairProbabilitySe != null) lineShopEv / (fairProbabilitySe * decimal) else null
+        val confidence = when {
+            edgeZ == null || edgeZ <= 0.0 -> Confidence.NONE
+            edgeZ < 1.0 -> Confidence.LOW
+            edgeZ < 2.0 -> Confidence.MEDIUM
+            else -> Confidence.HIGH
+        }
+
+        // Growth: a shrunk fair/model blend, Kelly on it, and the Kelly-scaled expected growth rate.
+        val blendedProbability = when {
+            fairProbability != null && modelProbability != null -> fairProbability + settings.modelWeight * (modelProbability - fairProbability)
+            fairProbability != null -> fairProbability
+            modelProbability != null -> modelProbability
+            else -> null
+        }
+        val kelly = blendedProbability?.let { kellyFraction(it, decimal) }?.coerceAtLeast(0.0) ?: 0.0
+        val blendedEv = blendedProbability?.let { it * decimal - 1.0 } ?: 0.0
+        val expectedGrowth = kelly * blendedEv
+        val expectedGrowthBps = expectedGrowth * 10_000.0
+
+        // The five good-bet tests.
+        val valueVsConsensus = (lineShopEv ?: -1.0) > 0.0
+        val edgeConfident = edgeZ != null && edgeZ >= 1.0
+        val sharpAgrees = sharpEv?.let { it > 0.0 }
+        val moveThreshold = if (isMoneyline) -1.0 else -0.5
+        val lineNotAgainst = lineMovePoints?.let { it >= moveThreshold }
+        val boardFresh = boardAgeMs != null && boardAgeMs <= 6L * 3_600_000L
+        val reasons = mutableListOf<String>()
+        if (!valueVsConsensus) reasons += "No edge vs the consensus"
+        if (!edgeConfident) {
+            reasons += if (edgeZ == null) "No multi-book price dispersion to estimate edge confidence"
+            else String.format(Locale.US, "Edge is within fair-price noise (z = %.1f)", edgeZ)
+        }
+        if (sharpAgrees == false) reasons += String.format(Locale.US, "%s prices this side at -EV (%+.1f%%)", sharpBookLabel(settings), (sharpEv ?: 0.0) * 100.0)
+        if (lineNotAgainst == false) {
+            val unit = if (isMoneyline) "points (no-vig %)" else "pt"
+            reasons += String.format(Locale.US, "Line has moved %.1f %s against this side", abs(lineMovePoints ?: 0.0), unit)
+        }
+        if (!boardFresh) {
+            reasons += if (boardAgeMs == null) "No multi-book board" else String.format(Locale.US, "Odds board is %.0f h old", boardAgeMs / 3_600_000.0)
+        }
+        val tests = GoodBetTests(valueVsConsensus, edgeConfident, sharpAgrees, lineNotAgainst, boardFresh, reasons)
+
+        // The score itself.
+        val growthPoints = (expectedGrowthBps / 2.0).coerceIn(-50.0, 50.0)
+        val uncertaintyPenalty = when {
+            edgeZ != null && edgeZ >= 2.0 -> 0.0
+            edgeZ != null && edgeZ >= 1.0 -> 4.0
+            else -> 10.0
+        }
+        val sharpPenalty = if (sharpAgrees == false) 8.0 else 0.0
+        val bookConfidencePenalty = when {
+            booksQuoting >= 6 -> 0.0
+            booksQuoting >= 3 -> 2.0
+            booksQuoting == 2 -> 5.0
+            else -> 10.0
+        }
+        val movementAdjustment = when {
+            lineMovePoints == null -> 0.0
+            isMoneyline -> (lineMovePoints * 0.5).coerceIn(-4.0, 4.0)
+            else -> (lineMovePoints * 1.0).coerceIn(-4.0, 4.0)
+        }
+        val staleBoardPenalty = when {
+            boardAgeMs == null -> 0.0
+            boardAgeMs > 24L * 3_600_000L -> 10.0
+            boardAgeMs > 6L * 3_600_000L -> 5.0
+            else -> 0.0
+        }
+        val components = BetScoreComponents(
+            base = 50.0, growthPoints = growthPoints, uncertaintyPenalty = uncertaintyPenalty, sharpPenalty = sharpPenalty,
+            movementAdjustment = movementAdjustment, staleBoardPenalty = staleBoardPenalty, bookConfidencePenalty = bookConfidencePenalty,
+            lineShopEvPct = (lineShopEv ?: 0.0) * 100.0, modelEvPct = settings.modelWeight * (modelEv ?: 0.0) * 100.0,
+        )
+        val score = components.total
+        val goodBet = tests.passed && score >= 68.0
+        return GradedSide(fairProbabilitySe, edgeZ, confidence, blendedProbability, kelly, expectedGrowth, expectedGrowthBps, tests, components, score, goodBet)
+    }
+
+    /** Appends the strongest (first) failed good-bet reason to an otherwise-unchanged [rationale] when
+     *  [goodBet] is false, so a low-scoring side's detail always explains why in one more clause. */
+    private fun withFailureNote(rationale: String, goodBet: Boolean, reasons: List<String>): String =
+        if (!goodBet && reasons.isNotEmpty()) "$rationale Not a good bet: ${reasons.first()}." else rationale
+
     private fun assessMoneyline(
         game: Game, board: GameBoard?, ratings: Map<Team, TeamRating>, settings: ModelSettings, history: LineHistory, boardAgeMs: Long?,
     ): MarketAssessment? {
-        val consensus = board?.let { consensusGroup(it.quotes.filter { q -> q.market == Market.MONEYLINE }, Market.MONEYLINE, game.home) }
+        val mlQuotes = board?.quotes?.filter { it.market == Market.MONEYLINE }.orEmpty()
+        val consensus = board?.let { consensusGroup(mlQuotes, Market.MONEYLINE, game.home) }
+        val sharpKeys = sharpBookKeys(settings)
         val sides = mutableListOf<SideAssessment>()
         for (team in listOf(game.home, game.away)) {
             val abbr = team.abbr
             val price: Int; val book: String; val fairProbability: Double?; val booksQuoting: Int; val dispersion: Double?
+            var bestBookIsSharp = false; var sharpProbability: Double? = null
             if (consensus != null && (abbr == consensus.sideA || abbr == consensus.sideB)) {
                 val best = consensus.quotes.filter { it.side == abbr }.maxByOrNull { it.price } ?: continue
                 price = best.price; book = best.book
                 fairProbability = if (abbr == consensus.sideA) consensus.fairA else consensus.fairB
                 booksQuoting = consensus.pairedBookCount
                 dispersion = stdDev(if (abbr == consensus.sideA) consensus.perBookA else consensus.perBookB)
+                bestBookIsSharp = isSharpQuote(best, sharpKeys)
+                sharpProbability = sharpProbabilityFor(mlQuotes, Market.MONEYLINE, game.home, null, abbr, sharpKeys)
             } else {
                 val homeMl = game.line?.homeMoneyline; val awayMl = game.line?.awayMoneyline
                 if (homeMl == null || awayMl == null) continue
@@ -413,17 +631,24 @@ object BettingEngine {
             val decimal = decimalOdds(price)
             val fairPrice = fairProbability?.let { OddsApiParser.americanFromProbability(it) }
             val lineShopEv = fairProbability?.let { it * decimal - 1.0 }
+            val sharpEv = sharpProbability?.let { it * decimal - 1.0 }
             val estimate = ProbabilityResolver.resolve(game, team, isCurrentWeek = false, adjustment = null, ratings = ratings, settings = settings)
             val modelEv = estimate.probability * decimal - 1.0
             val lineMove = moneylineMovement(history, game, team)
-            val components = scoreComponents(lineShopEv, modelEv, booksQuoting, dispersion, lineMove, boardAgeMs, settings, isMoneyline = true)
-            val score = components.total
-            val rationale = moneylineRationale(book, price, fairPrice, booksQuoting, fairProbability, lineShopEv)
+            val graded = gradeSide(
+                lineShopEv, fairProbability, estimate.probability, modelEv, price, booksQuoting, dispersion, sharpEv,
+                lineMove, boardAgeMs, settings, isMoneyline = true,
+            )
+            val rationale = withFailureNote(moneylineRationale(book, price, fairPrice, booksQuoting, fairProbability, lineShopEv), graded.goodBet, graded.tests.failedReasons)
             sides += SideAssessment(
-                side = abbr, sideTeam = team, point = null, bestBook = book, bestPrice = price, booksQuoting = booksQuoting,
-                fairProbability = fairProbability, fairPrice = fairPrice, lineShopEv = lineShopEv, modelProbability = estimate.probability,
-                modelEv = modelEv, lineDispersion = dispersion, lineMovePoints = lineMove, score = score, grade = scoreGrade(score),
-                tier = scoreTier(score), components = components, rationale = rationale,
+                side = abbr, sideTeam = team, point = null, bestBook = book, bestPrice = price, bestBookIsSharp = bestBookIsSharp,
+                booksQuoting = booksQuoting, fairProbability = fairProbability, fairPrice = fairPrice, lineShopEv = lineShopEv,
+                modelProbability = estimate.probability, modelEv = modelEv, lineDispersion = dispersion,
+                fairProbabilitySe = graded.fairProbabilitySe, edgeZ = graded.edgeZ, confidence = graded.confidence,
+                sharpProbability = sharpProbability, sharpEv = sharpEv, sharpAgrees = graded.tests.sharpAgrees, lineMovePoints = lineMove,
+                blendedProbability = graded.blendedProbability, kellyFraction = graded.kellyFraction, expectedGrowth = graded.expectedGrowth,
+                expectedGrowthBps = graded.expectedGrowthBps, tests = graded.tests, goodBet = graded.goodBet, score = graded.score,
+                grade = scoreGrade(graded.score), tier = scoreTier(graded.score), components = graded.components, rationale = rationale,
             )
         }
         if (sides.size < 2) return null
@@ -433,11 +658,14 @@ object BettingEngine {
     private fun assessSpread(
         game: Game, board: GameBoard?, ratings: Map<Team, TeamRating>, settings: ModelSettings, history: LineHistory, boardAgeMs: Long?,
     ): MarketAssessment? {
-        val consensus = board?.let { consensusGroup(it.quotes.filter { q -> q.market == Market.SPREAD }, Market.SPREAD, game.home) }
+        val spreadQuotes = board?.quotes?.filter { it.market == Market.SPREAD }.orEmpty()
+        val consensus = board?.let { consensusGroup(spreadQuotes, Market.SPREAD, game.home) }
+        val sharpKeys = sharpBookKeys(settings)
         val sides = mutableListOf<SideAssessment>()
         for (team in listOf(game.home, game.away)) {
             val abbr = team.abbr
             val price: Int; val book: String; val point: Double; val fairProbability: Double?; val booksQuoting: Int; val dispersion: Double?
+            var bestBookIsSharp = false; var sharpProbability: Double? = null
             if (consensus != null && (abbr == consensus.sideA || abbr == consensus.sideB)) {
                 val best = consensus.quotes.filter { it.side == abbr }.maxByOrNull { it.price } ?: continue
                 val p = best.point ?: sidePointFromCanonical(Market.SPREAD, abbr, consensus.canonical, game.home) ?: continue
@@ -445,6 +673,8 @@ object BettingEngine {
                 fairProbability = if (abbr == consensus.sideA) consensus.fairA else consensus.fairB
                 booksQuoting = consensus.pairedBookCount
                 dispersion = stdDev(if (abbr == consensus.sideA) consensus.perBookA else consensus.perBookB)
+                bestBookIsSharp = isSharpQuote(best, sharpKeys)
+                sharpProbability = sharpProbabilityFor(spreadQuotes, Market.SPREAD, game.home, consensus.canonical, abbr, sharpKeys)
             } else {
                 val homeSpread = game.line?.homeSpread ?: continue
                 point = if (team == game.home) homeSpread else -homeSpread
@@ -455,20 +685,27 @@ object BettingEngine {
             val decimal = decimalOdds(price)
             val fairPrice = fairProbability?.let { OddsApiParser.americanFromProbability(it) }
             val lineShopEv = fairProbability?.let { it * decimal - 1.0 }
+            val sharpEv = sharpProbability?.let { it * decimal - 1.0 }
             val estimate = ProbabilityResolver.resolve(game, team, isCurrentWeek = false, adjustment = null, ratings = ratings, settings = settings)
             val modelMargin = Probability.spreadFromWinProbability(estimate.probability, settings.marginSigma)
             val pCover = Probability.winProbabilityFromSpread(modelMargin + point, settings.marginSigma)
             val modelEv = pCover * decimal - 1.0
             val lineMove = spreadMovement(history, game, team)
-            val components = scoreComponents(lineShopEv, modelEv, booksQuoting, dispersion, lineMove, boardAgeMs, settings, isMoneyline = false)
-            val score = components.total
+            val graded = gradeSide(
+                lineShopEv, fairProbability, pCover, modelEv, price, booksQuoting, dispersion, sharpEv,
+                lineMove, boardAgeMs, settings, isMoneyline = false,
+            )
             val breakEvenPct = Probability.impliedFromAmerican(price) * 100.0
-            val rationale = spreadRationale(abbr, point, price, book, fairPrice, booksQuoting, pCover, breakEvenPct)
+            val rationale = withFailureNote(spreadRationale(abbr, point, price, book, fairPrice, booksQuoting, pCover, breakEvenPct), graded.goodBet, graded.tests.failedReasons)
             sides += SideAssessment(
-                side = abbr, sideTeam = team, point = point, bestBook = book, bestPrice = price, booksQuoting = booksQuoting,
-                fairProbability = fairProbability, fairPrice = fairPrice, lineShopEv = lineShopEv, modelProbability = pCover,
-                modelEv = modelEv, lineDispersion = dispersion, lineMovePoints = lineMove, score = score, grade = scoreGrade(score),
-                tier = scoreTier(score), components = components, rationale = rationale,
+                side = abbr, sideTeam = team, point = point, bestBook = book, bestPrice = price, bestBookIsSharp = bestBookIsSharp,
+                booksQuoting = booksQuoting, fairProbability = fairProbability, fairPrice = fairPrice, lineShopEv = lineShopEv,
+                modelProbability = pCover, modelEv = modelEv, lineDispersion = dispersion, fairProbabilitySe = graded.fairProbabilitySe,
+                edgeZ = graded.edgeZ, confidence = graded.confidence, sharpProbability = sharpProbability, sharpEv = sharpEv,
+                sharpAgrees = graded.tests.sharpAgrees, lineMovePoints = lineMove, blendedProbability = graded.blendedProbability,
+                kellyFraction = graded.kellyFraction, expectedGrowth = graded.expectedGrowth, expectedGrowthBps = graded.expectedGrowthBps,
+                tests = graded.tests, goodBet = graded.goodBet, score = graded.score, grade = scoreGrade(graded.score),
+                tier = scoreTier(graded.score), components = graded.components, rationale = rationale,
             )
         }
         if (sides.size < 2) return null
@@ -480,6 +717,7 @@ object BettingEngine {
     private fun assessTotal(game: Game, board: GameBoard?, settings: ModelSettings, boardAgeMs: Long?): MarketAssessment? {
         val quotes = board?.quotes?.filter { it.market == Market.TOTAL }.orEmpty()
         val consensus = consensusGroup(quotes, Market.TOTAL, game.home) ?: return null
+        val sharpKeys = sharpBookKeys(settings)
         val sides = mutableListOf<SideAssessment>()
         for (label in listOf(consensus.sideA, consensus.sideB)) {
             val isA = label == consensus.sideA
@@ -489,15 +727,24 @@ object BettingEngine {
             val decimal = decimalOdds(best.price)
             val fairPrice = OddsApiParser.americanFromProbability(fairProbability)
             val lineShopEv = fairProbability * decimal - 1.0
+            val bestBookIsSharp = isSharpQuote(best, sharpKeys)
+            val sharpProbability = sharpProbabilityFor(quotes, Market.TOTAL, game.home, consensus.canonical, label, sharpKeys)
+            val sharpEv = sharpProbability?.let { it * decimal - 1.0 }
             // No LineHistory support for totals (ESPN never carries one) and no model counterpart.
-            val components = scoreComponents(lineShopEv, null, consensus.pairedBookCount, dispersion, null, boardAgeMs, settings, isMoneyline = false)
-            val score = components.total
-            val rationale = totalRationale(label, best.point, best.price, best.book, fairPrice, consensus.pairedBookCount)
+            val graded = gradeSide(
+                lineShopEv, fairProbability, null, null, best.price, consensus.pairedBookCount, dispersion, sharpEv,
+                null, boardAgeMs, settings, isMoneyline = false,
+            )
+            val rationale = withFailureNote(totalRationale(label, best.point, best.price, best.book, fairPrice, consensus.pairedBookCount), graded.goodBet, graded.tests.failedReasons)
             sides += SideAssessment(
-                side = label, sideTeam = null, point = best.point, bestBook = best.book, bestPrice = best.price,
-                booksQuoting = consensus.pairedBookCount, fairProbability = fairProbability, fairPrice = fairPrice,
-                lineShopEv = lineShopEv, modelProbability = null, modelEv = null, lineDispersion = dispersion, lineMovePoints = null,
-                score = score, grade = scoreGrade(score), tier = scoreTier(score), components = components, rationale = rationale,
+                side = label, sideTeam = null, point = best.point, bestBook = best.book, bestPrice = best.price, bestBookIsSharp = bestBookIsSharp,
+                booksQuoting = consensus.pairedBookCount, fairProbability = fairProbability, fairPrice = fairPrice, lineShopEv = lineShopEv,
+                modelProbability = null, modelEv = null, lineDispersion = dispersion, fairProbabilitySe = graded.fairProbabilitySe,
+                edgeZ = graded.edgeZ, confidence = graded.confidence, sharpProbability = sharpProbability, sharpEv = sharpEv,
+                sharpAgrees = graded.tests.sharpAgrees, lineMovePoints = null, blendedProbability = graded.blendedProbability,
+                kellyFraction = graded.kellyFraction, expectedGrowth = graded.expectedGrowth, expectedGrowthBps = graded.expectedGrowthBps,
+                tests = graded.tests, goodBet = graded.goodBet, score = graded.score, grade = scoreGrade(graded.score),
+                tier = scoreTier(graded.score), components = graded.components, rationale = rationale,
             )
         }
         if (sides.size < 2) return null
@@ -526,37 +773,6 @@ object BettingEngine {
         val earliestSide = if (team == game.home) earliestHome else -earliestHome
         val currentSide = if (team == game.home) currentHome else -currentHome
         return currentSide - earliestSide
-    }
-
-    /** The shared Bet Score formula - see docs/BETTING.md. [modelEv] is weighted by
-     *  [ModelSettings.modelWeight] before it ever reaches [BetScoreComponents.base], so the model's
-     *  contribution stays a minor, clearly-labeled fraction of the score even when it's large. */
-    private fun scoreComponents(
-        lineShopEv: Double?, modelEv: Double?, booksQuoting: Int, dispersion: Double?, lineMovePoints: Double?,
-        boardAgeMs: Long?, settings: ModelSettings, isMoneyline: Boolean,
-    ): BetScoreComponents {
-        val lineShopEvPct = (lineShopEv ?: 0.0) * 100.0
-        val modelEvPct = settings.modelWeight * (modelEv ?: 0.0) * 100.0
-        val base = 50.0 + 12.5 * (lineShopEvPct + modelEvPct)
-        val bookConfidencePenalty = when {
-            booksQuoting >= 6 -> 0.0
-            booksQuoting >= 3 -> 2.0
-            booksQuoting == 2 -> 5.0
-            else -> 10.0
-        }
-        val dispersionPenalty = (100.0 * (dispersion ?: 0.0) * 0.5).coerceAtMost(6.0)
-        val movementAdjustment = when {
-            lineMovePoints == null -> 0.0
-            isMoneyline -> (lineMovePoints * 0.5).coerceIn(-4.0, 4.0)
-            else -> (lineMovePoints * 1.0).coerceIn(-4.0, 4.0)
-        }
-        val staleBoardPenalty = when {
-            boardAgeMs == null -> 0.0
-            boardAgeMs > 24L * 3_600_000L -> 10.0
-            boardAgeMs > 6L * 3_600_000L -> 5.0
-            else -> 0.0
-        }
-        return BetScoreComponents(base, bookConfidencePenalty, dispersionPenalty, movementAdjustment, staleBoardPenalty, lineShopEvPct, modelEvPct)
     }
 
     /** Bet Score letter grade - a slightly stricter scale than [Safety.grade] since most sides of most

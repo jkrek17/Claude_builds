@@ -154,6 +154,14 @@ fun SettingsScreen(vm: AppViewModel) {
                 }
                 Switch(checked = settings.includeTotals, onCheckedChange = { vm.updateSettings(settings.copy(includeTotals = it)) })
             }
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Use Pinnacle as sharp reference (doubles odds board cost)", style = MaterialTheme.typography.bodyMedium)
+                    Text(descriptions["includeSharpRegion"] ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = settings.includeSharpRegion, onCheckedChange = { vm.updateSettings(settings.copy(includeSharpRegion = it)) })
+            }
         }
 
         SectionCard("Strategy") {
@@ -200,7 +208,7 @@ fun SettingsScreen(vm: AppViewModel) {
                         routeObjective = settings.routeObjective, horizonWeight = settings.horizonWeight,
                         bankroll = settings.bankroll, kellyMultiplier = settings.kellyMultiplier, maxStakePct = settings.maxStakePct,
                         minLineShopEdge = settings.minLineShopEdge, minModelEdge = settings.minModelEdge, includeTotals = settings.includeTotals,
-                        modelWeight = settings.modelWeight,
+                        modelWeight = settings.modelWeight, includeSharpRegion = settings.includeSharpRegion,
                     ),
                 )
             }) { Text("Restore defaults") }

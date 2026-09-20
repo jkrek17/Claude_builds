@@ -223,6 +223,14 @@ data class ModelSettings(
      *  signal entirely, 1 = weight it the same as the line-shopping edge). Default 0.25 keeps the
      *  speculative model signal a minor contributor next to the reliable no-vig edge. */
     val modelWeight: Double = 0.25,
+    /** The Odds API bookmaker keys (lowercase, e.g. "pinnacle") treated as a sharp reference price for
+     *  [SideAssessment.sharpAgrees] and the "good bet" checks - see docs/BETTING.md. */
+    val sharpBooks: List<String> = listOf("pinnacle"),
+    /** Whether [com.survivor.engine.data.OddsApiParser.boardUrl] adds the `eu` region (Pinnacle is a
+     *  European/offshore book, not licensed `us`). The Odds API bills per market *per region*, so this
+     *  doubles the odds board's request cost against the quota - 6 requests instead of 3 for
+     *  `h2h,spreads,totals`. See docs/BETTING.md. */
+    val includeSharpRegion: Boolean = true,
 ) {
     fun forStrategy(strategy: Strategy): ModelSettings = copy(
         strategy = strategy,
@@ -270,6 +278,7 @@ data class ModelSettings(
             "totalSigma" to "Scale of the points-total → probability curve, used only to price a total offered at a different number than the consensus.",
             "includeTotals" to "Whether the Betting tab looks at the total (over/under) market at all.",
             "modelWeight" to "Weight on the model-vs-market edge inside the Bet Score's blended EV. 0 ignores the speculative model signal; 0.25 (default) keeps it a minor contributor; 0.5 weights it equally with the reliable line-shopping edge.",
+            "includeSharpRegion" to "Use Pinnacle as a sharp reference price for the good-bet checks. Doubles the odds board's cost against The Odds API's monthly quota (6 requests instead of 3).",
         )
     }
 }

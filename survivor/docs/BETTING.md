@@ -20,30 +20,116 @@ below break-even by construction (the book's vig), so a low score and an `F`/`AV
 correct outcome for most rows on the board - not a sign anything is broken.
 
 `BetBoard.topPicks(n)` returns the `n` best-scoring sides across every game and market this week.
-`BetBoard.suggestedStake(side, settings)` runs the same fractional-Kelly staking as below, using `side`'s
-`fairProbability` (falling back to `modelProbability`), and is zero unless the side's blended EV (see the
-Bet Score formula) is positive.
+`BetBoard.goodBets()` returns every side that clears all five "good bet" tests below (`SideAssessment.goodBet`),
+sorted by `expectedGrowth` descending - the list the Bets screen actually leads with, since a positive score
+alone isn't the bar for "worth betting". `BetBoard.suggestedStake(side, settings)` runs fractional Kelly on
+`side.kellyFraction` (already built from `blendedProbability` - see below) and is zero whenever that's zero.
+
+### Why EV alone is the wrong ranking signal
+
+The old formula scored every side by raw EV alone: `score = 50 + 12.5 × blendedEv%`. That put a +1.5% edge
+on a 22.6% underdog (e.g. Cleveland moneyline at +350) in the exact same place as a +1.5% edge on a 78-82%
+favorite. That's wrong on two counts. First, **compounding**: at quarter-Kelly, the underdog's stake is
+about 0.5% of bankroll and the favorite's is about 6.8% - roughly *12× more capital actually put to work* at
+the same edge, so the favorite's contribution to long-run bankroll growth is proportionally larger even
+before variance is considered. Second, **noise**: a 1.5-percentage-point edge on a ~23% probability is
+usually smaller than the standard error of a 9-book fair-price estimate - it's as likely to be sampling
+noise in the books' own prices as a real mispricing, while the same 1.5 points on an ~80% favorite (a much
+narrower, better-agreed-upon number in practice) is more often real. The rewrite replaces raw EV with a
+Kelly-scaled **expected growth rate** as the primary ranking signal, and adds an explicit uncertainty
+penalty and a sharp-book check so a good score means "worth acting on", not just "positive EV".
+
+### The five "good bet" tests (`GoodBetTests`)
+
+A side is a `goodBet` when it passes all five below **and** scores ≥ 68. A nullable test (no sharp quote,
+no line history) never fails a side by itself - only a confirmed *disagreement* does (`!= false`, not
+`== true`):
+
+| Test | Passes when |
+|---|---|
+| `valueVsConsensus` | `lineShopEv > 0` - a real edge vs. the no-vig consensus (or ESPN/DraftKings fallback) at all. |
+| `edgeConfident` | `edgeZ >= 1` - the edge is at least one standard error of the fair-price estimate (see below), not noise. |
+| `sharpAgrees` (nullable) | `null` when the sharp reference book (`ModelSettings.sharpBooks`, default Pinnacle) isn't quoting both sides here; otherwise its own no-vig price is also positive EV against `bestPrice`. |
+| `lineNotAgainst` (nullable) | `null` with no `LineHistory`; otherwise `lineMovePoints >= -0.5` (spread/total, points) or `>= -1.0` (moneyline, no-vig percentage points). |
+| `boardFresh` | The multi-book board is on file (`boardAgeMs` not null) and no more than 6 hours old. |
+
+`GoodBetTests.failedReasons` gives one plain-language sentence per failing test, e.g. *"Edge is within
+fair-price noise (z = 0.6)"*, *"Pinnacle prices this side at -EV (-0.8%)"*, *"Line has moved 1.0 pt against
+this side"*, *"Odds board is 9 h old"*, *"No edge vs the consensus"*. A side that isn't a good bet keeps the
+strongest (first) of these appended to its `rationale`, and stays visible everywhere in the UI with the
+reason in its subtitle - failing a test never hides a side, it just keeps it out of "Good bets".
+
+### Confidence and the standard error of the fair price (`fairProbabilitySe`, `edgeZ`, `Confidence`)
+
+```
+fairProbabilitySe = max(lineDispersion, 0.004) / sqrt(booksQuoting)   // floor avoids a zero se from identical books; null with no board
+edgeZ             = lineShopEv / (fairProbabilitySe × decimal(bestPrice))   // null when either input is null
+confidence        = NONE  if edgeZ is null or <= 0
+                     LOW   if edgeZ <  1
+                     MEDIUM if 1 <= edgeZ < 2
+                     HIGH  if edgeZ >= 2
+```
+
+`lineDispersion` is unchanged from before (the standard deviation of the consensus books' own no-vig
+probabilities for that side). `fairProbabilitySe` is its implied standard error of the *mean*, and `edgeZ`
+expresses the edge in units of that standard error - the same logic as a z-test: an edge under 1 standard
+error is statistically indistinguishable from noise in a handful of books' prices.
+
+### Growth ranking (`blendedProbability`, `kellyFraction`, `expectedGrowth`)
+
+```
+blendedProbability = fairProbability + modelWeight × (modelProbability − fairProbability)   // when both exist - a shrunk blend toward the model
+                    = whichever of fairProbability / modelProbability exists, otherwise      // when only one exists
+kellyFraction       = kelly(blendedProbability, decimal(bestPrice)).coerceAtLeast(0)         // never negative - a losing edge stakes nothing
+blendedEv           = blendedProbability × decimal(bestPrice) − 1
+expectedGrowth      = kellyFraction × blendedEv     // proportional to the expected log-growth rate at fractional Kelly (leading-order approximation)
+expectedGrowthBps   = expectedGrowth × 10,000
+```
+
+This is what actually ranks bets now, not raw EV: `BetBoard.goodBets()` sorts by `expectedGrowth`, and
+`BetBoard.suggestedStake` stakes `kellyFraction` directly.
+
+**Worked example - the underdog that looks good but isn't:** Cleveland moneyline at +350 (fair ≈22.6%,
+no-vig), priced at roughly +1.5% EV. `decimal(350) = 4.5`. `kellyFraction ≈ (4.5-1)×0.226 - 0.774) / 3.5 ≈
+0.005` (about half a percent of bankroll at full Kelly). `expectedGrowth ≈ 0.005 × 0.015 ≈ 0.00008`, or
+**≈0.8 basis points**. Even with a confidently-priced, real edge, this barely moves the score.
+
+**Worked example - the favorite at roughly the same EV:** the same ≈+1.5-3% edge on a ~78% favorite (e.g.
+a book at -330 against a 9-book fair price of ~78% from -420/+340 quotes). `kellyFraction ≈ 0.12` (about
+12% of bankroll at full Kelly - vastly larger, because a favorite's Kelly fraction scales with how far its
+probability sits above the market's implied breakeven, not with the raw edge alone). `expectedGrowth ≈
+0.12 × 0.017 ≈ 0.002`, or **≈20-50 basis points depending on the exact price** - one to two orders of
+magnitude larger than the underdog's, at a similar percentage EV. This is the fix: the same-looking EV
+produces wildly different growth depending on how far from a coinflip the side is.
 
 ### Bet Score formula
 
-For each side of each market:
-
 ```
-blendedEv = lineShopEv (0 if null) + modelWeight × modelEv (0 if null)   // modelWeight: ModelSettings, default 0.25
-base      = 50 + 12.5 × blendedEv × 100                                  // +4% EV -> 100, -4% EV -> 0
-score     = base
-          − bookConfidencePenalty   // 0 for >=6 books, 2 for 3-5, 5 for 2, 10 for a single source (no board)
-          − dispersionPenalty       // 100 × lineDispersion × 0.5, capped at 6 - books disagreeing means a less reliable fair price
-          + movementAdjustment      // clamp(lineMovePoints × 1.0, -4, +4) for spread/total; clamp(Δno-vig% × 0.5, -4, +4) for moneyline
-          − staleBoardPenalty       // 5 past 6h, 10 past 24h since the board was fetched, 0 if fresh or there's no board
-score     = score.coerceIn(0, 100)
+growthPoints        = clamp(expectedGrowthBps / 2, -50, +50)   // a favorite at +1.5% EV -> ~+2 to +25; the 22.6% dog at +1.5% -> ~+0.4
+uncertaintyPenalty   = 0 if edgeZ >= 2, 4 if 1 <= edgeZ < 2, 10 if edgeZ < 1 or null
+sharpPenalty         = 8 if sharpAgrees == false, 0 otherwise (including "no sharp quote")
+score = 50
+      + growthPoints
+      − uncertaintyPenalty
+      − sharpPenalty
+      + movementAdjustment      // unchanged: clamp(lineMovePoints × 1.0, -4, +4) for spread/total; clamp(Δno-vig% × 0.5, -4, +4) for moneyline
+      − staleBoardPenalty       // unchanged: 5 past 6h, 10 past 24h since the board was fetched, 0 if fresh or there's no board
+      − bookConfidencePenalty   // unchanged: 0 for >=6 books, 2 for 3-5, 5 for 2, 10 for a single source (no board)
+score = score.coerceIn(0, 100)
 ```
 
-`BetScoreComponents` carries every term above plus `lineShopEvPct` and `modelEvPct` - the two *already
-model-weighted* percentage-point contributions that sum into `base`, so the model's actual, usually small,
-share of the score stays visible in the UI even though the score itself is a single number. Worked
-example: a fresh, 9-book board with no dispersion or line movement and a +1.5% line-shopping EV (model
-weight zeroed out) scores `50 + 12.5 × 1.5 = 68.75` → grade `B-`, tier `ACCEPTABLE`.
+`BetScoreComponents` carries every term above (`base = 50`, `growthPoints`, `uncertaintyPenalty`,
+`sharpPenalty`, `movementAdjustment`, `staleBoardPenalty`, `bookConfidencePenalty`), plus `lineShopEvPct`
+and `modelEvPct` kept for the UI's informational display (they no longer feed the score directly - `growthPoints`
+does). A side with `expectedGrowth <= 0` gets `growthPoints <= 0` and, since a non-positive edge also means
+`edgeZ <= 0` and therefore the full 10-point `uncertaintyPenalty`, reliably lands in `AVOID` - exactly the
+old bug's mirror image fixed: no side scores well just because its EV happens to be positive.
+
+**Worked example, updated:** the same fresh, 9-book, zero-dispersion, zero-movement board with a +1.5%
+line-shopping EV that used to score `68.75` (grade `B-`) now depends entirely on *whose* +1.5% it is -
+see the two worked examples above. A coinflip-ish side (fair ≈50%) at that EV now scores **≈51** (grade
+`D`, tier `AVOID`) even though every test but the score threshold passes; a confident ~78% favorite at a
+comparable EV can clear 68+ and register as a real `goodBet`.
 
 **`fairProbability`** is the multi-book no-vig mean at the market's consensus point (≥2 books quoting both
 sides at the same point, same grouping rule as line shopping below) when a board exists; without one, it
@@ -54,7 +140,7 @@ payload never carries one) and is simply skipped without a board.
 
 **`lineDispersion`** is the standard deviation of the consensus books' own no-vig probabilities for that
 side (0.0 for a single paired book, `null` with no board to disperse at all) - a proxy for how much the
-market disagrees with itself about the true number.
+market disagrees with itself about the true number, which now feeds `fairProbabilitySe`/`edgeZ` above.
 
 **`lineMovePoints`** compares the side's current number to the earliest point recorded in the app's
 `LineHistory` (positive = the number moved in this side's favor): for SPREAD, the side's own point,
@@ -65,6 +151,24 @@ never carries a total) and is always `null` here.
 **Grades**: `A+ ≥92, A ≥85, A- ≥80, B+ ≥76, B ≥72, B- ≥68, C ≥60, D ≥50, F <50` - stricter than the
 survivor Safety Score's scale, on purpose, since most sides here are meant to read as unattractive.
 **Tiers** reuse `Tier`: `STRONG ≥76, ACCEPTABLE 68-76, RISKY 60-68, AVOID <60`.
+
+## Sharp reference (Pinnacle)
+
+`ModelSettings.sharpBooks` (default `["pinnacle"]`, lowercase Odds API bookmaker keys) names the book(s)
+treated as a sharp reference. `Quote.bookKey` carries the Odds API's own bookmaker key (e.g. `"pinnacle"`)
+alongside its display `book` title, defaulting to `""` so a `Quote` saved before this field existed still
+decodes. For each side, `sharpProbability` is the sharp book's *own* no-vig probability from its own
+two-sided quote at the market's consensus point (independent of which book actually has `bestPrice` -
+`bestBookIsSharp` flags that separately, purely informationally). `sharpEv = sharpProbability ×
+decimal(bestPrice) − 1`, and `sharpAgrees = sharpEv > 0`. Both are `null` when the sharp book isn't quoting
+both sides of this market/point (including always, with no odds board).
+
+Pinnacle is a European/offshore sharp book, not licensed in the `us` region The Odds API serves by default,
+so reaching it requires adding the `eu` region: `ModelSettings.includeSharpRegion` (default `true`) controls
+this, and `OddsApiParser.boardUrl(apiKey, includeSharpRegion)` switches between `regions=us,eu` (6 requests
+per fetch - 3 markets × 2 regions) and `regions=us` (3 requests, no sharp reference) accordingly. A
+Settings toggle ("Use Pinnacle as sharp reference (doubles odds board cost)") exposes this trade-off
+directly, since it doubles the odds board's cost against The Odds API's monthly quota.
 
 **Rationale** is one sentence, market-appropriate and never crossing vocabularies: MONEYLINE states the
 best price against the fair price and books (e.g. *"FanDuel +350 vs fair +343 from 9 books (no-vig
@@ -189,18 +293,23 @@ It uses the last known DraftKings line on the game (`Game.line`) as a simple pro
 | `totalSigma` | 10.0 | Scale of the total → probability curve (for pricing a "better number" total). |
 | `includeTotals` | true | Whether the totals market is considered at all. |
 | `modelWeight` | 0.25 | Weight on the model-vs-market edge inside the Bet Score's blended EV. 0 ignores it; 0.5 weights it the same as the line-shopping edge. |
+| `sharpBooks` | `["pinnacle"]` | The Odds API bookmaker keys treated as a sharp reference price for `sharpAgrees` and the good-bet checks. |
+| `includeSharpRegion` | true | Whether the odds board adds the `eu` region to reach Pinnacle. Doubles the board's request cost (6 instead of 3). |
 
 ## The odds board and API quota
 
-`OddsApiParser.parseBoard` reads The Odds API's `regions=us&markets=h2h,spreads,totals` endpoint into one
-`GameBoard` per game, keeping every book's quote for every market (unlike `parse`/`attach`, which collapse
-straight to a single consensus moneyline for the survivor model). `OddsApiParser.attachBoard` matches
-boards to ESPN games the same way `attach` does (same teams, kickoff within 3 days) and returns them keyed
-by the ESPN game id for `Season.board`.
+`OddsApiParser.parseBoard` reads The Odds API's `regions={us|us,eu}&markets=h2h,spreads,totals` endpoint
+(`OddsApiParser.boardUrl(apiKey, includeSharpRegion)`) into one `GameBoard` per game, keeping every book's
+quote for every market (unlike `parse`/`attach`, which collapse straight to a single consensus moneyline
+for the survivor model). `OddsApiParser.attachBoard` matches boards to ESPN games the same way `attach`
+does (same teams, kickoff within 3 days) and returns them keyed by the ESPN game id for `Season.board`.
 
-**Quota note:** The Odds API bills by market, not by request - `markets=h2h,spreads,totals` counts as
-**3 requests** against the free tier's 500/month, not 1. Refreshing the board every 3 hours during an
-18-week season (roughly 12 refreshes/week × 18 weeks × 3 = ~650) already exceeds the free tier by itself,
-before the existing consensus-moneyline fetch (`OddsApiParser.parse`, 1 request) is counted - so the board
-should be fetched deliberately (e.g. from a dedicated "Refresh Betting Board" action), not folded into
-every automatic refresh, and no more often than every 3 hours.
+**Quota note:** The Odds API bills by market *per region*, not by request - `markets=h2h,spreads,totals`
+counts as **3 requests** against the free tier's 500/month with `regions=us`, or **6 requests** with
+`regions=us,eu` (`includeSharpRegion = true`, the default, needed to reach Pinnacle - a European/offshore
+book not licensed `us`). Refreshing the board every 3 hours during an 18-week season (roughly 12
+refreshes/week × 18 weeks × 3-6 = ~650-1300) already exceeds the free tier by itself, before the existing
+consensus-moneyline fetch (`OddsApiParser.parse`, 1 request) is counted - so the board should be fetched
+deliberately (e.g. from a dedicated "Refresh Betting Board" action), not folded into every automatic
+refresh, no more often than every 3 hours, and with `includeSharpRegion` turned off in Settings for anyone
+tight on quota who doesn't need the sharp-book checks.

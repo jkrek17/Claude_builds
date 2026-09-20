@@ -68,11 +68,19 @@ object OddsApiParser {
         if (match != null) g.copy(consensus = match.line) else g
     }
 
-    private const val MARKET_URL = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american&apiKey="
+    private const val MARKET_BASE = "https://api.the-odds-api.com/v4/sports/americanfootball_nfl/odds"
 
-    /** URL for the full multi-market board ([parseBoard]): moneyline, spread, and total across books.
-     *  Each market counts as one request against The Odds API's quota (3 per call). */
-    fun boardUrl(apiKey: String) = "$MARKET_URL$apiKey"
+    /**
+     * URL for the full multi-market board ([parseBoard]): moneyline, spread, and total across books.
+     * Each market counts as one request per region against The Odds API's quota - 3 per call with
+     * [includeSharpRegion] false (`regions=us`), 6 with it true (`regions=us,eu`, needed to reach Pinnacle,
+     * a European/offshore sharp book not licensed `us`). See [com.survivor.engine.ModelSettings.includeSharpRegion]
+     * and docs/BETTING.md.
+     */
+    fun boardUrl(apiKey: String, includeSharpRegion: Boolean = true): String {
+        val regions = if (includeSharpRegion) "us,eu" else "us"
+        return "$MARKET_BASE?regions=$regions&markets=h2h,spreads,totals&oddsFormat=american&apiKey=$apiKey"
+    }
 
     /**
      * Parses The Odds API's `regions=us&markets=h2h,spreads,totals` response into one [GameBoard] per
@@ -87,6 +95,7 @@ object OddsApiParser {
             val commence = ev["commence_time"].str?.let { EspnParser.parseInstant(it) } ?: return@mapNotNull null
             val quotes = mutableListOf<Quote>()
             for (book in ev["bookmakers"].arr.orEmpty()) {
+                val bookKey = book["key"].str ?: ""
                 val bookTitle = book["title"].str ?: book["key"].str ?: continue
                 val bookUpdated = book["last_update"].str?.let { EspnParser.parseInstant(it) }
                 for (market in book["markets"].arr.orEmpty()) {
@@ -105,7 +114,7 @@ object OddsApiParser {
                             Market.TOTAL -> name.uppercase()
                             else -> Team.fromFullName(name)?.abbr ?: continue
                         }
-                        quotes += Quote(bookTitle, marketEnum, side, point, price, marketUpdated)
+                        quotes += Quote(bookTitle, marketEnum, side, point, price, marketUpdated, bookKey)
                     }
                 }
             }

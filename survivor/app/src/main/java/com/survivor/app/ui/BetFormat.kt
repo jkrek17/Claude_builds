@@ -1,7 +1,9 @@
 package com.survivor.app.ui
 
 import com.survivor.app.ui.components.Fmt
+import com.survivor.engine.Confidence
 import com.survivor.engine.Market
+import java.util.Locale
 
 /** How strong a bet's EV is, for the Bets screen's chip coloring. Thresholds match [ModelSettings]'s
  *  defaults (1%/3%) but the tiering itself is independent of the user's own thresholds - it just says
@@ -31,5 +33,25 @@ object BetFormat {
         val sign = if (points >= 0) "+" else ""
         val suffix = if (market == Market.MONEYLINE) "%" else ""
         return "moved $sign${Fmt.num(points)}$suffix"
+    }
+
+    /** "+2.2 bps" / "-0.8 bps" for [com.survivor.engine.SideAssessment.expectedGrowthBps] - the
+     *  Kelly-scaled expected growth rate the new Bet Score ranks on, not raw EV. */
+    fun growthBps(bps: Double): String = String.format(Locale.US, "%+.1f bps", bps)
+
+    /** Chip label for [Confidence] - how many standard errors of the fair price the edge clears. */
+    fun confidenceLabel(c: Confidence): String = when (c) {
+        Confidence.NONE -> "No confidence"
+        Confidence.LOW -> "Low confidence"
+        Confidence.MEDIUM -> "Medium confidence"
+        Confidence.HIGH -> "High confidence"
+    }
+
+    /** "✓ Pinnacle" / "✗ Pinnacle" / "— Pinnacle" for [com.survivor.engine.SideAssessment.sharpAgrees];
+     *  [label] should be the configured sharp book's display name (e.g. from `ModelSettings.sharpBooks`). */
+    fun sharpMark(agrees: Boolean?, label: String = "Pinnacle"): String = when (agrees) {
+        true -> "✓ $label"
+        false -> "✗ $label"
+        null -> "— $label"
     }
 }

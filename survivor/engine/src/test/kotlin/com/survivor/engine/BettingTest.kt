@@ -6,6 +6,7 @@ import com.survivor.engine.data.StateCodec
 import com.survivor.engine.data.SavedState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -36,8 +37,9 @@ class BettingTest {
         assertEquals(Team.SEA, board.home); assertEquals(Team.NE, board.away)
         assertEquals(kickoff, board.commenceEpochMs)
         assertEquals("abc123", board.gameId)
-        assertEquals(17, board.quotes.size) // 3 books x 2 outcomes for h2h/spreads, but BetMGM totals is Over-only
-        assertEquals(6, board.quotes.count { it.market == Market.MONEYLINE })
+        // 3 books x 2 outcomes for h2h/spreads, but BetMGM totals is Over-only, plus Pinnacle's h2h-only entry (the sharp reference).
+        assertEquals(19, board.quotes.size)
+        assertEquals(8, board.quotes.count { it.market == Market.MONEYLINE })
         assertEquals(6, board.quotes.count { it.market == Market.SPREAD })
         assertEquals(5, board.quotes.count { it.market == Market.TOTAL })
 
@@ -45,6 +47,8 @@ class BettingTest {
         assertEquals(-3.0, betMgmSpreadSea.point); assertEquals(-102, betMgmSpreadSea.price)
         val dkTotalOver = board.quotes.single { it.market == Market.TOTAL && it.book == "DraftKings" && it.side == "OVER" }
         assertEquals(44.5, dkTotalOver.point); assertEquals(-110, dkTotalOver.price)
+        val pinnacleMlSea = board.quotes.single { it.market == Market.MONEYLINE && it.book == "Pinnacle" && it.side == "SEA" }
+        assertEquals(-165, pinnacleMlSea.price); assertEquals("pinnacle", pinnacleMlSea.bookKey)
 
         val game = seaNeGame()
         val attached = OddsApiParser.attachBoard(listOf(game), boards)
@@ -56,6 +60,19 @@ class BettingTest {
         val boards = OddsApiParser.parseBoard(fixture("oddsapi_board.json"), 5L)
         val farGame = seaNeGame().copy(id = "other", kickoffEpochMs = kickoff + 10L * 86_400_000L)
         assertTrue(OddsApiParser.attachBoard(listOf(farGame), boards).isEmpty())
+    }
+
+    @Test fun `boardUrl adds the eu region for Pinnacle by default and drops it when includeSharpRegion is false`() {
+        val withSharp = OddsApiParser.boardUrl("KEY")
+        assertTrue(withSharp.contains("regions=us,eu"), withSharp)
+        val explicitSharp = OddsApiParser.boardUrl("KEY", includeSharpRegion = true)
+        assertEquals(withSharp, explicitSharp)
+        val usOnly = OddsApiParser.boardUrl("KEY", includeSharpRegion = false)
+        assertTrue(usOnly.contains("regions=us&"), usOnly)
+        assertTrue(!usOnly.contains("eu"))
+        // Both still request the same three markets - see docs/BETTING.md's quota note.
+        assertTrue(withSharp.contains("markets=h2h,spreads,totals"))
+        assertTrue(usOnly.contains("markets=h2h,spreads,totals"))
     }
 
     // ---- Fair price / EV / Kelly arithmetic ----------------------------------------------------
@@ -332,6 +349,20 @@ class BettingTest {
         assertEquals(1000.0, back.user.settings.bankroll)
     }
 
+    @Test fun `a Quote saved before bookKey existed still decodes, with an empty bookKey`() {
+        val oldStyleQuote = """{"book":"DraftKings","market":"MONEYLINE","side":"SEA","price":-170}"""
+        val quote = StateCodec.json.decodeFromString(Quote.serializer(), oldStyleQuote)
+        assertEquals("", quote.bookKey)
+        assertEquals("DraftKings", quote.book)
+    }
+
+    @Test fun `ModelSettings saved before sharpBooks-includeSharpRegion existed still decodes with defaults`() {
+        val old = """{"season":null,"user":{"settings":{}},"savedAtEpochMs":1}"""
+        val back = StateCodec.decode(old)
+        assertEquals(listOf("pinnacle"), back.user.settings.sharpBooks)
+        assertTrue(back.user.settings.includeSharpRegion)
+    }
+
     // ---- Graded board (Bet Score) -----------------------------------------------------------
 
     /** 9 books paired at -110/-110 (fair 50%, zero dispersion) plus a 10th, SEA-only book at +103 as
@@ -341,7 +372,14 @@ class BettingTest {
         return paired + Quote("B10", Market.MONEYLINE, "SEA", null, 103)
     }
 
-    @Test fun `hand-derived score - fresh 9-book board, plus-1_5pct EV, no penalties, is 68_75 and grades B-Acceptable`() {
+    /**
+     * Under the OLD, EV-only formula (score = 50 + 12.5 x blendedEvPct) this scenario scored 68.75 (grade
+     * B-, tier ACCEPTABLE) - the exact bug this rewrite fixes: a break-even coinflip's +1.5% EV scored the
+     * same as the same EV on a heavy favorite, even though its Kelly stake (and therefore its actual
+     * expected growth) is tiny. Under the new growth-based formula the same inputs score near 51 (grade D,
+     * tier AVOID), which is the correct read - see the favorite comparison test below for the fix in action.
+     */
+    @Test fun `hand-derived score - a break-even coinflip's plus-1_5pct EV now scores near AVOID, not B-Acceptable`() {
         val game = seaNeGame()
         val now = kickoff - 1000L
         val gboard = GameBoard(home = game.home, away = game.away, commenceEpochMs = game.kickoffEpochMs, quotes = nineBookMlQuotes(), fetchedAtEpochMs = now)
@@ -353,14 +391,97 @@ class BettingTest {
         assertEquals(9, sea.booksQuoting)
         assertEquals(0.015, sea.lineShopEv!!, 1e-9)
         assertEquals(0.0, sea.components.bookConfidencePenalty)
-        assertEquals(0.0, sea.components.dispersionPenalty)
-        assertEquals(0.0, sea.components.staleBoardPenalty)
         assertEquals(0.0, sea.components.movementAdjustment)
-        assertEquals(68.75, sea.score, 0.01)
-        assertEquals("B-", sea.grade)
-        assertEquals(Tier.ACCEPTABLE, sea.tier)
-        assertEquals("B-", BettingEngine.scoreGrade(68.75))
-        assertEquals(Tier.ACCEPTABLE, BettingEngine.scoreTier(68.75))
+        assertEquals(0.0, sea.components.staleBoardPenalty)
+
+        // fairProbabilitySe = max(dispersion=0, 0.004) / sqrt(9) = 0.004 / 3.
+        assertEquals(0.004 / 3.0, sea.fairProbabilitySe!!, 1e-12)
+        // edgeZ = 0.015 / (se x decimal(103)) = 0.015 / ((0.004/3) x 2.03) ~= 5.54 -> HIGH confidence.
+        assertEquals(0.015 / ((0.004 / 3.0) * 2.03), sea.edgeZ!!, 1e-9)
+        assertEquals(Confidence.HIGH, sea.confidence)
+        assertEquals(0.0, sea.components.uncertaintyPenalty) // z >= 2
+
+        // blendedProbability = fairProbability (modelWeight = 0) = 0.5; kelly = (b*p-q)/b, b = 1.03.
+        assertEquals(0.5, sea.blendedProbability!!, 1e-9)
+        val expectedKelly = (1.03 * 0.5 - 0.5) / 1.03
+        assertEquals(expectedKelly, sea.kellyFraction, 1e-9)
+        val expectedGrowthBps = expectedKelly * 0.015 * 10_000.0
+        assertEquals(expectedGrowthBps, sea.expectedGrowthBps, 1e-6)
+        assertTrue(expectedGrowthBps < 3.0, "expected a tiny growth rate for a coinflip, got $expectedGrowthBps bps")
+        val expectedGrowthPoints = (expectedGrowthBps / 2.0).coerceIn(-50.0, 50.0)
+        assertEquals(expectedGrowthPoints, sea.components.growthPoints, 1e-6)
+
+        val expectedScore = 50.0 + expectedGrowthPoints
+        assertEquals(expectedScore, sea.score, 0.01)
+        assertTrue(sea.score < 60.0, "expected the coinflip's tiny growth to land in AVOID, scored ${sea.score}")
+        assertEquals("D", sea.grade)
+        assertEquals(Tier.AVOID, sea.tier)
+        assertFalse(sea.goodBet) // score < 68, even though the edge itself is real and confidently priced
+        // All five tests actually pass here (real edge, confident, no sharp/history data to disagree, fresh
+        // board) - it's the score, not the tests, that correctly keeps a coinflip-sized edge out of AVOID.
+        assertTrue(sea.tests.valueVsConsensus); assertTrue(sea.tests.edgeConfident)
+        assertNull(sea.tests.sharpAgrees); assertNull(sea.tests.lineNotAgainst); assertTrue(sea.tests.boardFresh)
+        assertTrue(sea.tests.passed)
+    }
+
+    /**
+     * The whole point of the growth-based formula: the SAME +1.5%-ish EV on a confident ~78% favorite (not
+     * a coinflip) produces a Kelly stake, and therefore an expected growth rate, several times larger than
+     * the coinflip case above - because a favorite's Kelly fraction is much larger at the same edge. Fair
+     * probability here comes from 9 identical books at -420/+340 (no-vig ~78%, zero dispersion); the 10th
+     * book improves SEA's price to -330 (still negative/favorite, just less negative).
+     */
+    @Test fun `hand-derived score - the same-ish EV on a confident favorite compounds far faster than on the coinflip above`() {
+        val game = seaNeGame()
+        val now = kickoff - 1000L
+        val paired = (1..9).flatMap { i -> listOf(Quote("B$i", Market.MONEYLINE, "SEA", null, -420), Quote("B$i", Market.MONEYLINE, "NE", null, 340)) }
+        val quotes = paired + Quote("B10", Market.MONEYLINE, "SEA", null, -330)
+        val fair = Probability.noVig(-420, 340)
+        assertEquals(0.78, fair, 0.01) // sanity check: a genuine, confident favorite, not a coinflip
+
+        val gboard = GameBoard(home = game.home, away = game.away, commenceEpochMs = game.kickoffEpochMs, quotes = quotes, fetchedAtEpochMs = now)
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = now).copy(board = mapOf(game.id to gboard))
+        val user = UserState(settings = ModelSettings(modelWeight = 0.0))
+        val betBoard = BettingEngine.board(season, user, now)
+        val sea = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }.sides.single { it.side == "SEA" }
+
+        val decimal = BettingEngine.decimalOdds(-330)
+        val expectedEv = fair * decimal - 1.0
+        assertEquals(expectedEv, sea.lineShopEv!!, 1e-9)
+        assertTrue(expectedEv in 0.01..0.03, "expected a modest single-digit-percent edge, got $expectedEv") // similar order to the +1.5% coinflip case
+
+        val expectedKelly = (((decimal - 1.0) * fair) - (1.0 - fair)) / (decimal - 1.0)
+        assertEquals(expectedKelly, sea.kellyFraction, 1e-9)
+        assertTrue(sea.kellyFraction > expectedKelly * 0.99) // just re-asserting our own math, but the real check is below:
+
+        // Recompute the coinflip case's growth inline so this test doesn't depend on test execution order.
+        val coinflipKelly = (1.03 * 0.5 - 0.5) / 1.03
+        val coinflipGrowthBps = coinflipKelly * 0.015 * 10_000.0
+        assertTrue(
+            sea.expectedGrowthBps > coinflipGrowthBps * 2.0,
+            "favorite growth (${sea.expectedGrowthBps} bps) should be well above the coinflip's ($coinflipGrowthBps bps) at similar EV",
+        )
+    }
+
+    /** Same favorite fair price as above, but a bigger price improvement (-300 instead of -330) pushes the
+     *  edge, the Kelly stake, and therefore the expected growth rate high enough to cross the good-bet
+     *  score threshold (68) - demonstrating goodBet true where the modest-edge favorite above was false. */
+    @Test fun `hand-derived score - a confident favorite with a strong edge crosses the good-bet threshold`() {
+        val game = seaNeGame()
+        val now = kickoff - 1000L
+        val paired = (1..9).flatMap { i -> listOf(Quote("B$i", Market.MONEYLINE, "SEA", null, -420), Quote("B$i", Market.MONEYLINE, "NE", null, 340)) }
+        val quotes = paired + Quote("B10", Market.MONEYLINE, "SEA", null, -300)
+        val gboard = GameBoard(home = game.home, away = game.away, commenceEpochMs = game.kickoffEpochMs, quotes = quotes, fetchedAtEpochMs = now)
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = now).copy(board = mapOf(game.id to gboard))
+        val user = UserState(settings = ModelSettings(modelWeight = 0.0))
+        val betBoard = BettingEngine.board(season, user, now)
+        val sea = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }.sides.single { it.side == "SEA" }
+
+        assertEquals(Confidence.HIGH, sea.confidence)
+        assertTrue(sea.tests.passed)
+        assertTrue(sea.score >= 68.0, "expected the strong-edge favorite to clear the good-bet score band, scored ${sea.score}")
+        assertTrue(sea.goodBet)
+        assertTrue(betBoard.goodBets().any { it.side == "SEA" })
     }
 
     @Test fun `single-source ESPN fallback carries a 10-point book-confidence penalty`() {
@@ -371,12 +492,19 @@ class BettingTest {
         ml.sides.forEach {
             assertEquals(1, it.booksQuoting)
             assertEquals(10.0, it.components.bookConfidencePenalty)
+            // No board at all -> no dispersion data -> no confidence, and the board-fresh test fails.
+            assertNull(it.fairProbabilitySe); assertNull(it.edgeZ)
+            assertEquals(Confidence.NONE, it.confidence)
+            assertFalse(it.tests.boardFresh)
+            assertTrue(it.tests.failedReasons.contains("No multi-book board"))
         }
     }
 
-    @Test fun `line dispersion penalty is capped at 6 points when books disagree sharply`() {
+    @Test fun `dispersion feeds fairProbabilitySe and edgeZ - MEDIUM confidence right at the z=1 boundary`() {
         // Zero-vig books (implied probabilities already sum to 1) at 0.9 and 0.4 fair SEA -> sample
-        // stdDev of [0.9, 0.4] = 0.5 / sqrt(2) ~= 0.3536 -> 100 x 0.3536 x 0.5 ~= 17.7, capped to 6.
+        // stdDev of [0.9, 0.4] = 0.5 / sqrt(2) ~= 0.3536. se = dispersion / sqrt(2) = 0.25 exactly.
+        // bestPrice is Book2's SEA +150 (the higher of -900/+150); fair mean = 0.65; decimal(150) = 2.5;
+        // ev = 0.65 x 2.5 - 1 = 0.625; z = ev / (se x decimal) = 0.625 / (0.25 x 2.5) = 1.0 exactly.
         val quotes = listOf(
             Quote("Book1", Market.MONEYLINE, "SEA", null, -900), Quote("Book1", Market.MONEYLINE, "NE", null, 900),
             Quote("Book2", Market.MONEYLINE, "SEA", null, 150), Quote("Book2", Market.MONEYLINE, "NE", null, -150),
@@ -387,7 +515,113 @@ class BettingTest {
         val sea = ml.sides.single { it.side == "SEA" }
         assertEquals(2, sea.booksQuoting)
         assertEquals(0.3535533905932738, sea.lineDispersion!!, 1e-6)
-        assertEquals(6.0, sea.components.dispersionPenalty, 1e-9)
+        assertEquals(0.25, sea.fairProbabilitySe!!, 1e-6)
+        assertEquals(1.0, sea.edgeZ!!, 1e-6)
+        assertEquals(Confidence.MEDIUM, sea.confidence)
+        assertEquals(4.0, sea.components.uncertaintyPenalty, 1e-9) // 1 <= z < 2
+        assertTrue(sea.tests.edgeConfident) // z >= 1 clears the threshold exactly
+    }
+
+    @Test fun `edgeZ below 1 is LOW confidence and fails the edge-confident test with a plain-language reason`() {
+        // Two paired books at -110/-110 (fair 50%, zero dispersion, floor se = 0.004/sqrt(2)) plus a third,
+        // SEA-only book barely better at +101: ev = 0.5 x decimalOdds(101) - 1 = 0.005 exactly.
+        val quotes = listOf(
+            Quote("Book1", Market.MONEYLINE, "SEA", null, -110), Quote("Book1", Market.MONEYLINE, "NE", null, -110),
+            Quote("Book2", Market.MONEYLINE, "SEA", null, -110), Quote("Book2", Market.MONEYLINE, "NE", null, -110),
+            Quote("Book3", Market.MONEYLINE, "SEA", null, 101),
+        )
+        val season = boardSeason(quotes)
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val sea = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }.sides.single { it.side == "SEA" }
+        assertTrue(sea.edgeZ!! < 1.0)
+        assertEquals(Confidence.LOW, sea.confidence)
+        assertFalse(sea.tests.edgeConfident)
+        assertEquals(10.0, sea.components.uncertaintyPenalty) // z < 1
+        assertFalse(sea.goodBet)
+        assertTrue(
+            sea.tests.failedReasons.any { it.contains("fair-price noise") && it.contains("z = ") },
+            "expected a plain-language noise reason, got ${sea.tests.failedReasons}",
+        )
+    }
+
+    @Test fun `sharp reference (Pinnacle) disagrees on SEA and agrees on NE in the full fixture`() {
+        val boards = OddsApiParser.parseBoard(fixture("oddsapi_board.json"), 5L)
+        val game = seaNeGame()
+        val attached = OddsApiParser.attachBoard(listOf(game), boards)
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = 5L).copy(board = attached)
+        val betBoard = BettingEngine.board(season, UserState(), kickoff - 1000L)
+        val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
+        val sea = ml.sides.single { it.side == "SEA" }
+        val ne = ml.sides.single { it.side == "NE" }
+
+        // Best prices come from FanDuel/BetMGM, not Pinnacle itself.
+        assertEquals("FanDuel", sea.bestBook); assertFalse(sea.bestBookIsSharp)
+        assertEquals("BetMGM", ne.bestBook); assertFalse(ne.bestBookIsSharp)
+
+        // Pinnacle SEA -165 / NE +150 -> its own no-vig SEA probability is ~60.9%, priced against FanDuel's
+        // -160 (decimal 1.625) that's a small NEGATIVE sharp EV - Pinnacle thinks FanDuel's price is fair
+        // or worse, not a real edge.
+        val expectedSharpSea = Probability.noVig(-165, 150)
+        assertEquals(expectedSharpSea, sea.sharpProbability!!, 1e-9)
+        assertEquals(expectedSharpSea * BettingEngine.decimalOdds(sea.bestPrice) - 1.0, sea.sharpEv!!, 1e-9)
+        assertTrue(sea.sharpEv!! < 0.0)
+        assertEquals(false, sea.sharpAgrees)
+        assertEquals(8.0, sea.components.sharpPenalty)
+        assertFalse(sea.goodBet)
+        assertTrue(
+            sea.tests.failedReasons.any { it.contains("Pinnacle") && it.contains("-EV") },
+            "expected a Pinnacle disagreement reason, got ${sea.tests.failedReasons}",
+        )
+
+        // Pinnacle's own no-vig NE probability against BetMGM's +165 (decimal 2.65) IS a real positive EV -
+        // the sharp book agrees this side is worth taking.
+        val expectedSharpNe = Probability.noVig(150, -165)
+        assertEquals(expectedSharpNe, ne.sharpProbability!!, 1e-9)
+        assertTrue(ne.sharpEv!! > 0.0)
+        assertEquals(true, ne.sharpAgrees)
+        assertEquals(0.0, ne.components.sharpPenalty)
+    }
+
+    @Test fun `line-moved-against reason and boardFresh reason report the actual numbers`() {
+        val game = seaNeGame(line = MarketLine("DraftKings", homeSpread = 7.0, homeMoneyline = -170, awayMoneyline = 142, fetchedAtEpochMs = 1L))
+        val now = kickoff - 1000L
+        val staleAgeMs = 9L * 3_600_000L
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = now - staleAgeMs) // no board -> ESPN fallback, board 9h old
+        val history = LineHistory(listOf(LineSnapshot(takenAtEpochMs = 0L, currentWeek = 1, lines = listOf(LineRecord(game.id, 1, homeSpread = -3.0, homeMoneyline = null, awayMoneyline = null, fpiHome = null)))))
+        val betBoard = BettingEngine.board(season, UserState(), now, history)
+        val spread = betBoard.games.single().markets.single { it.market == Market.SPREAD }
+        val away = spread.sides.single { it.side == game.away.abbr } // moved 10 points against the away side (home went 7 -> -3 was the away number's origin)
+        assertEquals(false, away.tests.lineNotAgainst)
+        assertTrue(
+            away.tests.failedReasons.any { it.contains("moved") && it.contains("against this side") },
+            "expected a line-moved-against reason, got ${away.tests.failedReasons}",
+        )
+        assertFalse(away.tests.boardFresh)
+        assertTrue(
+            away.tests.failedReasons.any { it.contains("9") && it.contains("h old") },
+            "expected a board-age reason mentioning 9h, got ${away.tests.failedReasons}",
+        )
+    }
+
+    @Test fun `a non-positive edge zeroes kellyFraction and expectedGrowth and lands in AVOID via the uncertainty penalty`() {
+        // 9 books at plain -110/-110 with no better price anywhere -> fair 50%, best price -110, ev < 0.
+        val paired = (1..9).flatMap { i -> listOf(Quote("B$i", Market.MONEYLINE, "SEA", null, -110), Quote("B$i", Market.MONEYLINE, "NE", null, -110)) }
+        val game = seaNeGame()
+        val now = kickoff - 1000L
+        val gboard = GameBoard(home = game.home, away = game.away, commenceEpochMs = game.kickoffEpochMs, quotes = paired, fetchedAtEpochMs = now)
+        val season = Season(2026, listOf(game), boardFetchedAtEpochMs = now).copy(board = mapOf(game.id to gboard))
+        val betBoard = BettingEngine.board(season, UserState(settings = ModelSettings(modelWeight = 0.0)), now)
+        val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
+        ml.sides.forEach { side ->
+            assertTrue(side.lineShopEv!! < 0.0)
+            assertEquals(0.0, side.kellyFraction, 1e-12)
+            assertEquals(0.0, side.expectedGrowth, 1e-12) // 0.0 x a negative ev can land on -0.0 in IEEE 754
+            assertEquals(0.0, side.components.growthPoints, 1e-12)
+            assertEquals(10.0, side.components.uncertaintyPenalty) // edgeZ <= 0 -> null-confidence penalty
+            assertFalse(side.tests.valueVsConsensus)
+            assertFalse(side.goodBet)
+            assertEquals(Tier.AVOID, side.tier)
+        }
     }
 
     @Test fun `spread movement adjustment is clamped to plus-minus-4 points`() {
@@ -495,8 +729,9 @@ class BettingTest {
         val ml = betBoard.games.single().markets.single { it.market == Market.MONEYLINE }
         ml.sides.forEach { side ->
             val stake = betBoard.suggestedStake(side, settings)
-            val blendedEv = (side.components.lineShopEvPct + side.components.modelEvPct) / 100.0
-            if (blendedEv <= 0.0) assertEquals(0.0, stake) else assertTrue(stake >= 0.0)
+            // suggestedStake is stakeFor(side.kellyFraction, settings) directly now (kellyFraction is
+            // already coerced to >= 0 and built from blendedProbability - see docs/BETTING.md).
+            if (side.kellyFraction <= 0.0) assertEquals(0.0, stake) else assertTrue(stake >= 0.0)
         }
     }
 }

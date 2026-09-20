@@ -2,6 +2,7 @@ package com.survivor.app
 
 import com.survivor.app.ui.BetFormat
 import com.survivor.app.ui.EvTier
+import com.survivor.engine.Confidence
 import com.survivor.engine.Market
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,5 +31,25 @@ class BetFormatTest {
         assertEquals("moved +2.3%", BetFormat.movedLabel(Market.MONEYLINE, 2.3))
         assertEquals("moved -1%", BetFormat.movedLabel(Market.MONEYLINE, -1.0))
         assertEquals("no history", BetFormat.movedLabel(Market.SPREAD, null))
+    }
+
+    @Test fun `formats expected growth in basis points`() {
+        assertEquals("+2.2 bps", BetFormat.growthBps(2.18))
+        assertEquals("-0.8 bps", BetFormat.growthBps(-0.75))
+        assertEquals("+0.0 bps", BetFormat.growthBps(0.0))
+    }
+
+    @Test fun `labels every confidence band`() {
+        assertEquals("No confidence", BetFormat.confidenceLabel(Confidence.NONE))
+        assertEquals("Low confidence", BetFormat.confidenceLabel(Confidence.LOW))
+        assertEquals("Medium confidence", BetFormat.confidenceLabel(Confidence.MEDIUM))
+        assertEquals("High confidence", BetFormat.confidenceLabel(Confidence.HIGH))
+    }
+
+    @Test fun `marks sharp-book agreement with a check, cross, or dash for no data`() {
+        assertEquals("✓ Pinnacle", BetFormat.sharpMark(true))
+        assertEquals("✗ Pinnacle", BetFormat.sharpMark(false))
+        assertEquals("— Pinnacle", BetFormat.sharpMark(null))
+        assertEquals("✓ Circa", BetFormat.sharpMark(true, "Circa"))
     }
 }

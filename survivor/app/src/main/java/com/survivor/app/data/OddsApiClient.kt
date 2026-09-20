@@ -13,9 +13,10 @@ class OddsApiClient(private val http: HttpFetcher, private val now: () -> Long =
     }
 
     /** Full multi-book, multi-market board (moneyline, spread, total) for [BettingEngine][com.survivor.engine.BettingEngine].
-     *  Costs 3 requests against The Odds API's quota - see docs/BETTING.md. */
-    suspend fun fetchBoard(apiKey: String): List<GameBoard> {
+     *  Costs 3 requests against The Odds API's quota, or 6 with [includeSharpRegion] (adds the `eu` region
+     *  to reach Pinnacle) - see docs/BETTING.md. */
+    suspend fun fetchBoard(apiKey: String, includeSharpRegion: Boolean = true): List<GameBoard> {
         require(apiKey.isNotBlank()) { "No Odds API key configured" }
-        return OddsApiParser.parseBoard(http.get(OddsApiParser.boardUrl(apiKey.trim())), now())
+        return OddsApiParser.parseBoard(http.get(OddsApiParser.boardUrl(apiKey.trim(), includeSharpRegion)), now())
     }
 }

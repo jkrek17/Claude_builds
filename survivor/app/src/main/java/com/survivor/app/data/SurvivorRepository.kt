@@ -137,7 +137,7 @@ class SurvivorRepository(
         if (!force && age != null && age < BOARD_REFRESH_INTERVAL_MS) return ""
         _refresh.value = RefreshStatus.Running("Odds board (line shopping)")
         return try {
-            val boards = oddsApi.fetchBoard(key)
+            val boards = oddsApi.fetchBoard(key, user.settings.includeSharpRegion)
             val fetchedAt = now()
             mutate { s ->
                 val sn = s.season ?: return@mutate s

@@ -64,6 +64,7 @@ import com.survivor.app.ui.theme.tierContainer
 import com.survivor.engine.Bet
 import com.survivor.engine.BetBoard
 import com.survivor.engine.BetResult
+import com.survivor.engine.Confidence
 import com.survivor.engine.GameAssessment
 import com.survivor.engine.Ledger
 import com.survivor.engine.LedgerRow
@@ -88,9 +89,11 @@ private enum class MarketTab(val label: String, val market: Market?) {
  *  the record dialog since a bare [SideAssessment] doesn't know its own game or market. */
 private data class RecordingContext(val game: GameAssessment, val market: Market, val side: SideAssessment, val week: Int, val suggestedStake: Double)
 
-/** A market row's blended EV, recovered from the exact terms [BetBoard.suggestedStake] and the Bet
- *  Score itself are built from - see [com.survivor.engine.BetScoreComponents]. */
-private fun SideAssessment.blendedEv(): Double = (components.lineShopEvPct + components.modelEvPct) / 100.0
+/** One line of context under a side's headline: win %, line-shop EV, expected growth (the score's actual
+ *  ranking signal), confidence, and a check/cross for whether the sharp reference book agrees. */
+private fun SideAssessment.statLine(): String =
+    "${Fmt.pct(fairProbability)} win · ${Fmt.evPct(lineShopEv ?: 0.0)} EV · ${BetFormat.growthBps(expectedGrowthBps)} · " +
+        "${BetFormat.confidenceLabel(confidence)} · ${BetFormat.sharpMark(sharpAgrees)}"
 
 /**
  * Betting is entirely separate from the survivor recommendation: it never reads or changes [Pick][com.survivor.engine.Pick]
@@ -149,6 +152,7 @@ fun BetsScreen(vm: AppViewModel, onNavigate: (String) -> Unit) {
         if (b == null || b.games.isEmpty()) {
             EmptyState("No scheduled games for the current week yet. Download NFL data from the Dashboard.")
         } else if (tab == MarketTab.ALL) {
+            GoodBetsSection(b) { g, m -> detail = g to m }
             val top = b.topPicks(8)
             Text("Top plays", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             if (top.isEmpty()) EmptyState("No priced markets for this week yet.")
@@ -227,6 +231,42 @@ private fun GameHeader(game: GameAssessment) {
     }
 }
 
+/** Every side clearing all five good-bet checks ([BetBoard.goodBets]) - the growth-ranked list the All
+ *  tab leads with. Empty by design most weeks: a "good bet" is a real, confident, sharp-approved edge on
+ *  a fresh board, not just any positive score. */
+@Composable
+private fun GoodBetsSection(board: BetBoard, onSelect: (GameAssessment, MarketAssessment) -> Unit) {
+    val goodBets = board.goodBets()
+    Text("Good bets", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    if (goodBets.isEmpty()) {
+        Text(
+            "No side clears all five good-bet checks (real edge, confident, sharp-approved, line not against it, fresh board) this week.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        SectionCard {
+            goodBets.forEachIndexed { i, side ->
+                val located = board.locate(side)
+                Row(
+                    Modifier.fillMaxWidth().let { m -> located?.let { (g, mk) -> m.clickable { onSelect(g, mk) } } ?: m }.padding(vertical = Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                ) {
+                    side.sideTeam?.let { TeamLogo(it, 32.dp) } ?: located?.first?.let { GameHeader(it) }
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(BetFormat.marketLabel(located?.second?.market ?: Market.MONEYLINE, side.side, side.point), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                            TierBadge("Good bet", Tier.STRONG)
+                        }
+                        Text(side.statLine(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    TierBadge(side.grade, side.tier)
+                }
+                if (i < goodBets.lastIndex) HorizontalDivider()
+            }
+        }
+    }
+}
+
 @Composable
 private fun TopPlayRow(rank: Int, board: BetBoard, side: SideAssessment, onSelect: (GameAssessment, MarketAssessment) -> Unit) {
     val (game, market) = board.locate(side) ?: return
@@ -237,12 +277,16 @@ private fun TopPlayRow(rank: Int, board: BetBoard, side: SideAssessment, onSelec
         Text("$rank", Modifier.padding(end = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         side.sideTeam?.let { TeamLogo(it, 32.dp) } ?: GameHeader(game)
         Column(Modifier.weight(1f)) {
-            Text(BetFormat.marketLabel(market.market, side.side, side.point), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(BetFormat.marketLabel(market.market, side.side, side.point), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                if (side.goodBet) TierBadge("Good bet", Tier.STRONG)
+            }
             Text("${game.away.abbr} @ ${game.home.abbr} · ${market.market.label} · ${side.bestBook} ${Fmt.ml(side.bestPrice)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(subtitleFor(side), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(horizontalAlignment = Alignment.End) {
             TierBadge(side.grade, side.tier)
-            Text(Fmt.evPct(side.blendedEv()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(BetFormat.growthBps(side.expectedGrowthBps), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -255,20 +299,27 @@ private fun MarketRow(game: GameAssessment, market: MarketAssessment, onSelect: 
             Text("#${market.rank}", Modifier.padding(end = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             side.sideTeam?.let { TeamLogo(it, 32.dp) } ?: GameHeader(game)
             Column(Modifier.weight(1f)) {
-                Text(BetFormat.marketLabel(market.market, side.side, side.point), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(BetFormat.marketLabel(market.market, side.side, side.point), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                    if (side.goodBet) TierBadge("Good bet", Tier.STRONG)
+                }
                 Text("${game.away.abbr} @ ${game.home.abbr} · ${Fmt.dateTime(game.kickoffEpochMs)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(horizontalAlignment = Alignment.End) {
                 TierBadge(side.grade, side.tier)
-                Text(Fmt.evPct(side.blendedEv()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(BetFormat.growthBps(side.expectedGrowthBps), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        Text(
-            "${side.bestBook} ${Fmt.ml(side.bestPrice)} · fair ${Fmt.ml(side.fairPrice)} · ${side.booksQuoting} book${if (side.booksQuoting == 1) "" else "s"} · ${BetFormat.movedLabel(market.market, side.lineMovePoints)}",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(side.statLine(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(subtitleFor(side), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+/** The strongest failed good-bet reason for a side that isn't a good bet, else just its book count - shown
+ *  as the row's subtitle so a value bet that fails a test stays visible in the market lists with why. */
+private fun subtitleFor(side: SideAssessment): String =
+    if (!side.goodBet && side.tests.failedReasons.isNotEmpty()) side.tests.failedReasons.first()
+    else "${side.booksQuoting} book${if (side.booksQuoting == 1) "" else "s"}"
 
 @Composable
 private fun GameSummaryCard(game: GameAssessment, onSelectMarket: (MarketAssessment) -> Unit) {
@@ -305,10 +356,17 @@ private fun GameSummaryCard(game: GameAssessment, onSelectMarket: (MarketAssessm
 private fun TopPlaysTable(board: BetBoard, top: List<SideAssessment>, onSelect: (GameAssessment, MarketAssessment) -> Unit) {
     val located = top.map { s -> board.locate(s) to s }.filter { it.first != null }
     HTable(
-        columns = listOf(Col("#", 26.dp), Col("Side", 90.dp), Col("Game", 90.dp), Col("Market", 62.dp), Col("Book", 90.dp), Col("Price", 52.dp, E), Col("Fair", 52.dp, E), Col("EV%", 52.dp, E), Col("Score", 48.dp, E), Col("Grade", 44.dp)),
+        columns = listOf(
+            Col("#", 26.dp), Col("Side", 90.dp), Col("Game", 90.dp), Col("Market", 62.dp), Col("Book", 90.dp), Col("Price", 52.dp, E),
+            Col("Win%", 48.dp, E), Col("EV%", 52.dp, E), Col("Growth", 60.dp, E), Col("Conf.", 52.dp), Col("Sharp", 66.dp), Col("Score", 48.dp, E), Col("Grade", 44.dp),
+        ),
         rows = located.mapIndexed { i, (gm, side) ->
             val (g, m) = gm!!
-            listOf("${i + 1}", BetFormat.marketLabel(m.market, side.side, side.point), "${g.away.abbr}@${g.home.abbr}", m.market.label, side.bestBook, Fmt.ml(side.bestPrice), Fmt.ml(side.fairPrice), Fmt.evPct(side.blendedEv()), Fmt.score(side.score), side.grade)
+            listOf(
+                "${i + 1}", BetFormat.marketLabel(m.market, side.side, side.point), "${g.away.abbr}@${g.home.abbr}", m.market.label, side.bestBook, Fmt.ml(side.bestPrice),
+                Fmt.pct(side.fairProbability), Fmt.evPct(side.lineShopEv ?: 0.0), BetFormat.growthBps(side.expectedGrowthBps),
+                side.confidence.label, BetFormat.sharpMark(side.sharpAgrees), Fmt.score(side.score), side.grade,
+            )
         },
         rowColor = { i -> tierContainer(located[i].second.tier).copy(alpha = 0.55f) },
         onRowClick = { i -> located[i].first?.let { (g, m) -> onSelect(g, m) } },
@@ -321,13 +379,14 @@ private fun MarketFullTable(rows: List<Pair<GameAssessment, MarketAssessment>>, 
     HTable(
         columns = listOf(
             Col("#", 26.dp), Col("Side", 90.dp), Col("Game", 90.dp), Col("Book", 90.dp), Col("Price", 52.dp, E), Col("Fair", 52.dp, E),
-            Col("Books", 48.dp, E), Col("EV%", 52.dp, E), Col("Model%", 56.dp, E), Col("Moved", 60.dp, E), Col("Score", 48.dp, E), Col("Grade", 44.dp),
+            Col("Books", 48.dp, E), Col("EV%", 52.dp, E), Col("Growth", 60.dp, E), Col("Conf.", 52.dp), Col("Sharp", 66.dp),
+            Col("Moved", 60.dp, E), Col("Score", 48.dp, E), Col("Grade", 44.dp),
         ),
         rows = expanded.map { (g, m, s) ->
             listOf(
                 "${m.rank}", BetFormat.marketLabel(m.market, s.side, s.point), "${g.away.abbr}@${g.home.abbr}", s.bestBook, Fmt.ml(s.bestPrice),
-                Fmt.ml(s.fairPrice), "${s.booksQuoting}", Fmt.evPct(s.blendedEv()), s.modelProbability?.let { Fmt.pct(it) } ?: "—",
-                BetFormat.movedLabel(m.market, s.lineMovePoints), Fmt.score(s.score), s.grade,
+                Fmt.ml(s.fairPrice), "${s.booksQuoting}", Fmt.evPct(s.lineShopEv ?: 0.0), BetFormat.growthBps(s.expectedGrowthBps),
+                s.confidence.label, BetFormat.sharpMark(s.sharpAgrees), BetFormat.movedLabel(m.market, s.lineMovePoints), Fmt.score(s.score), s.grade,
             )
         },
         rowColor = { i -> tierContainer(expanded[i].third.tier).copy(alpha = 0.55f) },
@@ -370,30 +429,66 @@ private fun SideSummary(side: SideAssessment, modifier: Modifier) {
 @Composable
 private fun SideBreakdown(market: Market, side: SideAssessment, suggestedStake: Double, startExpanded: Boolean, onRecord: () -> Unit) {
     val c = side.components
-    Expandable(title = BetFormat.marketLabel(market, side.side, side.point), subtitle = "Bet Score ${Fmt.score(side.score)} (${side.grade})", startExpanded = startExpanded) {
+    val subtitle = "Bet Score ${Fmt.score(side.score)} (${side.grade})" + if (side.goodBet) " · Good bet" else ""
+    Expandable(title = BetFormat.marketLabel(market, side.side, side.point), subtitle = subtitle, startExpanded = startExpanded) {
+        Text("Good-bet checklist", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        ChecklistRow("Real edge vs. the consensus", side.tests.valueVsConsensus, null)
+        ChecklistRow("Edge is confident (${BetFormat.confidenceLabel(side.confidence)})", side.tests.edgeConfident, side.edgeZ?.let { String.format(Locale.US, "z = %.1f", it) })
+        ChecklistRow("Sharp reference agrees", side.tests.sharpAgrees, side.sharpEv?.let { Fmt.evPct(it) })
+        ChecklistRow("Line hasn't moved against it", side.tests.lineNotAgainst, BetFormat.movedLabel(market, side.lineMovePoints))
+        ChecklistRow("Odds board is fresh", side.tests.boardFresh, null)
+        if (!side.goodBet && side.tests.failedReasons.isNotEmpty()) {
+            Text("Not a good bet: ${side.tests.failedReasons.joinToString("; ")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        HorizontalDivider()
         Text("Bet Score breakdown", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-        KeyValue("Base (blended EV x 12.5 + 50)", Fmt.num(c.base))
-        KeyValue("  Line-shop EV", Fmt.evPct(c.lineShopEvPct / 100.0))
-        KeyValue("  Model EV (weighted, speculative)", Fmt.evPct(c.modelEvPct / 100.0))
-        KeyValue("Book confidence penalty", "-${Fmt.num(c.bookConfidencePenalty)}")
-        KeyValue("Line dispersion penalty", "-${Fmt.num(c.dispersionPenalty)}")
+        KeyValue("Base", Fmt.num(c.base))
+        KeyValue("Growth points (expected growth ${BetFormat.growthBps(side.expectedGrowthBps)} / 2)", Fmt.signed(c.growthPoints))
+        KeyValue("Uncertainty penalty", "-${Fmt.num(c.uncertaintyPenalty)}")
+        KeyValue("Sharp penalty", "-${Fmt.num(c.sharpPenalty)}")
         KeyValue("Line movement", Fmt.signed(c.movementAdjustment))
         KeyValue("Stale board penalty", "-${Fmt.num(c.staleBoardPenalty)}")
+        KeyValue("Book confidence penalty", "-${Fmt.num(c.bookConfidencePenalty)}")
         HorizontalDivider()
         KeyValue("Score", Fmt.score(side.score))
         HorizontalDivider()
         Text("Pricing", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-        KeyValue("Best price", "${side.bestBook} ${Fmt.ml(side.bestPrice)}")
+        KeyValue("Best price", "${side.bestBook}${if (side.bestBookIsSharp) " (sharp)" else ""} ${Fmt.ml(side.bestPrice)}")
         KeyValue("Fair price", "${Fmt.ml(side.fairPrice)} · ${side.booksQuoting} book${if (side.booksQuoting == 1) "" else "s"}")
+        KeyValue("Line-shop EV", Fmt.evPct(side.lineShopEv ?: 0.0))
         KeyValue("Break-even", Fmt.pct(Probability.impliedFromAmerican(side.bestPrice)))
         side.modelProbability?.let { mp ->
             KeyValue(if (market == Market.SPREAD) "Model cover %" else "Model win %", Fmt.pct(mp))
         }
+        KeyValue("Blended probability", side.blendedProbability?.let { Fmt.pct(it) } ?: "—")
+        KeyValue("Kelly fraction", Fmt.pct1(side.kellyFraction))
+        KeyValue("Sharp reference", BetFormat.sharpMark(side.sharpAgrees) + (side.sharpEv?.let { " (${Fmt.evPct(it)})" } ?: ""))
         KeyValue("Line dispersion (sd of no-vig %)", side.lineDispersion?.let { Fmt.pct1(it) } ?: "—")
+        KeyValue("Fair-price standard error", side.fairProbabilitySe?.let { Fmt.pct1(it) } ?: "—")
         KeyValue("Line move", BetFormat.movedLabel(market, side.lineMovePoints))
         HorizontalDivider()
         Text(side.rationale, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = onRecord, modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp)) { Text("Record bet (suggested $${Fmt.num(suggestedStake)})") }
+    }
+}
+
+/** One good-bet checklist line: a check/cross/dash mark, the test's label, and an optional numeric aside
+ *  (e.g. "z = 0.6"). [passed] null means "no data" (neither pass nor fail) - shown as a dash, never a cross,
+ *  since a nullable test never fails [GoodBetTests.passed] on its own. */
+@Composable
+private fun ChecklistRow(label: String, passed: Boolean?, detail: String?) {
+    val mark = when (passed) { true -> "✓"; false -> "✗"; null -> "—" }
+    val color = when (passed) {
+        true -> tierColor(Tier.STRONG)
+        false -> tierColor(Tier.AVOID)
+        null -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(mark, color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+        }
+        if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
