@@ -72,14 +72,32 @@ fun TeasersScreen(vm: AppViewModel) {
         if (b == null) {
             EmptyState("No scheduled games for the current week yet. Download NFL data from the Dashboard.")
         } else {
+            val recommended = b.candidates.filter { it.ev > 0.0 }
+            val others = b.candidates.filter { it.ev <= 0.0 }
             Text("Recommended teasers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (b.candidates.isEmpty()) {
-                Text(b.note ?: "No two-game pairings this week.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (recommended.isEmpty()) {
+                Text(
+                    when {
+                        b.candidates.isEmpty() -> b.note ?: "No two-game pairings this week."
+                        else -> "No teaser recommended this week: the best pairing is ${String.format(java.util.Locale.US, "%+.1f", b.candidates.first().ev * 100)}% EV at ${b.candidates.first().price}. " +
+                            "Favorite-only pairings need about -110 to clear break-even; the edge lives mostly in the underdog window."
+                    },
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             } else {
                 SectionCard {
-                    b.candidates.take(10).forEachIndexed { i, c ->
+                    recommended.take(10).forEachIndexed { i, c ->
                         CandidateRow(c) { recording = c to b.week }
-                        if (i < minOf(b.candidates.size, 10) - 1) HorizontalDivider()
+                        if (i < minOf(recommended.size, 10) - 1) HorizontalDivider()
+                    }
+                }
+            }
+            if (others.isNotEmpty()) {
+                Text("Pairings below break-even (not recommended)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SectionCard {
+                    others.take(10).forEachIndexed { i, c ->
+                        CandidateRow(c) { recording = c to b.week }
+                        if (i < minOf(others.size, 10) - 1) HorizontalDivider()
                     }
                 }
             }

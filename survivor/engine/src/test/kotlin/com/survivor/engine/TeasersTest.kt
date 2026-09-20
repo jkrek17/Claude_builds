@@ -203,3 +203,23 @@ class TeasersTest {
         assertEquals(6.0, back.user.settings.teaserPoints)
     }
 }
+
+class TeaserLineRoundingTest {
+    @Test fun `qualifying legs use the most common posted half-point line, not the average`() {
+        val season = TestSeason.build(31)
+        val g = season.gamesInWeek(1).first()
+        val now = TestSeason.WEEK1_KICKOFF - 3_600_000L
+        // Five books at -8.5, three at -8, one at -7.5 on the home side: mean = -8.28, mode = -8.5.
+        val quotes = (listOf(-8.5, -8.5, -8.5, -8.5, -8.5, -8.0, -8.0, -8.0, -7.5)).mapIndexed { i, p ->
+            listOf(
+                Quote("Book$i", Market.SPREAD, g.home.abbr, p, -110, now, bookKey = "draftkings"),
+                Quote("Book$i", Market.SPREAD, g.away.abbr, -p, -110, now, bookKey = "draftkings"),
+            )
+        }.flatten()
+        val board = GameBoard(g.id, g.home, g.away, g.kickoffEpochMs, quotes, now)
+        val s = season.copy(board = mapOf(g.id to board), boardFetchedAtEpochMs = now)
+        val leg = Teasers.find(s, UserState(), now).legs.first { it.gameId == g.id && it.team == g.home }
+        kotlin.test.assertEquals(-8.5, leg.originalPoint, 1e-9)
+        kotlin.test.assertEquals(-2.5, leg.teasedPoint, 1e-9)
+    }
+}

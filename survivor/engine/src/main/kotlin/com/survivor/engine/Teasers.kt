@@ -105,8 +105,11 @@ object Teasers {
     private fun consensusTeamSpread(game: Game, board: GameBoard?, team: Team): Double? {
         val quotes = board?.quotes?.filter { it.market == Market.SPREAD && it.point != null }.orEmpty()
         if (quotes.isNotEmpty()) {
+            // Books post lines in half points, so use the most common posted number (the mode), not the
+            // average: a teaser is placed on a real line such as -8.5, never on a -8.2 consensus.
             val homeSpreads = quotes.map { q -> if (q.side == game.home.abbr) q.point!! else -q.point!! }
-            val consensusHome = homeSpreads.average()
+            val consensusHome = homeSpreads.groupingBy { kotlin.math.round(it * 2) / 2 }.eachCount()
+                .entries.maxWithOrNull(compareBy({ it.value }, { -kotlin.math.abs(it.key - homeSpreads.average()) }))!!.key
             return if (team == game.home) consensusHome else -consensusHome
         }
         val homeSpread = game.line?.homeSpread ?: return null
