@@ -40,7 +40,7 @@ object BetFormat {
 
     /** "+2.2 bps" / "-0.8 bps" for [com.survivor.engine.SideAssessment.expectedGrowthBps] - the
      *  Kelly-scaled expected growth rate the new Bet Score ranks on, not raw EV. */
-    fun growthBps(bps: Double): String = String.format(Locale.US, "%+.1f bps", bps)
+    fun growthBps(bps: Double): String = if (kotlin.math.abs(bps) < 0.05) "0.0 bps" else String.format(Locale.US, "%+.1f bps", bps)
 
     /** Chip label for [Confidence] - how many standard errors of the fair price the edge clears. */
     fun confidenceLabel(c: Confidence): String = when (c) {

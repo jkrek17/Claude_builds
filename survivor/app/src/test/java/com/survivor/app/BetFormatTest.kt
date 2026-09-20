@@ -36,7 +36,7 @@ class BetFormatTest {
     @Test fun `formats expected growth in basis points`() {
         assertEquals("+2.2 bps", BetFormat.growthBps(2.18))
         assertEquals("-0.8 bps", BetFormat.growthBps(-0.75))
-        assertEquals("+0.0 bps", BetFormat.growthBps(0.0))
+        assertEquals("0.0 bps", BetFormat.growthBps(0.0))
     }
 
     @Test fun `labels every confidence band`() {
@@ -51,5 +51,10 @@ class BetFormatTest {
         assertEquals("✗ Pinnacle", BetFormat.sharpMark(false))
         assertEquals("— Pinnacle", BetFormat.sharpMark(null))
         assertEquals("✓ Circa", BetFormat.sharpMark(true, "Circa"))
+    }
+
+    @Test fun `tiny negative growth renders as zero, not minus zero`() {
+        kotlin.test.assertEquals("0.0 bps", BetFormat.growthBps(-0.01))
+        kotlin.test.assertEquals("+2.1 bps", BetFormat.growthBps(2.11))
     }
 }
