@@ -10,6 +10,9 @@ and tells you how to physically reframe the shot before you press the shutter:
 
 No cloud calls, no camera frames leave the phone.
 
+> Also in this repo: [`fantasy/`](fantasy/README.md), a read-only Yahoo Fantasy Football MCP server for
+> Claude (league history, waiver, trade and lineup advice). It is separate from the app and has its own CI.
+
 - [Try it on your phone (no Android Studio needed)](#try-it-on-your-phone)
 - [Build from source](#build-from-source)
 - [How it works](#how-it-works)

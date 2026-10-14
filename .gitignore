@@ -14,3 +14,9 @@ build/
 *.class
 .kotlin/
 .claude/worktrees/
+
+# Yahoo sign-in tokens for the fantasy MCP server
+oauth2.json
+__pycache__/
+*.egg-info/
+.venv/
