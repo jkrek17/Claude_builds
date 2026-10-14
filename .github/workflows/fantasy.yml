@@ -1,0 +1,31 @@
+name: Fantasy coach CI
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json"]
+  pull_request:
+    paths: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        python: ["3.10", "3.13"]
+    defaults:
+      run:
+        working-directory: fantasy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q

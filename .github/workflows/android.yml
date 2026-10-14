@@ -3,7 +3,10 @@ name: Android CI
 on:
   push:
     branches: ["**"]
+    # The Yahoo fantasy MCP server has its own workflow; don't rebuild and republish APKs for it.
+    paths-ignore: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json", ".claude/**"]
   pull_request:
+    paths-ignore: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json", ".claude/**"]
   workflow_dispatch:
 
 permissions:
