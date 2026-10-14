@@ -1,16 +1,20 @@
-name: Android CI
+name: Composition Coach (Android) CI
 
+# Runs (and republishes the rolling APK releases) only when the Android app or this workflow changes.
 on:
   push:
     branches: ["**"]
-    # The Yahoo fantasy MCP server has its own workflow; don't rebuild and republish APKs for it.
-    paths-ignore: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json", ".claude/**"]
+    paths: ["composition-coach/**", ".github/workflows/composition-coach.yml"]
   pull_request:
-    paths-ignore: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json", ".claude/**"]
+    paths: ["composition-coach/**", ".github/workflows/composition-coach.yml"]
   workflow_dispatch:
 
 permissions:
   contents: write
+
+defaults:
+  run:
+    working-directory: composition-coach
 
 jobs:
   build:
@@ -49,7 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: composition-coach-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: composition-coach/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -88,7 +92,7 @@ jobs:
           gh release create "$TAG" CompositionCoach-debug.apk CompositionCoach-debug-arm32.apk \
             --repo "$MIRROR_REPO" \
             --title "Composition Coach (test build)" \
-            --notes "Test build ${GITHUB_SHA::7}. Most phones: download CompositionCoach-debug.apk, open it, allow the install. See TESTERS.md for install steps and what to report."
+            --notes "Test build ${GITHUB_SHA::7}. Most phones: download CompositionCoach-debug.apk, open it, allow the install. See composition-coach/docs/TESTERS.md for install steps and what to report."
 
       - name: Upload test reports
         if: always()
@@ -96,9 +100,9 @@ jobs:
         with:
           name: test-reports
           path: |
-            composition/build/reports/tests
-            vision/build/reports/tests
-            app/build/reports/tests
+            composition-coach/composition/build/reports/tests
+            composition-coach/vision/build/reports/tests
+            composition-coach/app/build/reports/tests
           if-no-files-found: ignore
 
   release:
@@ -128,7 +132,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Always builds — with a real upload key when the four secrets are set (see docs/RELEASE.md),
+      # Always builds — with a real upload key when the four secrets are set (see composition-coach/docs/RELEASE.md),
       # otherwise falling back to the checked-in debug keystore so this job (and local builds) never
       # break for lack of a Play signing key. Only the "attach to release-latest" step below is gated.
       - name: Assemble release APKs (per ABI)
@@ -147,7 +151,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: composition-coach-release-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: composition-coach/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -155,7 +159,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: composition-coach-release-aab
-          path: app/build/outputs/bundle/release/app-release.aab
+          path: composition-coach/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 30
 
@@ -178,4 +182,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Latest release build" \
-            --notes "R8-shrunk release build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. ${KEYNOTE} Most phones: download CompositionCoach-release-arm64.apk, open it, allow the install. See docs/RELEASE.md."
+            --notes "R8-shrunk release build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. ${KEYNOTE} Most phones: download CompositionCoach-release-arm64.apk, open it, allow the install. See composition-coach/docs/RELEASE.md."

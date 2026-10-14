@@ -1,11 +1,11 @@
-name: Fantasy coach CI
+name: Fantasy coach (Yahoo MCP) CI
 
 on:
   push:
     branches: ["**"]
-    paths: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json"]
+    paths: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json", ".claude/settings.json"]
   pull_request:
-    paths: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json"]
+    paths: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json", ".claude/settings.json"]
   workflow_dispatch:
 
 permissions:
