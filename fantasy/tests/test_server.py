@@ -96,10 +96,26 @@ def test_missing_sign_in_gives_actionable_error(tmp_path, monkeypatch):
         asyncio.run(s.call_tool("get_league_standings", {}))
 
 
-def test_missing_league_gives_actionable_error():
-    s = srv.create_server(srv.Coach(tools=object(), data=object(), default_league=""))
-    with pytest.raises(ToolError, match="list_my_leagues"):
-        asyncio.run(s.call_tool("my_team", {}))
+class LeagueListTools:
+    def __init__(self, *league_ids):
+        self.ids = league_ids
+
+    def get_all_leagues(self, game_code="nfl", year=None):
+        return {"leagues": [{"league_id": i, "name": f"League {i}"} for i in self.ids]}
+
+    async def get_current_week(self, league_id):
+        return {"league_id": league_id, "current_week": 7}
+
+
+def test_missing_league_lists_choices_when_ambiguous():
+    s = srv.create_server(srv.Coach(tools=LeagueListTools("461.l.1", "461.l.2"), data=object(), default_league=""))
+    with pytest.raises(ToolError, match=r"461\.l\.1 \(League 461\.l\.1\), 461\.l\.2"):
+        asyncio.run(s.call_tool("get_current_week", {}))
+
+
+def test_single_league_is_used_automatically():
+    s = srv.create_server(srv.Coach(tools=LeagueListTools("461.l.5"), data=object(), default_league=""))
+    assert call(s, "get_current_week")["league_id"] == "461.l.5"
 
 
 def test_parse_scoreboard_reads_yahoo_shape():

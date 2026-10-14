@@ -6,8 +6,10 @@ Every tool is read-only. The server suggests moves; you make them in the Yahoo a
 from __future__ import annotations
 
 import asyncio
+import datetime
 import functools
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -19,8 +21,12 @@ from mcp.types import ToolAnnotations
 
 from . import analysis
 from .analysis import Player
+from .credentials import ensure_oauth_file
 from .vendor.yahoo_fantasy_mcp import YahooFantasyTools
 from .yahoo import SKILL_POSITIONS, YahooLeagueData, manager_identity
+
+# yahoo_oauth logs every token check at DEBUG (to stderr, so the MCP stream is safe); keep it quiet.
+logging.getLogger("yahoo_oauth").setLevel(logging.WARNING)
 
 DEFAULT_OAUTH_FILE = Path.home() / ".config" / "fantasy-coach" / "oauth2.json"
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True)
@@ -33,7 +39,7 @@ proposing, and league_history / head_to_head for past seasons and rivalries. The
 tools return raw Yahoo data when you need detail the analysis tools don't include.
 Projections are this league's fantasy points per healthy week (recent form blended with season average),
 not Yahoo's or experts' projections, so weigh them with news, matchups and injuries you know about.
-If league_id is omitted, tools use the YAHOO_LEAGUE_ID environment variable."""
+If league_id is omitted, tools use the YAHOO_LEAGUE_ID environment variable, or your only NFL league."""
 
 
 def oauth_file_path() -> Path:
@@ -53,9 +59,16 @@ class Coach:
     def tools(self) -> YahooFantasyTools:
         if self._tools is None:
             path = oauth_file_path()
-            if not path.exists():
-                raise ToolError(f"No Yahoo sign-in found at {path}. Run `fantasy-coach auth` first.")
-            self._tools = YahooFantasyTools(oauth2_file=str(path))
+            if not ensure_oauth_file(path):
+                raise ToolError(
+                    f"No Yahoo sign-in found at {path}. Run `fantasy-coach auth` first, or set YAHOO_CLIENT_ID, "
+                    "YAHOO_CLIENT_SECRET and YAHOO_REFRESH_TOKEN (see fantasy/README.md, \"Run it in the cloud\").")
+            try:
+                self._tools = YahooFantasyTools(oauth2_file=str(path))
+            except Exception as e:
+                raise ToolError(
+                    f"Yahoo sign-in failed ({type(e).__name__}: {e}). The saved refresh token or the app's client "
+                    "ID/secret was rejected; sign in again (fantasy/README.md).") from e
         return self._tools
 
     @property
@@ -67,8 +80,20 @@ class Coach:
     def league(self, league_id: str | None) -> str:
         key = league_id or self.default_league
         if not key:
-            raise ToolError("No league given and YAHOO_LEAGUE_ID is not set. Call list_my_leagues to find one.")
+            key = self.default_league = self._only_nfl_league()
         return key
+
+    def _only_nfl_league(self) -> str:
+        """With no league configured, use the account's NFL league if there's exactly one."""
+        today = datetime.date.today()
+        # The NFL season is named for the year it starts, so January–March still belongs to last year.
+        years = [today.year] if today.month > 3 else [today.year - 1, today.year]
+        leagues = [lg for y in years for lg in self.tools.get_all_leagues(game_code="nfl", year=y).get("leagues", [])]
+        if len(leagues) == 1:
+            return leagues[0]["league_id"]
+        found = ", ".join(f"{lg['league_id']} ({lg['name']})" for lg in leagues) or "none"
+        raise ToolError(f"No league given and YAHOO_LEAGUE_ID is not set. Your NFL leagues: {found}. "
+                        "Pass league_id, or set YAHOO_LEAGUE_ID.")
 
     # -- shared lookups -----------------------------------------------------------------------
 

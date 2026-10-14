@@ -3,9 +3,9 @@ name: Fantasy coach CI
 on:
   push:
     branches: ["**"]
-    paths: ["fantasy/**", ".github/workflows/fantasy.yml"]
+    paths: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json"]
   pull_request:
-    paths: ["fantasy/**", ".github/workflows/fantasy.yml"]
+    paths: ["fantasy/**", ".github/workflows/fantasy.yml", ".mcp.json"]
   workflow_dispatch:
 
 permissions:

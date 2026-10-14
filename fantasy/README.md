@@ -33,7 +33,8 @@ the same tools on the 2.x `MCPServer` and adds the analysis tools on top.
 2. Fill in:
    - **Application Name**: anything, e.g. `fantasy-coach`
    - **Application Type**: Installed Application
-   - **Redirect URI(s)**: `oob`. If Yahoo rejects that, use `https://localhost:8080` and see step 3.
+   - **Redirect URI(s)**: `https://localhost:8080` (Yahoo no longer accepts `oob`)
+   - **OAuth Client Type**: Confidential Client
    - **API Permissions**: Fantasy Sports, **Read**
 3. Create the app and copy the **Client ID** and **Client Secret**.
 
@@ -52,13 +53,12 @@ pip install -e .
 
 ```bash
 fantasy-coach auth
-# If your app's redirect URI is https://localhost:8080:
-fantasy-coach auth --redirect-uri https://localhost:8080
 ```
 
-Paste the Client ID and Secret when asked. A browser opens; approve access and paste the code Yahoo shows.
-With an `https://localhost` redirect, the browser lands on a page that fails to load. That's expected:
-copy the value after `code=` from its address bar.
+Paste the Client ID and Secret when asked. A browser opens; click **Agree**. The browser then lands on
+`https://localhost:8080/?code=...`, a page that fails to load. That's expected: paste the code, or the whole
+address, into the terminal. If your app uses a different redirect URI, pass `--redirect-uri` or set
+`YAHOO_REDIRECT_URI`.
 
 Tokens are saved to `~/.config/fantasy-coach/oauth2.json` with owner-only permissions; set
 `YAHOO_OAUTH_FILE` to put them elsewhere. Don't commit that file. The server refreshes the token by itself
@@ -98,8 +98,26 @@ claude mcp add fantasy-coach -e YAHOO_LEAGUE_ID=461.l.123456 -- /full/path/to/fa
 On Windows the command is `C:\\full\\path\\to\\fantasy\\.venv\\Scripts\\fantasy-coach.exe`. Restart
 Claude Desktop afterwards.
 
-`YAHOO_LEAGUE_ID` is optional. Without it, Claude passes `league_id` to each tool and can find your leagues
-with `list_my_leagues`.
+`YAHOO_LEAGUE_ID` is optional. Without it, your only NFL league is used; if you have several, Claude passes
+`league_id` to each tool and can find them with `list_my_leagues`.
+
+## Run it in the cloud (Claude Code on the web)
+
+The repo is set up so that Claude Code cloud sessions on it load this server by themselves: `.mcp.json`
+starts `fantasy/scripts/serve-mcp.sh`, which installs the package on first start (about 15s), and
+`.claude/settings.json` enables it. Nothing runs on your computer. Containers are temporary, so the sign-in
+lives in environment variables:
+
+1. In the cloud environment's settings (environment menu in the session title bar → Edit), add the
+   environment variables `YAHOO_CLIENT_ID` and `YAHOO_CLIENT_SECRET`. Variables apply to new sessions.
+2. In a new session, ask Claude to sign you in to Yahoo. It runs `fantasy-coach auth-url`; open the link,
+   click **Agree**, and paste the `https://localhost:8080/?code=...` address back. The code is single-use
+   and expires in minutes.
+3. Claude runs `fantasy-coach auth-code <code> --refresh-token-file <file>`, which writes the refresh token
+   to a private file without printing it. Open that file and add its contents as a third environment
+   variable, `YAHOO_REFRESH_TOKEN`.
+4. Start one more new session. From then on every session is signed in. Optionally set `YAHOO_LEAGUE_ID`;
+   with only one NFL league it's picked automatically.
 
 ## Things to ask
 
@@ -154,5 +172,7 @@ Yahoo account or network.
 | `src/fantasy_coach/analysis.py` | Projections, lineup optimizer, waiver, trade and history math (no I/O) |
 | `src/fantasy_coach/yahoo.py` | Read-only Yahoo access via `yahoo_fantasy_api`, with caching |
 | `src/fantasy_coach/server.py` | MCP tools |
-| `src/fantasy_coach/__main__.py` | `fantasy-coach auth / leagues / serve` |
+| `src/fantasy_coach/__main__.py` | `fantasy-coach auth / auth-url / auth-code / leagues / serve` |
+| `src/fantasy_coach/credentials.py` | Yahoo OAuth code exchange; rebuilds the token file from env vars |
+| `scripts/serve-mcp.sh` | Installs into `.venv` if needed, then starts the server (used by `.mcp.json`) |
 | `src/fantasy_coach/vendor/yahoo_fantasy_mcp/` | spilchen's tools, vendored (MIT) |
