@@ -1,0 +1,5 @@
+# Yahoo sign-in tokens
+oauth2.json
+__pycache__/
+*.egg-info/
+.venv/
