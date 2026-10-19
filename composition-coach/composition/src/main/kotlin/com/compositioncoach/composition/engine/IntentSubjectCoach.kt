@@ -37,7 +37,7 @@ object IntentSubjectCoach {
      */
     fun awaitingSubjectRecommendation(intent: SceneIntent, rawFrame: FrameAnalysis, resolution: SubjectResolution): Recommendation? =
         when (intent) {
-            SceneIntent.PORTRAIT ->
+            SceneIntent.PORTRAIT, SceneIntent.SELFIE ->
                 if (resolution.primary?.face == null) portraitRecommendation(hadAnyDetectedFace = rawFrame.faces.isNotEmpty()) else null
             SceneIntent.GROUP_PORTRAIT -> {
                 val usableFaces = resolution.subjects.count { it.face != null }

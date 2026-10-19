@@ -177,7 +177,7 @@ object SubjectResolver {
             salientMinContrast = SALIENT_REGION_MIN_CONTRAST,
             includeObjects = true, minObjectArea = MIN_OBJECT_SUBJECT_AREA,
         )
-        SceneIntent.PORTRAIT, SceneIntent.GROUP_PORTRAIT -> ResolutionRules(
+        SceneIntent.PORTRAIT, SceneIntent.GROUP_PORTRAIT, SceneIntent.SELFIE -> ResolutionRules(
             useFaces = true, includeBodyOnlySubjects = false, includeSalientFallback = false,
             salientMinContrast = SALIENT_REGION_MIN_CONTRAST,
             includeObjects = false, minObjectArea = MIN_OBJECT_SUBJECT_AREA,

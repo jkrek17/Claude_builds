@@ -32,7 +32,15 @@ enum class SceneIntent(val label: String) {
     GROUP_PORTRAIT("Group"),
     LANDSCAPE("Landscape"),
     ARCHITECTURE("Architecture"),
-    OBJECT("Object / food");
+    OBJECT("Object / food"),
+
+    /**
+     * Front-camera self-portrait. Coached with exactly the [PORTRAIT] rules (forced PORTRAIT scene, faces-only
+     * subjects, relaxed background-face threshold, "find your subject" when no face is in frame); the result
+     * still reports `intent == SELFIE`. Mirror-aware wording of directional cues is the app's concern.
+     * Appended last so existing ordinals are unchanged.
+     */
+    SELFIE("Selfie");
 
     /** The scene type this intent forces, or null for [AUTO]. */
     fun forcedSceneType(): SceneType? = when (this) {
@@ -42,5 +50,13 @@ enum class SceneIntent(val label: String) {
         LANDSCAPE -> SceneType.LANDSCAPE
         ARCHITECTURE -> SceneType.ARCHITECTURE
         OBJECT -> SceneType.OBJECT
+        SELFIE -> SceneType.PORTRAIT
     }
+
+    /**
+     * The intent whose coaching rules this one uses: [SELFIE] is coached as [PORTRAIT]; every other value is
+     * itself. The engine passes this to subject resolution and the analyzers, and keeps the declared intent
+     * on the result.
+     */
+    fun rulesIntent(): SceneIntent = if (this == SELFIE) PORTRAIT else this
 }

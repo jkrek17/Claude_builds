@@ -26,7 +26,16 @@ object ScoreAggregator {
     const val HIGH_SEVERITY_PENALTY = 3.5f
     const val MAX_HIGH_SEVERITY_PENALTY = 20f
 
-    fun aggregate(metrics: List<CompositionMetric>, scene: SceneClassification): Float {
+    /**
+     * @param adaptive the user's taste multipliers ([AdaptiveWeights]); each category's scene weight is
+     *   multiplied by its multiplier. [AdaptiveWeights.NEUTRAL] multiplies by exactly 1.0, so the default
+     *   reproduces the pre-taste-model score bit for bit.
+     */
+    fun aggregate(
+        metrics: List<CompositionMetric>,
+        scene: SceneClassification,
+        adaptive: AdaptiveWeights = AdaptiveWeights.NEUTRAL,
+    ): Float {
         val weights = ScoreWeights.forScene(scene.type)
         val applicable = metrics.filter { it.applicable }
         if (applicable.isEmpty()) return NEUTRAL_SCORE
@@ -34,7 +43,7 @@ object ScoreAggregator {
         var weightedSum = 0f
         var weightTotal = 0f
         for (metric in applicable) {
-            val weight = weights[metric.category] * metric.confidence.coerceIn(0f, 1f)
+            val weight = weights[metric.category] * adaptive.multiplier(metric.category) * metric.confidence.coerceIn(0f, 1f)
             if (weight <= 0f) continue
             weightedSum += weight * metric.score.coerceIn(0f, 1f)
             weightTotal += weight

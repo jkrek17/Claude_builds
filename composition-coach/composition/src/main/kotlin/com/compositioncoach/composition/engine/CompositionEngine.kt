@@ -26,6 +26,7 @@ import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.OptimizationResult
 import com.compositioncoach.composition.model.Recommendation
 import com.compositioncoach.composition.model.SceneClassification
+import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.ScoreWeights
 import com.compositioncoach.composition.model.Severity
 
@@ -52,13 +53,22 @@ class CompositionEngine(
      *   [SceneClassifier.forcedClassification]), changes which detections count as subjects (see
      *   [SubjectResolver]'s per-intent rules), and — for PORTRAIT/GROUP_PORTRAIT/OBJECT — coaches the
      *   photographer *toward* the intent when no qualifying subject is in frame yet (see
-     *   [IntentSubjectCoach], [CompositionResult.awaitingSubject]).
+     *   [IntentSubjectCoach], [CompositionResult.awaitingSubject]). [SceneIntent.SELFIE] is coached with the
+     *   PORTRAIT rules and reported as SELFIE on the result.
+     * @param adaptive the user's taste multipliers ([AdaptiveWeights]), applied to the score
+     *   ([ScoreAggregator]), the optimizer's predictions and the advice ranking ([RecommendationEngine]).
+     *   The default [AdaptiveWeights.NEUTRAL] reproduces the pre-taste-model results exactly.
      */
-    fun evaluate(frame: FrameAnalysis, level: GuidanceLevel = GuidanceLevel.BALANCED, intent: SceneIntent = SceneIntent.AUTO): CompositionResult {
-        return runCatching { evaluateInternal(frame, level, intent) }.getOrElse { CompositionResult.empty(frame.timestampNanos) }
+    fun evaluate(
+        frame: FrameAnalysis,
+        level: GuidanceLevel = GuidanceLevel.BALANCED,
+        intent: SceneIntent = SceneIntent.AUTO,
+        adaptive: AdaptiveWeights = AdaptiveWeights.NEUTRAL,
+    ): CompositionResult {
+        return runCatching { evaluateInternal(frame, level, intent, adaptive) }.getOrElse { CompositionResult.empty(frame.timestampNanos) }
     }
 
-    private fun evaluateInternal(rawFrame: FrameAnalysis, level: GuidanceLevel, intent: SceneIntent): CompositionResult {
+    private fun evaluateInternal(rawFrame: FrameAnalysis, level: GuidanceLevel, intent: SceneIntent, adaptive: AdaptiveWeights): CompositionResult {
         val startNanos = System.nanoTime()
 
         // Background faces (someone at the next table) must not hijack the scene type or the subject.
@@ -75,13 +85,16 @@ class CompositionEngine(
         }
 
         val awaiting = IntentSubjectCoach.awaitingSubjectRecommendation(intent, rawFrame, resolution)
+        val isGroupScene = intent == SceneIntent.GROUP_PORTRAIT || scene.type == SceneType.GROUP_PORTRAIT
         if (awaiting != null) {
+            val groupStatus = if (isGroupScene) runCatching { GroupReadiness.evaluate(frame.faces, metrics) }.getOrNull() else null
             return awaitingSubjectResult(frame, scene, metrics, resolution, awaiting, intent, startNanos)
+                .copy(groupStatus = groupStatus?.copy(ready = false))
         }
 
-        val rawScore = ScoreAggregator.aggregate(metrics, scene)
-        val ranked = recommendationEngine.rank(metrics, level)
-        val optimization = runCatching { optimizer.optimize(frame, scene, rawScore, level, intent) }.getOrNull()
+        val rawScore = ScoreAggregator.aggregate(metrics, scene, adaptive)
+        val ranked = recommendationEngine.rank(metrics, level, adaptive)
+        val optimization = runCatching { optimizer.optimize(frame, scene, rawScore, level, intent, adaptive) }.getOrNull()
         val finalRecommendations = applyOptimizerInsight(ranked, optimization)
 
         val isShootReady = rawScore >= SHOOT_READY_SCORE &&
@@ -103,6 +116,7 @@ class CompositionEngine(
             weights = ScoreWeights.forScene(scene.type),
             engineTimeMs = (System.nanoTime() - startNanos) / 1_000_000,
             intent = intent,
+            groupStatus = if (isGroupScene) runCatching { GroupReadiness.evaluate(frame.faces, metrics) }.getOrNull() else null,
         )
     }
 

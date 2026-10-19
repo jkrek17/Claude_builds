@@ -20,6 +20,12 @@ data class DetectedFace(
     val gaze: GazeDirection = GazeDirection.UNKNOWN,
     val confidence: Float = 1f,
     val smilingProbability: Float? = null,
+    /**
+     * 0..1 probability that this person's eyes are open (ML Kit classification: the lower of
+     * `leftEyeOpenProbability` / `rightEyeOpenProbability`), or null when classification did not run.
+     * Null is treated as "unknown, assume open" by [com.compositioncoach.composition.engine.GroupReadiness].
+     */
+    val eyesOpenProbability: Float? = null,
 ) {
     val center: NormalizedPoint get() = bounds.center
 
