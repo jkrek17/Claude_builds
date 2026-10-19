@@ -37,8 +37,6 @@ enum class DegradedNote(@StringRes val resId: Int) {
             }
         }
 
-        private val CapturePipeline.isMotion: Boolean
-            get() = this == CapturePipeline.MOTION_AVERAGE || this == CapturePipeline.MOTION_LIGHTEN || this == CapturePipeline.MOTION_MEDIAN
     }
 }
 

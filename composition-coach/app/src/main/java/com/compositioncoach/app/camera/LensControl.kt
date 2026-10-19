@@ -58,27 +58,114 @@ class LensControl internal constructor(private val camera: Camera) {
         return focal / long * zoom
     }
 
+    // ---- Manual request options. Camera2CameraControl keeps one option set per control, so every change
+    // re-applies the union of what is currently wanted (focus and exposure are set by different pipelines).
+    private var manualFocusDiopters: Float? = null
+    private var aeLocked = false
+    private var manualExposure: ManualExposure? = null
+
+    /** A fixed sensor exposure: [exposureNs] shutter and [iso] sensitivity, with auto-exposure off. */
+    data class ManualExposure(val exposureNs: Long, val iso: Int)
+
+    /** Whether `CONTROL_AE_LOCK` is honoured on this lens. */
+    val supportsAeLock: Boolean get() = characteristic(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE) == true
+
+    /** Whether `CONTROL_AE_MODE_OFF` with `SENSOR_EXPOSURE_TIME` / `SENSOR_SENSITIVITY` is honoured (MANUAL_SENSOR capability). */
+    val supportsManualExposure: Boolean
+        get() {
+            val caps = characteristic(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: return false
+            val aeModes = characteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES) ?: return false
+            return caps.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) &&
+                aeModes.contains(CaptureRequest.CONTROL_AE_MODE_OFF)
+        }
+
+    /** The sensor's exposure-time range in nanoseconds, or null when not reported. */
+    val exposureTimeRangeNs: LongRange?
+        get() = characteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.let { it.lower..it.upper }
+
+    /** The sensor's ISO range, or null when not reported. */
+    val isoRange: IntRange?
+        get() = characteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.let { it.lower..it.upper }
+
     /**
      * Turns AF off and drives the lens to [diopters] (0 = infinity) on the repeating request; the future
      * completes once the request is submitted, not when the lens has arrived (callers allow a settle time).
      */
     suspend fun setManualFocus(diopters: Float) {
-        val options = CaptureRequestOptions.Builder()
-            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-            .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, diopters)
-            .build()
-        withContext(Dispatchers.Main.immediate) {
-            Camera2CameraControl.from(camera.cameraControl).setCaptureRequestOptions(options).awaitFuture()
-        }
+        manualFocusDiopters = diopters
+        apply()
     }
 
-    /** Clears the manual focus options so CameraX's continuous AF resumes. Never throws. */
+    /** Clears the manual focus so CameraX's continuous AF resumes. Never throws. */
     suspend fun restoreAutoFocus() {
-        runCatching {
-            withContext(Dispatchers.Main.immediate) {
-                Camera2CameraControl.from(camera.cameraControl).clearCaptureRequestOptions().awaitFuture()
-            }
-        }.onFailure { Log.w(TAG, "Could not restore autofocus", it) }
+        manualFocusDiopters = null
+        runCatching { apply() }.onFailure { Log.w(TAG, "Could not restore autofocus", it) }
+    }
+
+    /**
+     * Freezes auto-exposure at its current result (`CONTROL_AE_LOCK`) so the frames of a stack share one
+     * brightness. No-op when the lens does not support it. Callers unlock with [unlockAutoExposure].
+     */
+    suspend fun lockAutoExposure() {
+        if (!supportsAeLock) return
+        aeLocked = true
+        apply()
+    }
+
+    /** Releases [lockAutoExposure]. Never throws. */
+    suspend fun unlockAutoExposure() {
+        if (!aeLocked) return
+        aeLocked = false
+        runCatching { apply() }.onFailure { Log.w(TAG, "Could not unlock auto-exposure", it) }
+    }
+
+    /**
+     * Fixes the shutter and ISO (`CONTROL_AE_MODE_OFF`): [exposureNs] and [iso] are clamped to the sensor's
+     * ranges. Returns the values actually requested, or null when the lens has no manual sensor control (then
+     * nothing changes). Callers restore with [restoreAutoExposure].
+     */
+    suspend fun setManualExposure(exposureNs: Long, iso: Int): ManualExposure? {
+        if (!supportsManualExposure) return null
+        val range = exposureTimeRangeNs
+        val isoR = isoRange
+        val wanted = ManualExposure(
+            exposureNs = if (range != null) exposureNs.coerceIn(range.first, range.last) else exposureNs,
+            iso = if (isoR != null) iso.coerceIn(isoR.first, isoR.last) else iso,
+        )
+        manualExposure = wanted
+        apply()
+        return wanted
+    }
+
+    /** Clears [setManualExposure] so auto-exposure resumes. Never throws. */
+    suspend fun restoreAutoExposure() {
+        if (manualExposure == null) return
+        manualExposure = null
+        runCatching { apply() }.onFailure { Log.w(TAG, "Could not restore auto-exposure", it) }
+    }
+
+    /** Re-applies every wanted manual option as one set (or clears them all when nothing is wanted). */
+    private suspend fun apply() {
+        val focus = manualFocusDiopters
+        val exposure = manualExposure
+        val control = Camera2CameraControl.from(camera.cameraControl)
+        if (focus == null && !aeLocked && exposure == null) {
+            withContext(Dispatchers.Main.immediate) { control.clearCaptureRequestOptions().awaitFuture() }
+            return
+        }
+        val builder = CaptureRequestOptions.Builder()
+        if (focus != null) {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+            builder.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, focus)
+        }
+        if (exposure != null) {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+            builder.setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure.exposureNs)
+            builder.setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, exposure.iso)
+        } else if (aeLocked) {
+            builder.setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, true)
+        }
+        withContext(Dispatchers.Main.immediate) { control.setCaptureRequestOptions(builder.build()).awaitFuture() }
     }
 
     companion object {

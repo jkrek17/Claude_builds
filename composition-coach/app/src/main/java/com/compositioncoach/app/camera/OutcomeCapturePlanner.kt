@@ -62,6 +62,9 @@ object OutcomeCapturePlanner {
         val pipeline = when (requested) {
             Pipeline.SINGLE -> Pipeline.SINGLE
             Pipeline.BURST_SHARPEST -> if (plain) Pipeline.BURST_SHARPEST else Pipeline.SINGLE
+            // Wave 3 merges need the plain session like lucky imaging does (the extension does its own multi-frame work).
+            Pipeline.BURST_MERGE, Pipeline.NIGHT_STACK, Pipeline.GROUP_COMPOSITE, Pipeline.EXPOSURE_BRACKET ->
+                if (plain) requested else Pipeline.SINGLE
             Pipeline.FOCUS_STACK -> when {
                 !plain -> Pipeline.SINGLE
                 support.focusStacking -> Pipeline.FOCUS_STACK

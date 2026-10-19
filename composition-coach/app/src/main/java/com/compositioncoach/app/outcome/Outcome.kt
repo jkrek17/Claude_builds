@@ -4,8 +4,25 @@ import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.composition.model.MetricCategory
 import com.compositioncoach.composition.model.SceneIntent
 
-/** How a capture is produced for an outcome. */
-enum class CapturePipeline { SINGLE, BURST_SHARPEST, MOTION_AVERAGE, MOTION_LIGHTEN, MOTION_MEDIAN, FOCUS_STACK }
+/**
+ * How a capture is produced for an outcome.
+ *
+ * - SINGLE: one capture. BURST_SHARPEST: three in-memory frames, keep the sharpest.
+ * - BURST_MERGE: a full-resolution burst aligned and averaged with motion rejection (clean, sharp; Wave 3).
+ * - NIGHT_STACK: BURST_MERGE with more frames and the longest handheld shutter the gyro allows (Wave 3).
+ * - EXPOSURE_BRACKET: full-resolution exposure bracket fused for dynamic range, combined with the focus stack
+ *   when the lens can focus manually (Wave 3).
+ * - GROUP_COMPOSITE: a burst in which every face is taken from its own best frame (eyes open, sharpest) (Wave 3).
+ * - MOTION_*: the live analysis stream stacked over an adaptive hold. FOCUS_STACK: three focus distances merged.
+ */
+enum class CapturePipeline {
+    SINGLE, BURST_SHARPEST, BURST_MERGE, NIGHT_STACK, EXPOSURE_BRACKET, GROUP_COMPOSITE,
+    MOTION_AVERAGE, MOTION_LIGHTEN, MOTION_MEDIAN, FOCUS_STACK;
+
+    /** Pipelines that need the plain (non-extension) session: lucky imaging, merges and manual control cannot run under a vendor extension. */
+    val needsPlainSession: Boolean get() = this != SINGLE
+    val isMotion: Boolean get() = this == MOTION_AVERAGE || this == MOTION_LIGHTEN || this == MOTION_MEDIAN
+}
 
 /** Post-processing applied on review (never automatic, never destructive). */
 enum class PostProcess { NONE, BOKEH_MASK }
@@ -44,7 +61,7 @@ enum class Outcome(val label: String, val spec: OutcomeSpec) {
     SELFIE("Selfie", OutcomeSpec(SceneIntent.SELFIE, listOf(CaptureEnhancement.BOKEH, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_SHARPEST, 0, PostProcess.BOKEH_MASK, null, setOf(MetricCategory.LIGHT, MetricCategory.HEADROOM), preferFrontCamera = true));
 
     val needsHold: Boolean get() = spec.holdSeconds > 0
-    val isMotion: Boolean get() = spec.pipeline == CapturePipeline.MOTION_AVERAGE || spec.pipeline == CapturePipeline.MOTION_LIGHTEN || spec.pipeline == CapturePipeline.MOTION_MEDIAN
+    val isMotion: Boolean get() = spec.pipeline.isMotion
 
     companion object {
         val DEFAULT = ANYTHING

@@ -177,6 +177,12 @@ class CapturePipeline(
                 .let { it.tagged(if (it.diagnostics.burstScores != null) OutcomePipeline.BURST_SHARPEST else OutcomePipeline.SINGLE) }
             OutcomePipeline.FOCUS_STACK -> (if (plain) stacked.focusStack(request, lens) else null)
                 ?: captureAny(request.withBurst(plain && controller != null)).tagged(OutcomePipeline.SINGLE)
+            // Wave 3 pipelines: until their captures are wired in, behave as today's best equivalent.
+            OutcomePipeline.BURST_MERGE, OutcomePipeline.NIGHT_STACK, OutcomePipeline.GROUP_COMPOSITE ->
+                captureAny(request.withBurst(plain && controller != null))
+                    .let { it.tagged(if (it.diagnostics.burstScores != null) OutcomePipeline.BURST_SHARPEST else OutcomePipeline.SINGLE) }
+            OutcomePipeline.EXPOSURE_BRACKET -> (if (plain) stacked.focusStack(request, lens) else null)
+                ?: captureAny(request.withBurst(plain && controller != null)).tagged(OutcomePipeline.SINGLE)
             OutcomePipeline.MOTION_AVERAGE, OutcomePipeline.MOTION_LIGHTEN, OutcomePipeline.MOTION_MEDIAN ->
                 stacked.motion(request, plan.pipeline, outcome.spec.holdSeconds, stacking!!, lens)
         }
