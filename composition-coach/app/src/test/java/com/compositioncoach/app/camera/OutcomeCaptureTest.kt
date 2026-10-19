@@ -41,8 +41,12 @@ class OutcomeCaptureTest {
     }
 
     @Test
-    fun `landscape focus stacks only without an extension and with manual focus`() {
-        assertEquals(Pipeline.SINGLE, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, HDR), full).pipeline)
+    fun `landscape focus stacks whenever the lens can, else takes the sharpest frame`() {
+        // Even with an HDR extension on offer, the stack wins: it binds the plain session.
+        val withHdr = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, HDR), full)
+        assertEquals(Pipeline.FOCUS_STACK, withHdr.pipeline)
+        assertEquals(OFF, withHdr.enhancement)
+        assertFalse(withHdr.degraded)
         val stacked = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), full)
         assertEquals(Pipeline.FOCUS_STACK, stacked.pipeline)
         // A missing HDR extension is not a degradation: the standard pipeline is HDR on such phones (Pixels).
@@ -58,11 +62,12 @@ class OutcomeCaptureTest {
     }
 
     @Test
-    fun `the focus stack beats AUTO but not a named HDR`() {
+    fun `the focus stack beats AUTO and HDR, and HDR is bound only when the lens cannot stack`() {
         val plan = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO), full)
         assertEquals(OFF, plan.enhancement)
         assertEquals(Pipeline.FOCUS_STACK, plan.pipeline)
-        assertEquals(HDR, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO, HDR), full).enhancement)
+        assertEquals(OFF, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO, HDR), full).enhancement)
+        assertEquals(HDR, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO, HDR), none).enhancement)
         assertEquals(AUTO, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO), none).enhancement)
     }
 

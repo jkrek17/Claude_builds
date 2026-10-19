@@ -42,8 +42,8 @@ data class CapturePlan(
  *    cannot run under a vendor extension, so with an extension bound they become SINGLE (the extension does
  *    its own multi-frame work, so this is not reported as degraded).
  *  - FOCUS_STACK without manual focus falls back to BURST_SHARPEST (one photo, sharpest of three). When the
- *    lens can focus-stack and the preference resolves to AUTO, OFF is bound instead: AUTO means "let the phone
- *    pick" and the stack is the better pick; a *named* first choice (HDR) still wins over the stack.
+ *    lens can focus-stack, OFF is bound whatever the preference says (AUTO or a named HDR): the stack is the
+ *    outcome's point, no vendor session can carry it, and the standard pipeline does HDR anyway.
  *  - MOTION_* without live frames falls back to BURST_SHARPEST, and says so.
  */
 object OutcomeCapturePlanner {
@@ -52,7 +52,7 @@ object OutcomeCapturePlanner {
         val spec = outcome.spec
         val preference = spec.enhancementPreference.ifEmpty { listOf(CaptureEnhancement.OFF) }
         val preferred = preference.firstOrNull { it == CaptureEnhancement.OFF || it in available } ?: CaptureEnhancement.OFF
-        val stackWins = spec.pipeline == Pipeline.FOCUS_STACK && support.focusStacking && preferred == CaptureEnhancement.AUTO
+        val stackWins = spec.pipeline == Pipeline.FOCUS_STACK && support.focusStacking
         val enhancement = if (stackWins) CaptureEnhancement.OFF else preferred
         val first = preference.first()
         val missing = first.takeIf { it != enhancement && it !in SILENT_FALLBACKS }

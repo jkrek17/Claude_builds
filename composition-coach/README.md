@@ -93,7 +93,7 @@ automated device test exists and nobody has checked it on a phone since it was i
 | Anything | auto scene, best available enhancement (vendor AUTO), sharpest of three, auto-level | not yet verified |
 | A person | face coaching; vendor Bokeh when offered, else a background-blur "Portrait" look offered on review | not yet verified |
 | A group | everyone in frame with eyes open before it fires; edge cuts block; timer hands over to readiness | not yet verified |
-| A view | horizon coaching; HDR when offered, else a 3-distance focus stack when the lens can focus manually | not yet verified |
+| A view | horizon coaching; a 3-distance focus stack whenever the lens can focus manually, else HDR when offered | not yet verified |
 | Night | vendor Night when offered; 2 s steady hold with a progress ring | not yet verified |
 | Light trails / Silky water / Clear the crowd | gyro-aligned Motion stack (lighten / average / median) of the live stream for 4 / 3 / 5 s, plus the normal first frame; "Too shaky, try again" | not yet verified |
 | Food & things | object subject, light and background coaching | not yet verified |

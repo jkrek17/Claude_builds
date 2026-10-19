@@ -36,7 +36,7 @@ Unchanged from `COACHING_UI.md`, with these defaults:
 | **Anything** | Auto scene detection, best available enhancement, sharpest-of-burst, auto-level | nothing |
 | **Portrait** | face coaching (light, headroom, looking room); vendor Bokeh extension when the phone offers it, else our mask-based background blur on review | "Turn so the light is on their face" when needed |
 | **Group** | everyone in frame and eyes open before it fires; edge cuts are blocking | "Someone's cut off" / "Eyes closed" |
-| **Landscape** | horizon level and placement; HDR when available; focus stack (3 focus distances merged by local sharpness) so near and far are sharp | "Level" / "Hold still" |
+| **Landscape** | horizon level and placement; focus stack (3 focus distances merged by local sharpness) so near and far are sharp whenever the lens can focus manually; the HDR extension only when it cannot | "Level" / "Hold still" |
 | **Night** | vendor Night extension; longer steady hold with a progress ring | "Hold still" |
 | **Light trails** | Motion stack, lighten blend, 3-4 s, gyro-aligned | "Hold still for 4 seconds" |
 | **Silky water** | Motion stack, average blend, 2-3 s | "Hold still for 3 seconds" |
