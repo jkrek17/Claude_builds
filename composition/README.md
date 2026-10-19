@@ -20,7 +20,7 @@ SubjectResolver.resolve()         -> subjects: List<DetectedSubject>, primary: D
 AnalysisContext(frame, scene, subjects, primary, guidanceLevel)
      |
      v
-13x CompositionAnalyzer.analyze() -> List<CompositionMetric>   (each wrapped in runCatching; a throwing
+14x CompositionAnalyzer.analyze() -> List<CompositionMetric>   (each wrapped in runCatching; a throwing
      |                                                           analyzer is skipped, never crashes the frame)
      v
 ScoreAggregator.aggregate()       -> rawScore: Float (0..100)
@@ -92,6 +92,7 @@ consistently everywhere in this module:
 | `NegativeSpaceAnalyzer` | NEGATIVE_SPACE | neutral 0.75 score always; flags a subject under 3% of frame area (4% for an OBJECT-kind subject) outside LANDSCAPE |
 | `LeadingLinesAnalyzer` | LEADING_LINES | still low-weight and somewhat exploratory, but no longer silent: a line within 8% of the subject/thirds point → positive strength text; a line clearly leading away (≥20%) → LOW severity "Move so the lines lead toward your subject", only in LANDSCAPE/ARCHITECTURE |
 | `SceneSpecificAnalyzer` | SCENE_SPECIFIC | LANDSCAPE: horizon vs. nearest third row (weaker signal accepted when intent is LANDSCAPE); ARCHITECTURE: converging near-vertical lines (±4° opposite deviation); declared PORTRAIT intent: "move closer" when the face is < 12% of frame height |
+| `LightAnalyzer` | LIGHT | primary FACE/PERSON (or OBJECT with a mask) + luminance stats; see [Light on the subject](#light-on-the-subject). Backlit: subject/background < 0.55 with background > 0.6 (MEDIUM); too dark: subject < 0.22 (LOW, MEDIUM < 0.12); blown: > 15% of face cells > 0.95 (LOW); split: face halves differ > 0.35, face ≥ 10% height (LOW); good light: subject 0.3-0.8, halves within 0.2. Never HIGH. Confidence 0.8 with a mask, 0.55 from the face/subject box |
 
 All physical instruction strings are centralised in `InstructionText` (direction → plain action) so every
 analyzer that just needs "move that way" says it identically; a few analyzers (`HeadroomAnalyzer`,
@@ -143,12 +144,43 @@ See the Analyzers table above for what each one does differently with a mask; in
 more precise (silhouette-shaped rather than bounding-box-shaped) and more confident (0.85 vs. 0.5-0.7
 without one).
 
+## Light on the subject
+
+`MetricCategory.LIGHT` (appended last in the enum, so existing ordinals are unchanged) coaches the one thing
+composition rules ignore: is the subject lit well? `LightAnalyzer` reads the `ImageStatistics` luminance grid,
+the `SubjectMask` when present, and face geometry. The subject's luminance is the face box's mean (when the
+face is ≥ 10% of frame height — a dark jacket should not read as "face too dark"), else the mask's subject
+cells, else the subject box. The background is a ring traced around the mask silhouette (`MaskHeuristics`) or,
+with no mask, a rectangular ring around the box. With a mask it also measures the patch directly behind and
+beside the head, to tell "a bright window right behind you" from "the whole room is bright". At most one issue
+fires per frame, checked in the order below; light is advice, so severity never reaches HIGH, and a strength
+never accompanies an issue (see [Quality gate](#quality-gate)).
+
+| Recommendation id | Trigger | Severity | Instruction | Reason |
+|---|---|---|---|---|
+| `light.backlit` | subject / background luminance < 0.55 and background > 0.6 | MEDIUM | "Turn so the light is behind you"; or, when the brightest background is directly behind the head (mask only), "Move so the bright window is beside you, not behind" | "Your subject is darker than the background" |
+| `light.dark` | subject luminance < 0.22, background not bright | LOW (MEDIUM below 0.12) | "Move toward the light" | "Your subject is too dark to show detail" |
+| `light.blown` | > 15% of face cells above 0.95 luminance (face ≥ 10% height, ≥ 4 cells) | LOW | "Step into the shade" | "Part of the face is so bright it loses all detail" |
+| `light.split` | left/right face halves differ by > 0.35 luminance, face ≥ 10% height | LOW, `Direction.NONE` | "Turn your subject slightly toward the light" | "One side of the face is much brighter than the other" |
+
+Strength: "Nice light on your subject" when no issue fired, subject luminance is 0.3-0.8, contrast to the
+background is moderate (≤ 0.4), face halves are within 0.2, ≤ 5% of face cells are blown, and the score is ≥
+0.85. The score is the weakest of four smooth factors (exposure, subject/background ratio, face-half balance,
+blown fraction). Every id uses `Direction.NONE`: none of this is a camera move, so the UI should show the
+`instruction` (or a chip derived from it) rather than an arrow. `InstructionText` only maps `Direction`s, so
+there is no chip table here to extend. Thresholds are `const val`s in `LightAnalyzer`'s companion.
+
 ## Scene weights
 
 Per-scene category weights live in `ScoreWeights` (model layer, not owned by this module) — see that file
 for the full table. In short: portraits weight HEADROOM/CROPPING/LOOKING_ROOM/BACKGROUND_DISTRACTION much
 higher than landscapes, which instead weight HORIZON/BALANCE/SYMMETRY/LEADING_LINES/SCENE_SPECIFIC highest
 and zero out the people-only categories entirely.
+
+LIGHT weights: PORTRAIT 10, GROUP_PORTRAIT 8, OBJECT 6, GENERAL 4, LANDSCAPE 0, ARCHITECTURE 0. The points
+were taken from the categories a portrait cares least about: PORTRAIT BALANCE 4 → 2 and NEGATIVE_SPACE
+1 → 0.5, GROUP_PORTRAIT BALANCE 8 → 5 (its NEGATIVE_SPACE inherits PORTRAIT's). Weights are normalised over
+applicable categories, so the table totals changed; only the ratios matter.
 
 `ScoreAggregator` combines each applicable metric's `score` weighted by `weight(category) * confidence`,
 normalises over only the applicable metrics (an inapplicable metric never drags the score toward zero),
@@ -331,13 +363,15 @@ weight tuning.
 | Symmetric hallway, off-centre subject | ARCHITECTURE | SALIENT_REGION | `symmetry.offcenter` |
 | Symmetric hallway, centred subject | ARCHITECTURE | SALIENT_REGION | no SYMMETRY advice |
 | Portrait with a pole above the head (mask) | PORTRAIT | FACE | `background.pole` |
+| Portrait in front of a bright window (mask) | PORTRAIT | FACE | `light.backlit` within the top 2 |
 
 New `SyntheticFrames` fixtures backing these: `objectAt` (a `DetectedObject` builder), `maskFromRect` (a
 `SubjectMask` whose cells inside a rect are subject, everywhere else background), `maskWithPoleAbove`,
 `statsWithNarrowPoleAbove` (a narrow high-edge column on the *same* grid resolution as a paired mask, so
 `MaskHeuristics`' cell mapping is exact), `statsWithHorizonStep` (a luminance-only horizon step that won't
 also get mistaken for a compact salient region the way `statsWithHorizonLine`'s edge spike would), and
-`offCenterSalientRegion` (a symmetric-scene fixture with an adjustable off-centre hot patch).
+`offCenterSalientRegion` (a symmetric-scene fixture with an adjustable off-centre hot patch), and
+`statsWithLuminancePatches` (a luminance grid painted with rectangular patches, for `LightAnalyzerTest`).
 
 ## Quality gate
 
@@ -392,6 +426,6 @@ Bugs this suite caught and fixed, as a record of why each invariant above exists
 ## Running
 
 ```
-./gradlew :composition:test            # 80 tests, no Android SDK required
+./gradlew :composition:test            # 97 tests, no Android SDK required
 ./gradlew :composition:compileKotlin   # warnings-clean
 ```

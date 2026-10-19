@@ -173,4 +173,26 @@ class GoldenScenariosTest {
         assertEquals("background.pole", backgroundMetric.recommendation?.id)
         assertTrue("score out of expected band: ${result.score}", result.score in 10..90)
     }
+
+    // --- 8. Portrait in front of a bright window (backlit) ------------------------------------------
+
+    @Test
+    fun `a portrait in front of a bright window is told about the light`() {
+        val personRect = NormalizedRect(0.3f, 0.2f, 0.7f, 0.95f)
+        val window = NormalizedRect(0.34f, 0.02f, 0.66f, 0.34f)
+        val frame = frameWith(
+            faces = listOf(face(cx = 0.5f, cy = 0.35f, size = 0.2f)),
+            stats = SyntheticFrames.statsWithLuminancePatches(0.7f, listOf(window to 0.95f, personRect to 0.2f)),
+            subjectMask = maskFromRect(personRect),
+        )
+        val result = engine.evaluate(frame)
+
+        assertEquals(SceneType.PORTRAIT, result.scene.type)
+        assertEquals(SubjectKind.FACE, result.primarySubject?.kind)
+        assertTrue(
+            "light.backlit should be in the top 2, got ${result.recommendations.map { it.id }}",
+            result.recommendations.take(2).any { it.id == "light.backlit" },
+        )
+        assertTrue("score out of expected band: ${result.score}", result.score in 20..90)
+    }
 }

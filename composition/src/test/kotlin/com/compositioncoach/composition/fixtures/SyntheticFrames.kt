@@ -288,6 +288,32 @@ object SyntheticFrames {
         )
     }
 
+    /**
+     * A luminance grid that starts at [background] and is then painted with each of [patches] in order (a cell
+     * takes a patch's value when its centre lies inside the patch rect). Edge density is flat and low, so these
+     * stats say nothing about clutter, separation or horizons — they exist for light-on-the-subject tests.
+     */
+    fun statsWithLuminancePatches(
+        background: Float,
+        patches: List<Pair<NormalizedRect, Float>> = emptyList(),
+        gridWidth: Int = 32,
+        gridHeight: Int = 32,
+    ): ImageStatistics {
+        val luminance = FloatArray(gridWidth * gridHeight) { background }
+        for ((rect, value) in patches) {
+            for (row in 0 until gridHeight) for (col in 0 until gridWidth) {
+                val cx = (col + 0.5f) / gridWidth
+                val cy = (row + 0.5f) / gridHeight
+                if (cx >= rect.left && cx < rect.right && cy >= rect.top && cy < rect.bottom) luminance[row * gridWidth + col] = value
+            }
+        }
+        return ImageStatistics(
+            gridWidth, gridHeight, luminance, FloatArray(gridWidth * gridHeight) { 0.02f },
+            horizontalSymmetry = 0.3f, verticalSymmetry = 0.3f,
+            meanLuminance = luminance.average().toFloat(), contrast = 0.2f,
+        )
+    }
+
     /** A frame statistics grid with a narrow high-edge-density vertical band directly above [face]. */
     fun withVerticalBandAbove(face: DetectedFace, gridWidth: Int = 20, gridHeight: Int = 20, bandEdge: Float = 0.7f, backgroundEdge: Float = 0.03f): ImageStatistics {
         val luminance = FloatArray(gridWidth * gridHeight) { 0.5f }
