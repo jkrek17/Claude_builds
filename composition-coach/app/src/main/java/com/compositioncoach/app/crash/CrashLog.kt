@@ -44,7 +44,7 @@ object CrashLog {
     private fun write(context: Context, thread: Thread, throwable: Throwable, versionName: String) {
         val trace = StringWriter().also { throwable.printStackTrace(PrintWriter(it)) }.toString()
         val report = buildString {
-            appendLine("Eyebright $versionName")
+            appendLine("JustRight $versionName")
             appendLine("${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine(SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
             appendLine("Thread: ${thread.name}")

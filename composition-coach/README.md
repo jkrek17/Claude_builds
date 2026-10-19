@@ -1,6 +1,6 @@
-# Eyebright
+# JustRight
 
-*The photo you meant to take.* Formerly Composition Coach.
+*The photo you meant to take.* Formerly Composition Coach (and, for one build, Eyebright).
 
 A native Android camera for people who love photos but never learned photography: it takes the photo you
 meant to take, then teaches you afterwards, in your own pictures, and learns what you like
@@ -46,17 +46,17 @@ upload key is configured, `release-latest` changes signature: uninstall once, th
 **Install (on the phone; no GitHub account needed)**
 
 1. Open the `release-latest` link above.
-2. Under **Assets**, tap `Eyebright-release-arm64.apk` (use `-arm32` only on an old 32-bit phone).
+2. Under **Assets**, tap `JustRight-release-arm64.apk` (use `-arm32` only on an old 32-bit phone).
 3. Open the downloaded file. Allow installs from this source when Android asks.
 4. On the Play Protect prompt, tap **More details**, then **Install anyway**. If that option is missing, turn
    off scanning temporarily: Play Store → profile picture → Play Protect → gear icon → "Scan apps with
    Play Protect", install, then turn it back on.
-5. Open **Eyebright**, grant camera access, point the camera at a subject.
+5. Open **JustRight**, grant camera access, point the camera at a subject.
 
 Testers: [docs/TESTERS.md](docs/TESTERS.md) has these steps in plain language plus what feedback helps most.
 
 **Alternative: from a specific CI run** (desktop browser, logged in; the GitHub mobile app hides artifacts):
-Actions tab → latest green **Eyebright (Android) CI** run → scroll to **Artifacts** at the bottom →
+Actions tab → latest green **JustRight (Android) CI** run → scroll to **Artifacts** at the bottom →
 `composition-coach-debug-apk`, `composition-coach-release-apk` or `composition-coach-release-aab` (zipped).
 
 Requirements: Android 8.0 (API 26) or newer with Google Play services. The ML Kit face model downloads

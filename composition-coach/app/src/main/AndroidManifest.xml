@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!--
-      Eyebright never makes a network call — see README.md and docs/PRIVACY_POLICY.md. The
+      JustRight never makes a network call — see README.md and docs/PRIVACY_POLICY.md. The
       merged manifest otherwise picks up INTERNET/ACCESS_NETWORK_STATE transitively from ML Kit's
       object-detection artifact (its bundled Firebase/Datatransport telemetry client declares them);
       that telemetry is never invoked by this app, so the permissions are removed from the final

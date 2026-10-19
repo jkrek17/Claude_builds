@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generates the Play upload key for Eyebright and prints the four GitHub secrets to set.
+# Generates the Play upload key for JustRight and prints the four GitHub secrets to set.
 # Run once, on your own machine, and keep the .jks file and passwords somewhere safe (password manager).
 #
 #   ./scripts/make-upload-key.sh
@@ -13,7 +13,7 @@ read -r -s -p "Choose a key password (can be the same): " KEY_PASS; echo
 keytool -genkeypair -v \
   -keystore "$KEYSTORE" -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
   -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 \
-  -dname "CN=Eyebright, O=Eyebright, C=US"
+  -dname "CN=JustRight, O=JustRight, C=US"
 echo
 echo "Add these four repository secrets (GitHub > Settings > Secrets and variables > Actions):"
 echo

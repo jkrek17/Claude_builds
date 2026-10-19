@@ -78,7 +78,7 @@ internal class PhotoExporter(private val repository: CaptureRepository) {
     }.getOrNull()
 
     companion object {
-        private const val SOFTWARE_TAG = "Eyebright"
+        private const val SOFTWARE_TAG = "JustRight"
         private val EXIF_DATE_FORMAT = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
     }
 }

@@ -16,7 +16,7 @@ object PrivacyPolicyText {
     const val LAST_UPDATED = "Last updated: 2026-10-19"
 
     val TEXT = """
-        Eyebright does not collect, store, or transmit any personal data. It has no network
+        JustRight does not collect, store, or transmit any personal data. It has no network
         permission at all — the app cannot make a network call even if it tried, and this is enforced
         by an automated build check, not just a promise in this document.
 
@@ -25,7 +25,7 @@ object PrivacyPolicyText {
         The camera preview is analyzed entirely on your device, frame by frame, to compute a live
         composition score and framing suggestions (for example, "move slightly right" or "level the
         horizon"). This analysis uses on-device machine learning (face detection, body-pose detection,
-        object detection and image statistics) and never leaves your phone. Eyebright does not
+        object detection and image statistics) and never leaves your phone. JustRight does not
         recognize who you are, does not attempt facial recognition or identification of any kind, and
         does not keep the analyzed frames — each frame is scored and discarded immediately; nothing
         about it is written to disk or sent anywhere.
@@ -41,19 +41,19 @@ object PrivacyPolicyText {
 
         ON-DEVICE MACHINE LEARNING MODELS
 
-        Eyebright uses Google's ML Kit for face detection, pose detection, object detection and
+        JustRight uses Google's ML Kit for face detection, pose detection, object detection and
         selfie segmentation. These run on your device using Google Play services. The face detection
-        model Eyebright uses is the "unbundled" ML Kit model: it is not packaged inside the
+        model JustRight uses is the "unbundled" ML Kit model: it is not packaged inside the
         app's install file. Instead, Google Play services downloads it once, in its own separate
         process, either ahead of time when you install the app or the first time the feature is used.
         That one-time download requires your device to have a network connection at that moment and is
-        handled entirely by Google Play services — Eyebright itself has no network permission
+        handled entirely by Google Play services — JustRight itself has no network permission
         and plays no part in that download beyond asking Play services to fetch it. Once the model is
-        present on the device, every face/pose/object detection Eyebright performs afterward
+        present on the device, every face/pose/object detection JustRight performs afterward
         runs fully offline, on-device, using your phone's own processor. No camera frame, photo, or
-        detection result is ever sent to Google, to Eyebright's developer, or to anyone else.
+        detection result is ever sent to Google, to JustRight's developer, or to anyone else.
 
-        WHAT EYEBRIGHT DOES NOT DO
+        WHAT JUSTRIGHT DOES NOT DO
 
         - No analytics, crash reporting, or advertising SDKs of any kind.
         - No account, sign-in, or user identifier of any kind.

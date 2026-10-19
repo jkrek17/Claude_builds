@@ -1,6 +1,6 @@
-# Eyebright — `:app`
+# JustRight — `:app`
 
-The camera-facing Compose app (package `com.compositioncoach.app`; the product is Eyebright, see
+The camera-facing Compose app (package `com.compositioncoach.app`; the product is JustRight, see
 `docs/BRAND.md`). This module owns the UI, CameraX binding, capture and storage, settings, the photo journal
 and navigation. It talks to `:composition` (`CompositionCoach`, `AfterActionReport`, `CropSuggester`,
 `AdaptiveWeights`) and `:vision` (`VisionPipelineFactory`, `StillImageAnalyzer`, `FrameStackingSource`) only

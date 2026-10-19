@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Eyebright adaptive icon, foreground layer. Proposed replacement for
+  JustRight adaptive icon, foreground layer. Proposed replacement for
   app/src/main/res/drawable/ic_launcher_foreground.xml (copy as-is; same file name).
 
   The mark: the shutter's readiness ring at the moment it turns ready-green, with one white

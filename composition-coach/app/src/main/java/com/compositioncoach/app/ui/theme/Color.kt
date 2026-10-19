@@ -3,7 +3,7 @@ package com.compositioncoach.app.ui.theme
 import androidx.compose.ui.graphics.Color
 import com.compositioncoach.app.ui.camera.ScoreTier
 
-// Design tokens for Eyebright's camera-first dark UI (Pixel/Apple-camera restraint): near-black
+// Design tokens for JustRight's camera-first dark UI (Pixel/Apple-camera restraint): near-black
 // surfaces, one scrim style, and white/amber/green as the *only* accents anywhere on screen. Every screen
 // composable should reach for these rather than an ad-hoc `Color(0xFF...)` literal — see app/README.md's
 // "Design tokens" section for the rationale.

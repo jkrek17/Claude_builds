@@ -193,7 +193,7 @@ dependencies {
 }
 
 // --- Play policy verification ---------------------------------------------------------------------
-// Eyebright declares no INTERNET permission anywhere (no dependency is allowed to add one
+// JustRight declares no INTERNET permission anywhere (no dependency is allowed to add one
 // silently either). This reads the merged *debug* manifest AGP already produces for
 // `processDebugMainManifest` and fails the build if that ever changes, wired into `check` so it runs
 // in ordinary CI (`./gradlew check`) without needing a device or emulator.
@@ -214,7 +214,7 @@ tasks.register("verifyNoInternetPermission") {
         val content = manifestFile.readText()
         check(!content.contains("android.permission.INTERNET")) {
             "Merged manifest at ${manifestFile.path} declares android.permission.INTERNET. " +
-                "Eyebright must never request network access — see README.md and docs/PRIVACY_POLICY.md."
+                "JustRight must never request network access — see README.md and docs/PRIVACY_POLICY.md."
         }
         val marker = outputMarker.get().asFile
         marker.parentFile.mkdirs()

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Eyebright adaptive icon, monochrome layer for Android 13+ themed icons. Proposed replacement for
+  JustRight adaptive icon, monochrome layer for Android 13+ themed icons. Proposed replacement for
   app/src/main/res/drawable/ic_launcher_monochrome.xml (copy as-is; same file name).
   Same ring and catchlight as the foreground, solid white so the system tint reaches every shape.
   Same safe-zone bounds as the foreground (everything inside r = 25 of the 108 dp canvas).
