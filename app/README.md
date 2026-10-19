@@ -27,8 +27,9 @@ CameraPermissionGate
   with everything below the preview in `CameraBottomZone` and everything over it in `CoachingLayer` (see
   "Coaching layer" below).
   `CameraTopBar` is a translucent strip over the top of the preview carrying flash (left) and the settings
-  gear (right), and nothing else but the "DEBUG" chip in developer mode — the shooting-mode chip that used
-  to live here is gone, since the mode strip above the shutter is the control for it now.
+  gear (right), the `EnhancementPill` centred between them when the lens offers an enhancement, and the
+  "DEBUG" chip in developer mode — the shooting-mode chip that used to live here is gone, since the mode
+  strip above the shutter is the control for it now.
   `CameraBottomZone` stacks, upward from the bottom edge: the shoot-ready "SHOOT" chip, `ModeStrip`
   (`Auto · Portrait · Group · Landscape · Architecture · Object`, tap or horizontal swipe, selected mode
   centred, white and slightly larger, light haptic tick on change — writes the *same* DataStore value as
@@ -43,7 +44,8 @@ CameraPermissionGate
   (`MainActivity.onKeyDown` → `AppContainer.volumeDownEvents`, a `SharedFlow` the screen collects).
 * **privacy** — `PrivacyScreen`. A plain scrolling Compose screen showing `PrivacyPolicyText` (same
   wording as `docs/PRIVACY_POLICY.md`) — no network fetch, since the app has none.
-* **review** — `ReviewScreen` + `ReviewCard`. The captured photo (Coil) letterboxed on black at its own
+* **review** — `ReviewScreen` + `ReviewCard` (+ `DiagnosticsPanel`, `CompareChip`, see "Image-quality
+  controls" below). The captured photo (Coil) letterboxed on black at its own
   aspect ratio, with a card beneath: the shutter's readiness arc reused as a 56dp score ring with the
   number inside (the *same* `drawReadinessArc` the shutter uses, so the two rings can never drift apart),
   the mode chip beside it ("Auto · Portrait" when the mode was Auto, else the mode's own label), a
@@ -426,6 +428,79 @@ the vision pipeline above.
   downsampling) or a bounds-then-`inSampleSize` decode below that; returns `null` on any failure rather
   than throwing, since a thumbnail is a nice-to-have, not something worth surfacing an error for.
 
+## Image-quality controls (`EnhancementPill`, shoot at the peak, zoom, exposure, diagnostics)
+
+Same restraint as the coaching layer: every control is hidden when the camera cannot back it, live text is
+one to three words, and every piece of arithmetic lives in a pure object with a JVM test.
+
+* **Enhancement pill** (`EnhancementPill`, logic in `EnhancementCycle`). A compact "Auto" / "HDR" /
+  "Night" / "Off" pill centred in the top strip, shown only when `CameraUiState.availableEnhancements`
+  holds something beyond OFF. Tap = next option in enum order (Off is always in the cycle so a plain capture
+  is one tap away; a value the new lens doesn't offer restarts at the first real enhancement), 200 ms
+  crossfade, light tick. Long-press = a small menu of every option with a check on the current one. Calls
+  `CameraViewModel.onEnhancementSelected`. Counter-rotates in `RotatedChrome` like the icons (the
+  long-press menu is a popup and does not rotate).
+* **Coaching paused chip.** `CoachingLayer(pausedText = …)` replaces the cue chip at the physical top with
+  `EnhancementCycle.pausedText(...)` ("Coaching paused in Night") and stands every cue and icon down.
+  `CameraUiState` has no `analysisPausedByEnhancement` yet, so `CameraScreen` passes `null`; the one-line
+  wiring is `EnhancementCycle.pausedText(uiState.enhancement).takeIf { uiState.analysisPausedByEnhancement }`.
+* **Steady hint** (`SteadyHint`). While `steadiness == MOVING` *and* the shutter is engaged (pressed,
+  armed, capturing) or the framing is shoot-ready, the chip slot above the shutter reads "Hold still"
+  instead of "SHOOT" (same `CueChip`, polite live region, "Hold the phone still"). Never during ordinary
+  framing. The readiness arc drops to 70 % while MOVING (`SteadyHint.arcAlpha`; awaiting-subject's 30 %
+  wins), so the user learns that movement holds the shot back.
+* **Shoot at the peak** (`ShootAtPeakController`, pure; `rememberShootAtPeakState`, the Compose glue).
+  Hold the shutter >= 350 ms: a double light tick, the white disc shrinks to 50 dp and a thin 1.5 dp
+  countdown ring drains inside the arc over 4 s, and a tiny "Auto" sits under the shutter. The app calls
+  `onShutterClick` (with the medium tick) on the first frame where `isShootReady && steadiness != MOVING`
+  (`SteadyHint.peakReached`), or at 4 s regardless, then disarms. Release before 350 ms = ordinary capture;
+  release while armed = cancel. With **Auto shoot when ready** on, every tap arms immediately and stays
+  armed after the finger lifts; a second tap cancels. TalkBack: "Take photo" click, "Shoot when ready"
+  long-press (arms as a latch, since holding isn't possible). The shutter's touch target is now the fixed
+  72 dp ring rather than the 58 dp disc, so the shrinking disc can never slide out from under a held
+  finger. Reduced motion: the countdown ring stays full instead of draining.
+* **Zoom presets** (`ZoomPresetRow`, logic in `ZoomPresets`). Round 36 dp chips (48 dp targets) above the
+  mode strip from `CameraUiState.zoomPresets`, hidden with fewer than two. The lit chip is the largest
+  preset at or below the live ratio and reads that ratio ("1.4×" while pinched between 1 and 2); the others
+  read their bare preset ("0.6", "2", "5"). Tap = `onZoomPresetSelected`. The displayed ratio
+  (`ZoomDisplayState`) follows a pinch immediately and is overwritten by any change to
+  `CameraUiState.zoomRatio`; the "1.0×" pinch readout is unchanged.
+* **Exposure slider** (`ExposureSlider`, logic in `ExposureText`). After each tap-to-focus, a vertical
+  128 dp track with a sun thumb and "+0.7" EV text appears beside the focus ring (right of it, or left
+  near the right edge) for 2.5 s, held open while dragging. Drag up = brighter; each new index goes to
+  `CameraController.setExposureCompensation` and `onExposureCompensationChanged`. Hidden when
+  `exposureRange` is `0..0`. EV per step comes from the bound camera's
+  `ExposureState.exposureCompensationStep` (read off `CameraBindResult.Success.camera` at bind), falling
+  back to `ExposureText.fallbackStepEv` (±2 EV conventions) if unreadable. TalkBack gets a range with a
+  set-progress action and "Exposure plus 0.7".
+* **Review diagnostics** (`DiagnosticsPanel`, logic in `DiagnosticsFormatter`). Under the strengths and
+  improvements, one `OnScrimMuted` bodySmall line — "12 MP · 1/120 s · ISO 160 · Night · steady" — from
+  `ReviewEntry.diagnostics`, omitting whatever is null and hidden entirely when nothing was reported. Tap
+  (48 dp target) expands a two-column table: resolution, shutter, ISO, aperture, focal length, lens,
+  enhancement, capture mode, JPEG quality, steadiness and wait, zoom, exposure compensation (raw steps:
+  the EV size per step is not in the diagnostics), shutter latency.
+* **Compare** (`CompareChip`). `ReviewScreen(originalPhotoUri = …)`: when set, a "Compare" chip over the
+  photo shows the uncorrected original while held (TalkBack: click toggles). `ReviewEntry` carries no
+  original yet (auto-level overwrites the file), so `AppNavGraph` passes `null` and the chip never shows.
+* **Settings > More** opens with `CaptureSettingsRows`: **Enhancement** (segmented over Off + what the
+  bound lens offers, bound to `CameraUiState.enhancement`/`onEnhancementSelected` through the camera
+  back-stack entry's view model; a disabled "Not available on this camera" row when nothing is offered),
+  **Sharpest of burst**, **Auto-level horizon**, **Auto shoot when ready**. The four primary controls are
+  unchanged. The last three have no settings key yet, so they read and write `UiSettingsDraft` through
+  `SettingsViewModel.draft`/`updateDraft` (process-lifetime `UiSettingsDraftStore`, not persisted); the
+  camera already reads `autoShoot` from it, so the mode works for the session.
+
+Expected settings keys for the integrator (move them into `CoachSettings`/`SettingsRepository`, point
+`SettingsViewModel.draft`/`updateDraft` and `AppNavGraph`'s `autoShootOnTap` at them, delete
+`UiSettingsDraft`):
+
+| Key | Type | Default | Row |
+|---|---|---|---|
+| `capture_enhancement` | string (`CaptureEnhancement` name) | `AUTO` when supported, else `OFF` | Enhancement (today via `CameraUiState.enhancement`) |
+| `burst_sharpest` | bool | `true` | Sharpest of burst |
+| `auto_level` | bool | `false` | Auto-level horizon |
+| `auto_shoot` | bool | `false` | Auto shoot when ready (`CameraScreen(autoShootOnTap = …)`) |
+
 ## Settings keys (DataStore Preferences, `SettingsRepository`)
 
 | Key | Type | Default | Meaning |
@@ -608,7 +683,8 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
 * **No instrumentation tests** were added (not required); all tests run on the JVM — plain JUnit4
   (`OverlayMapperTest`, `RotationTruthTableTest`, `GuidanceFormatterTest`, `ReadinessArcTest`,
   `CueEdgeTest`, `HorizonRollTest`, `ModeStripLogicTest`, `CameraUiStateTest`, `CoachSettingsTest`,
-  `ZoomChipFormatterTest`, `ReviewFormatterTest`) plus three Robolectric+Compose ones
+  `ZoomChipFormatterTest`, `ReviewFormatterTest`, `ShootAtPeakControllerTest`, `DiagnosticsFormatterTest`,
+  `ImageQualityControlsLogicTest` — enhancement cycling, zoom-chip selection, exposure EV text, steady hint) plus three Robolectric+Compose ones
   (`AppLaunchTest`, `RotatedChromeRotationTest`, `CoachingLayerSmokeTest`).
   `CoachingLayerSmokeTest` composes the real coaching layer with a hand-built `SmoothedComposition`
   carrying a physical-RIGHT headline at rotation 0 and 90, and checks the cue chip actually travels to
@@ -627,6 +703,13 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
   `deviceRotationDegrees = 0` until the first frame updates `CameraUiState`, so its EXIF could reflect
   natural portrait for that one shot rather than the phone's actual held orientation — a narrow, one-shot
   window rather than a systemic issue, since every subsequent frame corrects it immediately.
+* **Image-quality contract gaps** (see "Image-quality controls"): no `analysisPausedByEnhancement` on
+  `CameraUiState` (paused chip built, passed `null`); no original `Uri` on `ReviewEntry` (Compare chip
+  built, hidden); `CaptureDiagnostics` has no burst scores or `autoLevelAppliedDegrees`, so the detail
+  table has no rows for them yet; no EV-per-step in `CaptureDiagnostics`, so the review shows exposure
+  compensation in raw steps; `CameraController` has no absolute `setZoomRatio`, so a preset tap moves the
+  camera only once `onZoomPresetSelected` is routed to it (if that routing needs the screen's controller,
+  as exposure does, it is one line in `CameraScreen`'s `onZoomPresetSelected` lambda).
 * Pinch-to-zoom is still not exposed as a settings toggle — it's a direct gesture on the preview — but it
   now drives the `ZoomChip` readout described above.
 * **Needs a physical device to confirm:** `CAPTURE_MODE_MAXIMIZE_QUALITY`'s actual shutter-to-saved-JPEG

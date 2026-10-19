@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.BuildConfig
 import com.compositioncoach.app.R
+import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.settings.subjectMaskSubtitle
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
@@ -42,8 +43,16 @@ import com.compositioncoach.composition.model.SceneIntent
 
 /** Live-backed settings; see [SettingsContent] for the layout `docs/APP_UX.md` specifies. */
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpenPrivacyPolicy: () -> Unit) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    enhancement: CaptureEnhancement = CaptureEnhancement.OFF,
+    availableEnhancements: Set<CaptureEnhancement> = emptySet(),
+    onEnhancementChange: (CaptureEnhancement) -> Unit = {},
+) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val draft by viewModel.draft.collectAsStateWithLifecycle()
     SettingsContent(
         settings = settings,
         onBack = onBack,
@@ -58,6 +67,9 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpenPriva
         onSubjectMaskChange = viewModel::setSubjectMaskEnabled,
         onPoseDetectionChange = viewModel::setPoseDetectionEnabled,
         onDebugModeChange = viewModel::setDebugMode,
+        capture = {
+            CaptureSettingsRows(enhancement, availableEnhancements, onEnhancementChange, draft, viewModel::updateDraft)
+        },
     )
 }
 
@@ -66,6 +78,9 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit, onOpenPriva
  * `docs/APP_UX.md`. Primary, in order: Shooting mode, Guidance, Show score, Grid. "More" holds the
  * settings people set once and forget, and the footer states the privacy position with links to the full
  * policy and the version.
+ *
+ * "More" opens with the capture rows ([CaptureSettingsRows]: Enhancement, Sharpest of burst, Auto-level
+ * horizon, Auto shoot when ready), passed in as [capture] so this layout stays free of camera state.
  *
  * Two rows in "More" are not in the spec's table: "Composition guidance" and "Body detection". Both are
  * persisted settings with real behaviour behind them, and a persisted toggle with no way back to it is a
@@ -89,6 +104,7 @@ fun SettingsContent(
     onPoseDetectionChange: (Boolean) -> Unit,
     onDebugModeChange: (Boolean) -> Unit,
     initiallyExpanded: Boolean = false,
+    capture: @Composable () -> Unit = {},
 ) {
     var moreExpanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
 
@@ -131,6 +147,7 @@ fun SettingsContent(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             MoreHeader(expanded = moreExpanded, onToggle = { moreExpanded = !moreExpanded })
             MoreContent(expanded = moreExpanded) {
+                capture()
                 SwitchRow(
                     label = stringResource(R.string.settings_composition_guidance),
                     subtitle = stringResource(R.string.settings_composition_guidance_subtitle),
@@ -237,6 +254,15 @@ private fun SettingsScreenExpandedPreview() {
             onPoseDetectionChange = {},
             onDebugModeChange = {},
             initiallyExpanded = true,
+            capture = {
+                CaptureSettingsRows(
+                    enhancement = CaptureEnhancement.HDR,
+                    availableEnhancements = setOf(CaptureEnhancement.AUTO, CaptureEnhancement.HDR),
+                    onEnhancementChange = {},
+                    draft = UiSettingsDraft(),
+                    onDraftChange = {},
+                )
+            },
         )
     }
 }

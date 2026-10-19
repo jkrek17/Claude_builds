@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.ui.theme.Accent
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
@@ -32,8 +33,8 @@ import com.compositioncoach.app.ui.theme.Scrim
 /**
  * The translucent strip over the top of the preview and, per `docs/APP_UX.md`, nothing but: flash at the
  * left, settings at the right. The shooting mode used to have a chip here; the mode strip above the
- * shutter is the control for it now. The one addition is the "DEBUG" chip, which exists only while
- * developer mode is on.
+ * shutter is the control for it now. Two conditional additions: the "DEBUG" chip, only while developer
+ * mode is on, and the centred [EnhancementPill], only when the lens offers an enhancement beyond Off.
  *
  * [deviceRotationDegrees] rotates each icon in place (each wrapped in its own [RotatedChrome]) so they
  * stay upright to the person holding the phone even though this strip's own position never moves.
@@ -47,13 +48,19 @@ fun CameraTopBar(
     onSettingsClick: () -> Unit,
     deviceRotationDegrees: Int = 0,
     modifier: Modifier = Modifier,
+    enhancement: CaptureEnhancement = CaptureEnhancement.OFF,
+    availableEnhancements: Set<CaptureEnhancement> = emptySet(),
+    onEnhancementSelected: (CaptureEnhancement) -> Unit = {},
+    animationsEnabled: Boolean = true,
 ) {
-    Row(
+    Box(
         modifier = modifier.fillMaxWidth().background(Scrim).padding(horizontal = 4.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.align(Alignment.CenterStart),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             if (hasFlashUnit) {
                 RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
                     IconButton(onClick = onFlashClick) {
@@ -80,7 +87,17 @@ fun CameraTopBar(
                 }
             }
         }
-        RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
+        if (EnhancementCycle.isVisible(availableEnhancements)) {
+            RotatedChrome(deviceRotationDegrees = deviceRotationDegrees, modifier = Modifier.align(Alignment.Center)) {
+                EnhancementPill(
+                    current = enhancement,
+                    available = availableEnhancements,
+                    onSelect = onEnhancementSelected,
+                    animationsEnabled = animationsEnabled,
+                )
+            }
+        }
+        RotatedChrome(deviceRotationDegrees = deviceRotationDegrees, modifier = Modifier.align(Alignment.CenterEnd)) {
             IconButton(onClick = onSettingsClick) {
                 Icon(imageVector = Icons.Outlined.Settings, contentDescription = "Settings", tint = OnScrim)
             }
@@ -127,6 +144,43 @@ private fun CameraTopBarRotatedPreview() {
             onFlashClick = {},
             onSettingsClick = {},
             deviceRotationDegrees = 90,
+        )
+    }
+}
+
+private val PreviewEnhancements = setOf(CaptureEnhancement.AUTO, CaptureEnhancement.HDR, CaptureEnhancement.NIGHT)
+
+@Preview(name = "Top bar, enhancement pill", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun CameraTopBarEnhancementPreview() {
+    CompositionCoachTheme {
+        CameraTopBar(
+            showDebugChip = false,
+            flashMode = FlashMode.AUTO,
+            hasFlashUnit = true,
+            onFlashClick = {},
+            onSettingsClick = {},
+            enhancement = CaptureEnhancement.NIGHT,
+            availableEnhancements = PreviewEnhancements,
+            animationsEnabled = false,
+        )
+    }
+}
+
+@Preview(name = "Top bar, enhancement pill, rotation 90", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun CameraTopBarEnhancementRotatedPreview() {
+    CompositionCoachTheme {
+        CameraTopBar(
+            showDebugChip = false,
+            flashMode = FlashMode.OFF,
+            hasFlashUnit = true,
+            onFlashClick = {},
+            onSettingsClick = {},
+            deviceRotationDegrees = 90,
+            enhancement = CaptureEnhancement.HDR,
+            availableEnhancements = PreviewEnhancements,
+            animationsEnabled = false,
         )
     }
 }

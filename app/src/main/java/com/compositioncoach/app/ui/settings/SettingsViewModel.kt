@@ -33,6 +33,15 @@ class SettingsViewModel(private val repository: SettingsRepository) : ViewModel(
     fun setDetectObjectsEnabled(enabled: Boolean) = launch { repository.setDetectObjectsEnabled(enabled) }
     fun setSubjectMaskEnabled(enabled: Boolean) = launch { repository.setSubjectMaskEnabled(enabled) }
 
+    /**
+     * The capture switches without a settings key yet (`burst_sharpest`, `auto_level`, `auto_shoot`); see
+     * [UiSettingsDraft]. Once they are in `CoachSettings`, read them from [settings] and write them through
+     * the repository here instead.
+     */
+    val draft: StateFlow<UiSettingsDraft> = UiSettingsDraftStore.draft
+
+    fun updateDraft(draft: UiSettingsDraft) = UiSettingsDraftStore.update { draft }
+
     private fun launch(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
     }

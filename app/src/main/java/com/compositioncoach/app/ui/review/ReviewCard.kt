@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.compositioncoach.app.camera.CaptureDiagnostics
 import com.compositioncoach.app.ui.camera.GuidanceFormatter
 import com.compositioncoach.app.ui.camera.drawReadinessArc
 import com.compositioncoach.app.ui.theme.Accent
@@ -45,10 +46,14 @@ private val SCORE_RING_SIZE = 56.dp
  * The card under the photo: the shutter's readiness arc reused as a 56dp score ring with the number
  * inside, the mode chip beside it, then up to two strengths and up to two improvements as plain
  * sentences. This is the one screen where sentences belong — the live camera says everything in three
- * words, and the *why* lands here.
+ * words, and the *why* lands here. Under them, [DiagnosticsPanel] says what the camera did for the shot.
  */
 @Composable
-fun ReviewCard(result: CompositionResult, modifier: Modifier = Modifier) {
+fun ReviewCard(
+    result: CompositionResult,
+    modifier: Modifier = Modifier,
+    diagnostics: CaptureDiagnostics = CaptureDiagnostics(),
+) {
     val feedback = ReviewFormatter.trim(result.strengths, result.improvements)
     val subjectLine = ReviewFormatter.subjectLine(result.primarySubject)
 
@@ -77,6 +82,8 @@ fun ReviewCard(result: CompositionResult, modifier: Modifier = Modifier) {
             Spacer(Modifier.height(if (feedback.strengths.isNotEmpty()) 4.dp else 12.dp))
             feedback.improvements.forEach { BulletLine(it, Accent.Warn) }
         }
+        // What the camera did, one quiet line that expands into the full table.
+        DiagnosticsPanel(diagnostics = diagnostics, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
@@ -139,6 +146,7 @@ private fun ReviewCardPreview() {
                 improvements = listOf("Give a little more headroom", "Move the subject off-center"),
                 intent = SceneIntent.PORTRAIT,
             ),
+            diagnostics = PreviewDiagnostics,
         )
     }
 }

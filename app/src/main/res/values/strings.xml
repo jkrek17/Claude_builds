@@ -20,6 +20,15 @@
     <string name="settings_subject_mask">Subject mask</string>
     <string name="settings_body_detection">Body detection</string>
     <string name="settings_developer_mode">Developer mode</string>
+    <string name="settings_enhancement">Enhancement</string>
+    <string name="settings_enhancement_subtitle">Auto lets the camera choose; Night and HDR merge several frames</string>
+    <string name="settings_enhancement_unavailable">Not available on this camera</string>
+    <string name="settings_burst_sharpest">Sharpest of burst</string>
+    <string name="settings_burst_sharpest_subtitle">Takes a quick burst and keeps the sharpest frame</string>
+    <string name="settings_auto_level">Auto-level horizon</string>
+    <string name="settings_auto_level_subtitle">Straightens a slightly tilted horizon after the shot</string>
+    <string name="settings_auto_shoot">Auto shoot when ready</string>
+    <string name="settings_auto_shoot_subtitle">Every tap waits for the best moment, like holding the shutter</string>
     <string name="settings_privacy_footer">All analysis runs on your device.</string>
 
     <string name="onboarding_message">Point · Follow the cue · Shoot when green</string>

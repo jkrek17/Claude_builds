@@ -2,17 +2,13 @@ package com.compositioncoach.app.ui.camera
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -20,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cameraswitch
@@ -28,6 +23,8 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,8 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
@@ -54,6 +51,9 @@ import kotlinx.coroutines.delay
 
 /** How long the quiet-state check mark stays beside the shutter. */
 private const val QUIET_CHECK_MS = 1_000L
+
+/** The word under an armed shutter. The shutter's own description carries the meaning for TalkBack. */
+const val AUTO_ARMED_LABEL = "Auto"
 
 /**
  * Bottom transparent control row, Pixel-style: a gallery thumbnail (opens the last photo), the shutter
@@ -77,6 +77,8 @@ fun BottomControlBar(
     awaitingSubject: Boolean = false,
     showQuietCheck: Boolean = false,
     animationsEnabled: Boolean = true,
+    arcAlpha: Float = if (awaitingSubject) GuidanceFormatter.AWAITING_SUBJECT_ARC_ALPHA else 1f,
+    shootAtPeak: ShootAtPeakState? = null,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
@@ -97,6 +99,11 @@ fun BottomControlBar(
                     awaitingSubject = awaitingSubject,
                     animationsEnabled = animationsEnabled,
                     onClick = onShutterClick,
+                    arcAlpha = arcAlpha,
+                    autoCountdown = shootAtPeak?.countdown,
+                    onPress = shootAtPeak?.let { peak -> { peak.press() } },
+                    onRelease = shootAtPeak?.let { peak -> { cancelled -> peak.release(cancelled) } },
+                    onAccessibilityLongClick = shootAtPeak?.let { peak -> { peak.armForAccessibility() } },
                 )
             }
 
@@ -108,6 +115,13 @@ fun BottomControlBar(
                 }
             }
         }
+
+        AutoArmedLabel(
+            visible = shootAtPeak?.armed == true,
+            deviceRotationDegrees = deviceRotationDegrees,
+            animationsEnabled = animationsEnabled,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 4.dp),
+        )
 
         QuietStateCheck(
             visible = showQuietCheck,
@@ -147,6 +161,27 @@ private fun QuietStateCheck(visible: Boolean, animationsEnabled: Boolean, modifi
             tint = Accent.Ready,
             modifier = Modifier.size(20.dp),
         )
+    }
+}
+
+/** The tiny "Auto" under the shutter while shoot-at-the-peak is armed, so the waiting shutter explains itself. */
+@Composable
+private fun AutoArmedLabel(
+    visible: Boolean,
+    deviceRotationDegrees: Int,
+    animationsEnabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val fadeMs = motionDuration(Motion.CROSSFADE_MS, animationsEnabled)
+    AnimatedVisibility(visible = visible, enter = fadeIn(tween(fadeMs)), exit = fadeOut(tween(fadeMs)), modifier = modifier) {
+        RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
+            Text(
+                text = AUTO_ARMED_LABEL,
+                color = OnScrim,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.clearAndSetSemantics { },
+            )
+        }
     }
 }
 
@@ -228,6 +263,45 @@ private fun BottomControlBarQuietPreview() {
             onOpenGallery = {},
             showQuietCheck = true,
             animationsEnabled = false,
+        )
+    }
+}
+
+@Preview(name = "Bottom bar, auto armed", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun BottomControlBarArmedPreview() {
+    val peak = remember { ShootAtPeakState(ShootAtPeakController(), clock = { 0L }).also { it.armForAccessibility() } }
+    CompositionCoachTheme {
+        BottomControlBar(
+            isCapturing = false,
+            isShootReady = false,
+            score = 84,
+            lastPhotoUri = null,
+            onShutterClick = {},
+            onSwitchLensClick = {},
+            onOpenGallery = {},
+            animationsEnabled = false,
+            shootAtPeak = peak,
+        )
+    }
+}
+
+@Preview(name = "Bottom bar, auto armed, rotation 90", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun BottomControlBarArmedRotatedPreview() {
+    val peak = remember { ShootAtPeakState(ShootAtPeakController(), clock = { 0L }).also { it.armForAccessibility() } }
+    CompositionCoachTheme {
+        BottomControlBar(
+            isCapturing = false,
+            isShootReady = false,
+            score = 84,
+            lastPhotoUri = null,
+            onShutterClick = {},
+            onSwitchLensClick = {},
+            onOpenGallery = {},
+            deviceRotationDegrees = 90,
+            animationsEnabled = false,
+            shootAtPeak = peak,
         )
     }
 }
