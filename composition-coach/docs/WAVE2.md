@@ -143,6 +143,19 @@ preview frame.
   the first frame. Pure `FrameAccumulator` unit-tested on synthetic frames (average of constants, lighten
   of a moving bright dot, median removes a transient).
 
+## 10. Selfie, timer, "Not helpful", card frequency, launch hygiene
+
+- `app`: SELFIE outcome (front lens, mirror-aware chip wording: a cue to move the camera left means
+  the on-screen image shifts the same way the user sees it; verify against the mirrored preview),
+  countdown 3/10 s timer available on every outcome from a small clock icon in the top strip; in GROUP
+  the timer arms readiness instead of counting blindly.
+- `app/ui/review`: swipe-to-dismiss (= Keep), "Not helpful" tap on Try-next-time, setting
+  `review_card_mode` (ALWAYS, ONLY_WHEN_USEFUL).
+- `app`: shutter sound via `MediaActionSound` only when `CameraManager`'s characteristics / region
+  policy report it as mandatory (`audio` restriction on `Settings.Global`/`CameraManager` where
+  available; otherwise off), OSS licences screen (plain list, no network), all chip and cue strings in
+  `strings.xml`, "Send feedback" share composer in About, per-outcome unavailability copy.
+
 ## 8. Background separation on review
 
 - `app/camera`: `BackgroundSeparator.apply(bitmap, mask: SubjectMask, strength)`: feathered mask
@@ -158,7 +171,7 @@ preview frame.
 |---|---|---|
 | Capture and still analysis | `vision/**`, `app/camera/**`, `app/di/**` | Foundation, 9 (Motion capture, Bokeh extension, focus stack), 4 (vision part), 8 (processing) |
 | Engine | `composition/**` | 0 (AfterActionReport), 1 (CropSuggester), 2 helper, 4 (GroupReadiness), 7 (AdaptiveWeights) |
-| UI | `app/ui/**`, `app/res/**` | 0 (card), 0b (settings), 1, 2, 7 ("Your eye"), 9 (outcome strip, hold preview), 4 (arc dots), 5, 6, 8 (chips) |
-| State and persistence | `CameraViewModel.kt`, `CameraUiState.kt`, `settings/**` | 0b defaults, PhotoJournal, feedback tracker, adaptive weights persistence, recipe state, still-analysis orchestration |
+| UI | `app/ui/**`, `app/res/**` | 0 (card), 0b (settings), 1, 2, 7 ("Your eye"), 9 (outcome strip, hold preview), 10 (selfie cues, timer, not-helpful, card mode, licences, feedback, strings), 4 (arc dots), 5, 6, 8 (chips) |
+| State and persistence | `CameraViewModel.kt`, `CameraUiState.kt`, `settings/**` | 0b defaults, PhotoJournal, feedback tracker ("Not helpful" included), adaptive weights persistence, outcome and timer state, shutter-sound policy, still-analysis orchestration |
 
 The integrator writes the cross-module contract (new fields with defaults) before launch, as in Wave 1.

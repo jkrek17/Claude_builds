@@ -42,6 +42,12 @@ Unchanged from `COACHING_UI.md`, with these defaults:
 | **Silky water** | Motion stack, average blend, 2-3 s | "Hold still for 3 seconds" |
 | **Clear the crowd** | Motion stack, median blend, 4-6 s; coach flags moving people first | "Hold still for 5 seconds" |
 | **Food & things** | object subject, top-down level (pitch) and shadow/light coaching, tighter crops suggested | "Tilt flatter" / "Closer" |
+| **Selfie** | front camera; mirror-aware cues, arm's-length framing, front-light coaching, countdown | "Chin down a touch" / "Arm out" |
+
+**Timer + Group.** Any outcome can be put on a 3 or 10 s timer; in Group the timer hands over to
+readiness: prop the phone, join the photo, and it fires when everyone is in frame with eyes open.
+
+**Photos only.** This is a stills camera by decision; there is no video mode, and the brand says so.
 
 Outcomes that need a hold show the live accumulation in the preview with a progress ring and abort
 cleanly on heavy motion ("Too shaky, try again"). Every outcome saves a normal first frame alongside
@@ -64,7 +70,11 @@ seconds and rewards a second look.
    "72 → 83".
 6. **Details** (collapsed): capture diagnostics, every metric, the mode and recipe. For the curious and
    for Pro.
-7. **Keep / Retake / Share.** Keep is the default and the back gesture.
+7. **Keep / Retake / Share.** Keep is the default and the back gesture. A swipe dismisses the card
+   instantly (= Keep). Setting: show the card *always* (default) or *only when there is something to
+   say* (a Try-next-time or a crop).
+8. **"Not helpful"**: one tap on a Try-next-time or a cue mention when the advice was wrong. Feeds the
+   taste model the other way and is the only quality signal we collect; nothing leaves the phone.
 
 Keep and Retake are also the learning signal (below).
 
@@ -96,6 +106,18 @@ developer mode. One switch in Settings reveals them. Easy users never see them.
 4. Teach from the user's own photos, never from theory.
 5. Learn the user's taste; never argue with it.
 6. Nothing leaves the device.
+
+## Launch hygiene
+
+- Shutter sound where the law requires it (regions where the device reports it mandatory), via
+  `MediaActionSound`; otherwise silent.
+- Open-source licences screen (CameraX, ML Kit, Compose, Coil) under About.
+- Every user-facing string in resources; the chip wording table lives in `strings.xml` so the app can be
+  translated. English only at launch.
+- Graceful degradation per device: when an outcome's pipeline is unavailable ("Night isn't available
+  on this phone"), the outcome still works with the best fallback and says so once.
+- Beta feedback: "Send feedback" in About composes a share with the last after-action card and capture
+  diagnostics as text, through the system share sheet. No analytics, no network.
 
 ## Success looks like
 
