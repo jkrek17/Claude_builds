@@ -829,9 +829,12 @@ One visual language, defined once and used everywhere instead of ad-hoc `Color(0
 screen code (the diagnostic-only `DebugGeometryOverlay`/`DebugOverlay`/`CrashReportScreen` are
 deliberately exempt — they're meant to look like instrumentation, not the product):
 
-* **`Accent.Ready`** (`#34D399`, green) and **`Accent.Warn`** (`#FFC857`, amber) are the *only* two
-  non-neutral accents anywhere in the app — white/amber/green, nothing else. `Accent.Warn` also backs
-  `MaterialTheme.colorScheme.primary`.
+* **`Accent.Ready`** (`#34D399`, green) and **`Accent.Warn`** (`#FFC857`, amber) are the only two
+  signal colours over the live preview — white/amber/green, nothing else. **`Accent.Action`**
+  (`#E9A17E`, the brand's Apricot, with `Accent.OnAction` Ink text) backs
+  `MaterialTheme.colorScheme.primary` for main actions only; it never stands in for a status colour.
+  Surfaces are `Background` `#15171B`, `Surface` `#24282E`, text `OnSurface` `#F2F3F4` and
+  `OnSurfaceMuted` `#B7BDC4` (the app colour system in docs/BRAND.md).
 * **`Scrim`** (black, 40% alpha — within the 35-45% range) is the one translucent-panel style used behind
   the score chip, cue chip, secondary advice chips, top bar, onboarding card, review mode chip and zoom
   chip; **`ScrimStrong`** (85%) is for full-screen states that must read over any photo (camera error).

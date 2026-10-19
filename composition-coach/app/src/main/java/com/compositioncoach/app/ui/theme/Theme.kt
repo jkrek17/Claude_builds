@@ -3,11 +3,10 @@ package com.compositioncoach.app.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 
 private val CoachDarkColorScheme = darkColorScheme(
-    primary = Accent.Warn,
-    onPrimary = Color(0xFF1A1A1A),
+    primary = Accent.Action,
+    onPrimary = Accent.OnAction,
     background = Background,
     onBackground = OnSurface,
     surface = Surface,

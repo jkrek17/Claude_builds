@@ -3,23 +3,28 @@ package com.compositioncoach.app.ui.theme
 import androidx.compose.ui.graphics.Color
 import com.compositioncoach.app.ui.camera.ScoreTier
 
-// Design tokens for SceneRight's camera-first dark UI (Pixel/Apple-camera restraint): near-black
-// surfaces, one scrim style, and white/amber/green as the *only* accents anywhere on screen. Every screen
-// composable should reach for these rather than an ad-hoc `Color(0xFF...)` literal — see app/README.md's
-// "Design tokens" section for the rationale.
+// Design tokens for SceneRight's camera-first dark UI (Pixel/Apple-camera restraint): dark neutral
+// surfaces, one scrim style, and white/amber/green as the only signal colours over the live preview,
+// plus the brand's Apricot for main actions. Every screen composable should reach for these rather
+// than an ad-hoc `Color(0xFF...)` literal — see app/README.md's "Design tokens" section and
+// docs/BRAND.md "Colour system" (the app colour system approved 19 October 2026).
 
-val Background = Color(0xFF000000)
-val Surface = Color(0xFF121212)
-val OnSurface = Color(0xFFF2F2F2)
+val Background = Color(0xFF15171B)
+val Surface = Color(0xFF24282E)
+val OnSurface = Color(0xFFF2F3F4)
+val OnSurfaceMuted = Color(0xFFB7BDC4)
 
 /**
- * The only two non-neutral accents in the app. [Ready] is "framing is good / shoot now" (the shutter
- * ring, the SHOOT score state, a level horizon). [Warn] is "getting there" (the mid score tier, the app's
- * one warm brand accent used for `MaterialTheme.colorScheme.primary`).
+ * The accents. [Ready] is "framing is good / shoot now" (the shutter ring, the SHOOT score state, a
+ * level horizon). [Warn] is "getting there" (the mid score tier). Both are functional states and keep
+ * their validated values. [Action] is the brand's Apricot, used only for main actions
+ * (`MaterialTheme.colorScheme.primary`, with Ink text); it never replaces a status colour.
  */
 object Accent {
     val Warn = Color(0xFFFFC857)
     val Ready = Color(0xFF34D399)
+    val Action = Color(0xFFE9A17E)
+    val OnAction = Color(0xFF252A31)
 }
 
 /** The single scrim style used behind anything drawn over the live preview: black, 35-45% alpha. */

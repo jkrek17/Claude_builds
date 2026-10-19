@@ -3,10 +3,10 @@
 The app formerly called Composition Coach. This is the reference for the name, the story, the voice,
 the in-app copy and the identity. Naming rationale, collision checks and the final decision:
 `brand/NAMING.md`. How to adopt the name in the repo: `brand/RENAME.md`. Assets: `brand/identity/`,
-`brand/site/`. In-app strings live in `app/src/main/res/values/strings.xml`.
+`brand/site/`; the designer's guide: `brand/guidelines/brand-guide.md`. In-app strings live in `app/src/main/res/values/strings.xml`.
 
 - **Name:** SceneRight (one word, capital S and capital R in prose and as the launcher label; the
-  marketing wordmark is set "sceneRight" with the descriptor "photo").
+  marketing wordmark is set lowercase "sceneright" with the small descriptor "photo").
 - **Store title:** SceneRight: Camera Coach ("scene" is an everyday word, so the store title
   carries a descriptor).
 - **Header line:** A little guidance. More keepers.
@@ -210,116 +210,119 @@ One physical change, one sentence, the predicted gain in brackets when the engin
 
 ## Identity
 
-The approved board is "IDENTITY 01": a warm paper page, ink type, one apricot accent, and a dark
-rounded card with the mark large and the caption *One quiet cue. Everything settles.*
+The approved board is "IDENTITY 03" (`brand/identity/brand-board.png`): a warm paper page, ink
+type, one apricot accent, and an apricot card with the mark large and the caption *One quiet cue.
+Everything settles.* The kit was delivered as a package (`brand/identity/`, `brand/site/`,
+`brand/guidelines/`, `brand/source/build_identity.py`); `brand/guidelines/brand-guide.md` is the
+designer's own guide and is authoritative for the assets. This section is the summary the app team
+needs.
 
 ### The mark: the settled eye
 
 An eye seen straight on, at rest: a ring (the iris, and the lens), a filled pupil, and one small
-apricot catchlight at the upper right of the pupil. A catchlight is the small bright reflection that
-makes an eye in a portrait look alive; it is the one warm point in an otherwise quiet mark, the way
-the cue is the one thing on an otherwise clear screen.
+offset catchlight at the upper right of the pupil. The catchlight is the one warm point in an
+otherwise quiet mark, the way the cue is the one thing on an otherwise clear screen.
 
-- **On Paper:** Ink ring, Ink pupil, Apricot catchlight.
-- **On Ink:** Paper ring, Paper pupil, Apricot catchlight (the launcher icon and the dark card).
-- **Single tint** (themed icon, embossing, one-colour print): ring and pupil in the tint, the
-  catchlight cut out of the pupil.
-- Three shapes, never more. No gradient, no shadow, no lens flare, no eyelids or lashes.
+- **On Paper** (`mark-primary.svg`): Ink ring and pupil, Apricot catchlight.
+- **On Ink** (`mark-reverse.svg`): Paper ring and pupil, Apricot catchlight.
+- **The app icon**: a full Apricot field with an Ink (charcoal) ring and pupil; the catchlight is a
+  transparent cutout, so it shows the Apricot beneath. The adaptive background is full-bleed Apricot
+  (`@color/sceneright_icon_background`); the launcher supplies the mask.
+- **Single tint** (`mark-mono.svg`, `mark-white.svg`, the themed launcher icon): ring and pupil in
+  the tint, the catchlight cut out of the pupil.
+- Three shapes, never more. No gradient, no shadow, no lens flare, no eyelids or lashes. Never
+  stretch or rotate the mark, never make the pupil a recording indicator, never animate the
+  catchlight.
+- Clear space: at least a quarter of the mark's outer diameter on all sides. Minimum standalone
+  mark 24 px (16 px only as a favicon).
 
-Geometry, on the 108 dp adaptive-icon canvas (centre 54,54), and scaled as a unit everywhere else:
+Adaptive icon geometry: 108 dp canvas; the essential art sits inside a centred 53.28 dp circle, well
+within Android's 66 dp safe circle (`previews/launcher-masks.png` shows the circle, rounded-square
+and square masks). At 48 dp the ring stroke renders about 4 dp and the pupil about 14 dp.
 
-| Shape | Centre | Size |
-|---|---|---|
-| Ring | 54, 54 | r 22, stroke 6 (outer edge r 25, inner edge r 19) |
-| Pupil | 54, 54 | r 12, filled (7 dp clear gap to the ring) |
-| Catchlight | 58, 50 | r 4, filled (farthest point 9.66 from centre, inside the pupil) |
-
-- Safe-zone compliant: everything sits inside r 25, well within the 66 dp safe-zone circle (r 33), so
-  no launcher mask clips it.
-- Reads at 48 dp: the ring stroke renders about 4 dp, the pupil about 16 dp, the catchlight about
-  5 dp across.
-
-Files: `brand/identity/ic_launcher_foreground.xml`, `ic_launcher_background.xml` (flat Ink),
-`ic_launcher_monochrome.xml` (drop-in replacements for the files of the same name in
-`app/src/main/res/drawable/`), and `icon-preview.svg` (512 px, full square, for the Play store icon;
-export to 32-bit PNG).
+Files in the app: `app/src/main/res/drawable/ic_launcher_foreground.xml` and
+`ic_launcher_monochrome.xml` (from `brand/identity/android/res/drawable/`),
+`app/src/main/res/values/colors.xml` (the icon background and the app colour system below), and the
+two `mipmap-anydpi-v26` wrappers. The legacy raster `mipmap-*dpi` PNGs in the kit are not installed
+because the app's minimum SDK is 26. The Play store icon is `brand/identity/app-icon.png`
+(512 x 512 RGBA).
 
 ### Colour system
 
 Two layers. They do different jobs and do not mix.
 
-**1. Marketing palette.** For the launcher icon, the site, the store graphics and these docs.
+**1. Marketing palette** (`brand/identity/tokens.json`). For the icon, the site, the store graphics
+and these docs.
 
 | Name | Value | Use |
 |---|---|---|
-| **Ink** | `#252A31` | Text, the mark on light grounds, the dark card, the icon background, buttons |
-| **Paper** | `#F7F3EC` | The page ground; the mark and text on Ink |
-| **Apricot** | `#E9A17E` | The single accent: the catchlight. Also small non-text marks (a dot, a rule) |
-| **Mist** | `#E2E5E4` | Hairlines, swatch borders, secondary surfaces (cards on Paper) |
+| **Ink** | `#252A31` | Wordmark, primary text, main buttons, icon foreground, dark brand surfaces |
+| **Paper** | `#F7F3EC` | Main light surface; the reverse logo |
+| **Apricot** | `#E9A17E` | App icon background; the catchlight, selected details, main actions |
+| **Mist** | `#E2E5E4` | Supporting surfaces and section backgrounds |
+| Secondary text | `#60666C` | Supporting text on Paper or Mist |
 
 Rules:
 
-- Paper is the ground, Ink is the voice, Apricot is the catchlight. One Apricot moment per view.
-- **Apricot is never text on Paper** below display size (it is about 1.9:1). Apricot on Ink is about
-  6.8:1 and may carry short display text if ever needed, but the default is: Apricot is a shape, not
-  words.
-- Contrast: Ink on Paper about 13:1, Ink on Mist about 11:1, Paper on Ink about 13:1. Secondary text
-  is Ink at 68-76 % opacity (4.9:1 to 6.3:1 on Paper); never lighter.
-- Mist on Paper is about 1.15:1, so Mist only separates surfaces; it never carries meaning alone.
+- Roughly 75 % neutral surface, 20 % Ink, 5 % Apricot in brand layouts.
+- **Apricot is never text on a light surface.** Ink on Apricot (6.8:1) and Paper on Ink (13:1) are
+  the text pairings. Ink on Paper is about 13:1; secondary text on Paper about 5.3:1.
+- Colour is never the only signal for alignment, readiness, selection or errors.
 
-**2. In-app tokens, unchanged.** The app's own colours (`app/.../ui/theme/Color.kt`) **do not
-change** with the rename. The camera chrome stays black, with Accent.Ready and Accent.Warn as today,
-because colour drawn over a live photo must stay legible whatever the scene, and warm paper or
-apricot over a sunset would disappear. The only place the marketing palette touches the app is the
-launcher icon (Ink background).
+**2. The app colour system** (approved 19 October 2026, in `app/.../ui/theme/Color.kt` and
+`app/src/main/res/values/colors.xml`). Inside the live camera the surfaces stay dark and neutral so
+the photograph provides the colour. Main actions use Apricot with Ink text. The shutter and
+essential text are neutral white.
 
-| Token | Value | Use |
+| App role | Value | Token |
 |---|---|---|
-| Background | `#000000` | Ground behind the camera preview and screens |
-| Surface | `#121212` | Cards, sheets |
-| OnSurface | `#F2F2F2` | Text on dark |
-| OnScrimMuted | `#FFFFFF` at 70 % | Secondary text, labels |
-| Scrim | `#000000` at 40 % | Anything drawn over a photo or preview |
-| ScrimStrong | `#000000` at 85 % | Full-screen states over a photo |
-| **Accent.Ready** | `#34D399` | Ready, worked, Keeper, the shutter ring. Means "yes". |
-| **Accent.Warn** | `#FFC857` | Getting there, Good, Try next time. Means "almost". |
-| Ink on accent | `#1A1A1A` | Text on a green or amber fill (the app's `onPrimary`) |
+| Camera background | `#15171B` | `Background` |
+| Controls and sheets | `#24282E` | `Surface` |
+| Primary text and the shutter | `#F2F3F4` | `OnSurface` |
+| Secondary text | `#B7BDC4` | `OnSurfaceMuted` |
+| Main action fill | `#E9A17E` | `Accent.Action` (Material `primary`) |
+| Main action text | `#252A31` | `onPrimary` |
+| Ready (the ring turns ready, Keeper, a level horizon) | `#34D399` | `Accent.Ready` (unchanged) |
+| Getting there (the mid score tier, Good, Try next time) | `#FFC857` | `Accent.Warn` (unchanged) |
 
-In-app rules (as today): green and amber are signals, never decoration; no third accent inside the
-app; photos are the only other colour. When marketing shows the app (a phone mockup, the after-the-shot
-card), it shows these real in-app colours, framed on Paper.
+Ready and Warn are functional states and keep their validated values; Apricot is the brand accent
+and never replaces them. Cue text sits on opaque neutral chips. Photographs are never washed in brand
+colour. Paper remains available for onboarding, longer reading and marketing; the review shown right
+after capture keeps the camera's dark surfaces.
 
 ### Type
 
 - In the app: the system sans (Roboto on most Android phones), Material 3 scale as today; score
-  numerals tabular.
-- Marketing: Inter where available, else Roboto, else the platform sans, via font-family stacks; no
-  webfont loads. Weights: Regular (400), Medium (500) for the descriptor and small captions, Semibold
-  (600) for the name and headings. Tight tracking on display sizes (-1 to -3 %), none on body.
+  numerals tabular. Body copy at least 16 sp, live cues 18-22 sp, touch targets at least 48 dp; cue
+  text is never shrunk to save a layout.
+- Marketing and the site: DejaVu Sans for text, controls and cues; DejaVu Serif for large brand
+  headlines only, never for a live cue. The web fonts and their licence are bundled in
+  `brand/site/assets/` (no remote font service).
+- The wordmark is outlined DejaVu Sans with custom spacing; it needs no font installed.
 
 ### Wordmark and lockup
 
-- **Marketing wordmark:** "sceneRight": lowercase s, capital R, one word, Semibold. Under the right
-  part of the name sits the descriptor **"photo"**: Medium, small (about a quarter of the name's
-  size), widely spaced, right edge aligned with the end of the name, below the descenders.
-- **In prose and as the launcher label:** "SceneRight". Never "Scene Right", "Sceneright" or
-  "SCENERIGHT". The store title is "SceneRight: Camera Coach".
-- **Lockup** (`brand/identity/wordmark.svg`): the mark at left (on Paper: Ink ring and pupil, Apricot
-  catchlight), then the name and descriptor in Ink. Clear space: half the mark's width on every side.
-  Minimum: 24 px mark height. Drop the "photo" descriptor when the name is set smaller than about
-  28 px (site header, footer); the mark and name alone are the small lockup.
-- **Text only** (`brand/identity/wordmark-text.svg`): name and descriptor, transparent ground, Ink;
-  swap to Paper on Ink grounds.
-- Outline the text before print or PNG export so it does not depend on installed fonts.
+- **Marketing wordmark:** "sceneright", all lowercase, one word, with the small spaced descriptor
+  **"photo"** under the end of the name. The descriptor is a visual element, not part of the name.
+- **In prose and as the launcher label:** "SceneRight", capital S and R. Never "Scene Right",
+  "Sceneright" or "SCENERIGHT" in writing. Say it as "scene right". The store title is
+  "SceneRight: Camera Coach".
+- **Lockups** (`brand/identity/logo-primary.svg` on Paper, `logo-reverse.svg` on Ink,
+  `logo-mono.svg` and `logo-white.svg` single-colour with the catchlight cut out; PNG exports beside
+  them). Minimum lockup width 240 px with the descriptor; below that use `wordmark-*.svg` (no mark,
+  no descriptor) or the mark alone.
+- All lettering in the SVGs is outlined, so nothing depends on installed fonts.
 
 ### Feature graphic and site
 
-- `brand/identity/feature-graphic.svg`: 1024 x 500 on Paper: the lockup, the header line, the tagline
-  and the support line at left; the dark card with the mark large and *One quiet cue. Everything
-  settles.* at right. Export as PNG or JPEG without alpha for Play.
-- `brand/site/index.html`: the landing page, single file, no external fonts or scripts. Paper page,
-  Ink type, the dark card section with the voice samples, and the app shown in its own in-app colours.
-  It has two placeholders: the Play Store link and the privacy policy link.
+- `brand/identity/play-feature-graphic.png` (1024 x 500, RGB, from the SVG beside it): the lockup,
+  the tagline and the support line on Paper at left, the mark on an Apricot pill at right.
+- `brand/site/`: a static landing page (`index.html`, `styles.css`, `site.js`, local assets, bundled
+  fonts; no third-party requests). Its copy still describes the app as in development and its three
+  truths as planned, because the kit was written before the app shipped: before it goes public,
+  switch that copy to the present tense, add the store or release link, and replace the meadow
+  illustration with real captures. `docs/SITE_DEPLOYMENT.md` and `scripts/deploy-site.sh` deploy
+  it to the VPS; the social preview URL in `index.html` points at the planned hostname.
 
 ### Photography in marketing
 

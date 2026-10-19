@@ -94,8 +94,8 @@ Needs Android 8.0 or newer with Google Play services.
 
 | Asset | Spec | Source |
 |---|---|---|
-| App icon | 512 x 512, 32-bit PNG | `brand/identity/icon-preview.svg` → export **[MANUAL]** |
-| Feature graphic | 1024 x 500, PNG or JPEG, no alpha | `brand/identity/feature-graphic.svg` → outline text, export **[MANUAL]** |
+| App icon | 512 x 512, 32-bit PNG | `brand/identity/app-icon.png` (ready to upload) |
+| Feature graphic | 1024 x 500, PNG or JPEG, no alpha | `brand/identity/play-feature-graphic.png` (ready to upload) |
 | Phone screenshots | 8, portrait 9:16, 1080 x 1920 or larger, JPEG or 24-bit PNG | Shot list below, captured on a real phone **[MANUAL]** |
 
 Screenshots: real photos taken with the app, no mocked UI. Caption bar at the top of each frame:

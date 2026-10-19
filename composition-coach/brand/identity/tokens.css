@@ -1,0 +1,23 @@
+:root {
+  --sceneright-ink: #252A31;
+  --sceneright-paper: #F7F3EC;
+  --sceneright-apricot: #E9A17E;
+  --sceneright-mist: #E2E5E4;
+  --sceneright-secondary-text: #60666C;
+  --sceneright-radius-control: 12px;
+  --sceneright-radius-card: 24px;
+  --sceneright-transition: 180ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --sceneright-transition: 0ms; }
+}
+:root {
+  --sceneright-camera-background: #15171B;
+  --sceneright-app-surface: #24282E;
+  --sceneright-app-text: #F2F3F4;
+  --sceneright-app-secondary-text: #B7BDC4;
+  --sceneright-app-primary-action: #E9A17E;
+  --sceneright-app-on-primary-action: #252A31;
+  --sceneright-icon-background: #E9A17E;
+  --sceneright-icon-foreground: #252A31;
+}

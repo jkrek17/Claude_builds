@@ -22,9 +22,9 @@ Leave package names, the application id, class names and the signing key alone.
 1. **App label.** `app/src/main/res/values/strings.xml`: `app_name` → `SceneRight`. This is the
    launcher label, the recents title and the system settings name. Copy the other values from
    `brand/strings/strings.xml` section 1 (permission screen, privacy footer, onboarding).
-2. **Launcher icon.** Copy `brand/identity/ic_launcher_foreground.xml`,
-   `ic_launcher_background.xml` and `ic_launcher_monochrome.xml` over the files of the same name in
-   `app/src/main/res/drawable/`. The `mipmap-anydpi-v26/ic_launcher*.xml` wrappers stay as they are.
+2. **Launcher icon.** Copy `brand/identity/android/res/drawable/ic_launcher_foreground.xml` and
+   `ic_launcher_monochrome.xml` over the files of the same name in `app/src/main/res/drawable/`, and
+   `android/res/values/colors.xml` (the Apricot icon background) into `app/src/main/res/values/`. The `mipmap-anydpi-v26/ic_launcher*.xml` wrappers stay as they are.
 3. **Hard-coded user-visible strings in Kotlin** (owned by the UI and crash code):
    - `app/.../ui/crash/CrashReportScreen.kt` lines 77 and 83: "Composition Coach crash report" →
      "SceneRight crash report" (clipboard label and email subject).

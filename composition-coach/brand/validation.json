@@ -1,0 +1,30 @@
+{
+  "asset_checks": "passed",
+  "local_links": "passed",
+  "marketing_language": "passed",
+  "contrast_ratios": {
+    "Ink / Paper": 13.06,
+    "Ink / Apricot": 6.78,
+    "Secondary / Paper": 5.25,
+    "Secondary / Mist": 4.58
+  },
+  "browser_qa": "not run; browser capability unavailable",
+  "android_build": "not run; asset-only package",
+  "brand": "SceneRight",
+  "brand_name_sweep": "passed",
+  "svg_xml_parse": "passed",
+  "raster_export_spec": "passed",
+  "deployment_shell_syntax": "passed",
+  "invalid_domain_preflight": "passed",
+  "vps_deployment": "not run; server access unavailable",
+  "github_upload": "pending repository creation",
+  "approved_app_icon": "Apricot field; charcoal mark; transparent catchlight",
+  "icon_color_pixel_checks": "passed",
+  "android_icon_xml": "passed",
+  "app_color_contrast": {
+    "text_on_background": 16.15,
+    "text_on_surface": 13.33,
+    "secondary_on_surface": 7.82,
+    "ink_on_apricot": 6.78
+  }
+}
