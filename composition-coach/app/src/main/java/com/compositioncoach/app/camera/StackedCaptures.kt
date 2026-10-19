@@ -24,11 +24,15 @@ internal class StackedCaptures(
     private val diagnostics: (ShotRequest, CaptureResultTap.StillResult?, ExifFacts?, Long) -> CaptureDiagnostics,
 ) {
 
-    suspend fun focusStack(request: ShotRequest, lens: LensControl?): ShotResult? {
+    suspend fun focusStack(
+        request: ShotRequest,
+        lens: LensControl?,
+        focusFractions: List<Float> = FocusStacker.FAR_FRACTIONS,
+    ): ShotResult? {
         val controller = request.controller ?: return null
         if (lens == null) return null
         val mirror = request.lensFacing == LensFacing.FRONT
-        val stacked = focusStacker.capture(controller, request.imageCapture, lens, mirror) ?: return null
+        val stacked = focusStacker.capture(controller, request.imageCapture, lens, mirror, focusFractions) ?: return null
         val savedAt = SystemClock.elapsedRealtime()
         val tapped = controller.captureResultTap?.forTimestamp(stacked.first.sensorTimestampNs)
         val exif = withContext(Dispatchers.Default) { ExifFacts.from(stacked.first.bytes) }
@@ -37,7 +41,7 @@ internal class StackedCaptures(
             widthPx = stacked.first.width,
             heightPx = stacked.first.height,
             pipeline = if (merged != null) OutcomePipeline.FOCUS_STACK.name else OutcomePipeline.SINGLE.name,
-            framesStacked = if (merged != null) FOCUS_STACK_FRAMES else null,
+            framesStacked = if (merged != null) focusFractions.size else null,
             degradedNote = if (merged == null) FOCUS_MERGE_FAILED else null,
         )
         Log.i(TAG, "Focus stack: capture ${stacked.captureMs} ms, total ${stacked.totalMs} ms, merged=${merged != null}")
@@ -95,7 +99,6 @@ internal class StackedCaptures(
 
     companion object {
         private const val TAG = "StackedCaptures"
-        private const val FOCUS_STACK_FRAMES = 3
         const val TOO_SHAKY_NOTE = "Too shaky, try again"
         const val NO_FRAMES_NOTE = "The stack didn't get enough frames; here is the normal photo"
         /** The stack was saved but the full-resolution detail pass failed (see [MotionCapture.DETAIL_RESTORE_FAILED_NOTE]). */

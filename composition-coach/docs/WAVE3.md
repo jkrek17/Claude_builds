@@ -1,5 +1,7 @@
 # Wave 3: the best photo for every scene
 
+**Status:** integrated. The four capture classes are wired into `CapturePipeline.capture` (`MergedCaptures`), the outcome specs, planner rules, notes, settings toggle and docs follow this contract; device checks remain.
+
 What makes SceneRight's photos different from the stock camera's: full-resolution multi-frame capture,
 merged for what each scene needs (noise, dynamic range, depth of field, motion, faces), with the
 exposure length chosen by the scene rather than a timer. This document is the contract between the

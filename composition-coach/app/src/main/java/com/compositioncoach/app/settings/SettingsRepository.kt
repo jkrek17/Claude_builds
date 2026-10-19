@@ -58,6 +58,7 @@ class SettingsRepository(context: Context) {
     suspend fun setOnboardingSeen(seen: Boolean) = update { it.copy(onboardingSeen = seen) }
     suspend fun setCaptureEnhancement(enhancement: CaptureEnhancement) = update { it.copy(captureEnhancement = enhancement) }
     suspend fun setBurstSharpest(enabled: Boolean) = update { it.copy(burstSharpest = enabled) }
+    suspend fun setMultiFrameMerges(enabled: Boolean) = update { it.copy(multiFrameMerges = enabled) }
     suspend fun setAutoLevel(enabled: Boolean) = update { it.copy(autoLevel = enabled) }
     suspend fun setAutoShoot(enabled: Boolean) = update { it.copy(autoShoot = enabled) }
 
@@ -96,6 +97,7 @@ class SettingsRepository(context: Context) {
         val ONBOARDING_SEEN = booleanPreferencesKey("onboarding_seen")
         val CAPTURE_ENHANCEMENT = stringPreferencesKey("capture_enhancement")
         val BURST_SHARPEST = booleanPreferencesKey("burst_sharpest")
+        val MULTI_FRAME_MERGES = booleanPreferencesKey("multi_frame_merges")
         val AUTO_LEVEL = booleanPreferencesKey("auto_level")
         val AUTO_SHOOT = booleanPreferencesKey("auto_shoot")
         val EXPERIENCE_MODE = stringPreferencesKey("experience_mode")
@@ -128,6 +130,7 @@ internal fun Preferences.toCoachSettings() = CoachSettings(
     onboardingSeen = this[SettingsRepository.Keys.ONBOARDING_SEEN] ?: false,
     captureEnhancement = CaptureEnhancementCodec.decode(this[SettingsRepository.Keys.CAPTURE_ENHANCEMENT]),
     burstSharpest = this[SettingsRepository.Keys.BURST_SHARPEST] ?: true,
+    multiFrameMerges = this[SettingsRepository.Keys.MULTI_FRAME_MERGES] ?: true,
     autoLevel = this[SettingsRepository.Keys.AUTO_LEVEL] ?: true,
     autoShoot = this[SettingsRepository.Keys.AUTO_SHOOT] ?: true,
     experienceMode = EnumCodec.EXPERIENCE_MODE.decode(this[SettingsRepository.Keys.EXPERIENCE_MODE]),
@@ -155,6 +158,7 @@ internal fun MutablePreferences.writeCoachSettings(settings: CoachSettings) {
     this[SettingsRepository.Keys.ONBOARDING_SEEN] = settings.onboardingSeen
     this[SettingsRepository.Keys.CAPTURE_ENHANCEMENT] = CaptureEnhancementCodec.encode(settings.captureEnhancement)
     this[SettingsRepository.Keys.BURST_SHARPEST] = settings.burstSharpest
+    this[SettingsRepository.Keys.MULTI_FRAME_MERGES] = settings.multiFrameMerges
     this[SettingsRepository.Keys.AUTO_LEVEL] = settings.autoLevel
     this[SettingsRepository.Keys.AUTO_SHOOT] = settings.autoShoot
     this[SettingsRepository.Keys.EXPERIENCE_MODE] = EnumCodec.EXPERIENCE_MODE.encode(settings.experienceMode)

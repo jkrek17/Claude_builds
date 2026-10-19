@@ -6,11 +6,17 @@ import com.compositioncoach.app.camera.CaptureEnhancement.BOKEH
 import com.compositioncoach.app.camera.CaptureEnhancement.HDR
 import com.compositioncoach.app.camera.CaptureEnhancement.NIGHT
 import com.compositioncoach.app.camera.CaptureEnhancement.OFF
+import com.compositioncoach.app.camera.MotionCapture
 import com.compositioncoach.app.camera.OutcomeCapturePlanner
 import com.compositioncoach.app.camera.PipelineSupport
+import com.compositioncoach.app.camera.StackedCaptures
+import com.compositioncoach.app.camera.merge.BurstMergeCapture
+import com.compositioncoach.app.camera.merge.ExposureBracketCapture
+import com.compositioncoach.app.camera.merge.GroupCompositeCapture
 import com.compositioncoach.app.outcome.Outcome
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -42,10 +48,11 @@ class OutcomeBindingRulesTest {
     }
 
     @Test
-    fun `only Motion outcomes raise the analysis stream`() {
+    fun `only Motion outcomes raise the analysis stream, to the size Motion currently advises`() {
+        for (outcome in listOf(Outcome.SILKY_WATER, Outcome.LIGHT_TRAILS, Outcome.CLEAR_CROWD)) {
+            assertEquals(MotionCapture.analysisResolution(), OutcomeBindingRules.analysisResolutionHint(outcome))
+        }
         assertEquals(CameraController.MOTION_ANALYSIS_RESOLUTION, OutcomeBindingRules.analysisResolutionHint(Outcome.SILKY_WATER))
-        assertEquals(CameraController.MOTION_ANALYSIS_RESOLUTION, OutcomeBindingRules.analysisResolutionHint(Outcome.LIGHT_TRAILS))
-        assertEquals(CameraController.MOTION_ANALYSIS_RESOLUTION, OutcomeBindingRules.analysisResolutionHint(Outcome.CLEAR_CROWD))
         assertNull(OutcomeBindingRules.analysisResolutionHint(Outcome.NIGHT))
         assertNull(OutcomeBindingRules.analysisResolutionHint(Outcome.ANYTHING))
     }
@@ -62,14 +69,50 @@ class OutcomeBindingRulesTest {
 
     @Test
     fun `the notes name what is missing`() {
-        assertEquals(DegradedNote.NO_NIGHT, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.NIGHT, setOf(OFF, AUTO), full)))
+        // Night's own stack stands in for a missing extension: better, not a degradation.
+        assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.NIGHT, setOf(OFF, AUTO), full)))
+        assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.NIGHT, setOf(OFF, AUTO, NIGHT), full)))
         assertEquals(DegradedNote.NO_PORTRAIT_BLUR, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.PORTRAIT, setOf(OFF), full)))
-        // A lens without the HDR extension still shoots HDR in its standard pipeline, so only the stack fallback is noted.
-        assertEquals(DegradedNote.NO_FOCUS_STACK, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), none)))
+        // A lens without the HDR extension still shoots HDR in its standard pipeline, and a lens that cannot focus-stack still brackets.
+        assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), none)))
+        assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.FOOD, setOf(OFF), none)))
         assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), full)))
         assertEquals(DegradedNote.NO_MOTION, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.SILKY_WATER, setOf(OFF), none)))
         assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.SILKY_WATER, setOf(OFF), full)))
         assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.ANYTHING, setOf(OFF), none)))
+    }
+
+    @Test
+    fun `every English note a capture can report maps to a translatable note`() {
+        val english = listOf(
+            BurstMergeCapture.NOTE_THERMAL, BurstMergeCapture.NOTE_BURST_FAILED, BurstMergeCapture.NOTE_ONE_FRAME,
+            BurstMergeCapture.NOTE_MERGE_FAILED, BurstMergeCapture.NOTE_OUT_OF_MEMORY, BurstMergeCapture.noteFewFrames(2),
+            ExposureBracketCapture.NOTE_COLLAPSED, ExposureBracketCapture.NOTE_THERMAL, ExposureBracketCapture.NOTE_PARTIAL,
+            ExposureBracketCapture.NOTE_MERGE_FAILED, ExposureBracketCapture.NOTE_LOW_MEMORY,
+            GroupCompositeCapture.NOTE_ONE_FRAME, GroupCompositeCapture.NOTE_NO_FACES, GroupCompositeCapture.NOTE_DETECTION_FAILED,
+            GroupCompositeCapture.NOTE_NO_IMPROVEMENT, GroupCompositeCapture.NOTE_MOVED, GroupCompositeCapture.NOTE_OUT_OF_MEMORY,
+            GroupCompositeCapture.NOTE_MERGE_FAILED,
+            StackedCaptures.DETAIL_RESTORE_FAILED, StackedCaptures.NO_FRAMES_NOTE, StackedCaptures.STACK_SAVE_FAILED,
+            StackedCaptures.FOCUS_MERGE_FAILED, OutcomeCapturePlanner.MOTION_UNAVAILABLE,
+        )
+        val mapped = english.map { assertNotNull(it, DegradedNote.fromEnglish(it)); DegradedNote.fromEnglish(it) }
+        assertEquals("two sentences map to the same note", english.size, mapped.toSet().size)
+        assertEquals(DegradedNote.BURST_FEW_FRAMES, DegradedNote.fromEnglish(BurstMergeCapture.noteFewFrames(3)))
+        assertEquals(DegradedNote.GROUP_NO_IMPROVEMENT, DegradedNote.fromEnglish(GroupCompositeCapture.NOTE_NO_IMPROVEMENT))
+        assertNull(DegradedNote.fromEnglish(null))
+        assertNull(DegradedNote.fromEnglish("Something nobody wrote a string for"))
+        val entriesWithEnglish = DegradedNote.entries.mapNotNull { it.english }
+        assertEquals("duplicate English sentence", entriesWithEnglish.size, entriesWithEnglish.toSet().size)
+    }
+
+    @Test
+    fun `shot-level notes are short and in the brand voice`() {
+        val resources = RuntimeEnvironment.getApplication().resources
+        DegradedNote.entries.forEach {
+            val text = resources.getString(it.resId)
+            assertFalse("$it: $text", text.contains('!'))
+            assertFalse("$it: $text", Regex("""\bI\b""").containsMatchIn(text))
+        }
     }
 
     @Test
@@ -81,6 +124,7 @@ class OutcomeBindingRulesTest {
             "Night isn't available on this phone, using the best we can",
             resources.getString(DegradedNote.NO_NIGHT.resId),
         )
+        assertEquals("The frames didn't line up, so this is the single photo.", resources.getString(DegradedNote.BURST_ONE_FRAME.resId))
     }
 
     @Test

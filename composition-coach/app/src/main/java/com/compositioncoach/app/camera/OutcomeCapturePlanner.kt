@@ -34,41 +34,52 @@ data class CapturePlan(
 
 /**
  * Pure mapping from an [Outcome] plus device capabilities to a [CapturePlan]. Rules:
- *  - Enhancement: first available of the preference list wins. Missing a *named* first choice (Night,
- *    Portrait) is reported; missing AUTO is not (AUTO is "let the phone decide", OFF is a fine answer), and
+ *  - Enhancement: first available of the preference list wins. Missing a *named* first choice (Portrait's
+ *    blur) is reported; missing AUTO is not (AUTO is "let the phone decide", OFF is a fine answer), and
  *    neither is a missing HDR extension: phones without one (Pixels among them) run multi-frame HDR in the
  *    standard pipeline anyway, so the photo is not degraded and there is nothing for the user to do.
- *  - BURST_SHARPEST and FOCUS_STACK need the plain (non-extension) session: lucky imaging and manual focus
- *    cannot run under a vendor extension, so with an extension bound they become SINGLE (the extension does
- *    its own multi-frame work, so this is not reported as degraded).
- *  - FOCUS_STACK without manual focus falls back to BURST_SHARPEST (one photo, sharpest of three). When the
- *    lens can focus-stack, OFF is bound whatever the preference says (AUTO or a named HDR): the stack is the
- *    outcome's point, no vendor session can carry it, and the standard pipeline does HDR anyway.
+ *  - BURST_SHARPEST and every Wave 3 merge (BURST_MERGE, NIGHT_STACK, EXPOSURE_BRACKET, GROUP_COMPOSITE) need
+ *    the plain (non-extension) session: they cannot run under a vendor extension, so with an extension bound
+ *    they become SINGLE (the extension does its own multi-frame work, so this is not reported as degraded).
+ *  - NIGHT_STACK: with the NIGHT extension available it is bound and the capture is SINGLE (the extension does
+ *    the stacking); without it OFF is bound and NIGHT_STACK runs. That is the better path, not a degradation,
+ *    so a missing NIGHT extension is not reported.
+ *  - EXPOSURE_BRACKET (which folds in the focus stack when the lens can) needs the plain session, so OFF is
+ *    bound whatever the preference says (AUTO or a named HDR): the standard pipeline does HDR anyway. Plain
+ *    capture is always possible, so an HDR extension is never the choice for the outcome; a user who picks one
+ *    on the Pro pill still gets it, and the capture then runs SINGLE.
+ *  - FOCUS_STACK (Food & things, near distances): bound plain when the lens can focus-stack; without manual
+ *    focus the fallback is BURST_MERGE, silently (nothing is lost that the outcome promised).
  *  - MOTION_* without live frames falls back to BURST_SHARPEST, and says so.
  */
 object OutcomeCapturePlanner {
 
     fun plan(outcome: Outcome, available: Set<CaptureEnhancement>, support: PipelineSupport): CapturePlan {
         val spec = outcome.spec
+        val requested = spec.pipeline
         val preference = spec.enhancementPreference.ifEmpty { listOf(CaptureEnhancement.OFF) }
         val preferred = preference.firstOrNull { it == CaptureEnhancement.OFF || it in available } ?: CaptureEnhancement.OFF
-        val stackWins = spec.pipeline == Pipeline.FOCUS_STACK && support.focusStacking
-        val enhancement = if (stackWins) CaptureEnhancement.OFF else preferred
+        val enhancement = when (requested) {
+            Pipeline.EXPOSURE_BRACKET -> CaptureEnhancement.OFF
+            Pipeline.FOCUS_STACK -> if (support.focusStacking) CaptureEnhancement.OFF else preferred
+            Pipeline.NIGHT_STACK -> if (CaptureEnhancement.NIGHT in available) CaptureEnhancement.NIGHT else CaptureEnhancement.OFF
+            else -> preferred
+        }
         val first = preference.first()
-        val missing = first.takeIf { it != enhancement && it !in SILENT_FALLBACKS }
-        val requested = spec.pipeline
+        // Night's stack stands in for a missing NIGHT extension and is the better path: nothing to report.
+        val stackInstead = requested == Pipeline.NIGHT_STACK && enhancement == CaptureEnhancement.OFF
+        val missing = first.takeIf { it != enhancement && it !in SILENT_FALLBACKS && !stackInstead }
         val plain = enhancement == CaptureEnhancement.OFF
         var pipelineNote: String? = null
         val pipeline = when (requested) {
             Pipeline.SINGLE -> Pipeline.SINGLE
             Pipeline.BURST_SHARPEST -> if (plain) Pipeline.BURST_SHARPEST else Pipeline.SINGLE
-            // Wave 3 merges need the plain session like lucky imaging does (the extension does its own multi-frame work).
             Pipeline.BURST_MERGE, Pipeline.NIGHT_STACK, Pipeline.GROUP_COMPOSITE, Pipeline.EXPOSURE_BRACKET ->
                 if (plain) requested else Pipeline.SINGLE
             Pipeline.FOCUS_STACK -> when {
                 !plain -> Pipeline.SINGLE
                 support.focusStacking -> Pipeline.FOCUS_STACK
-                else -> Pipeline.BURST_SHARPEST.also { pipelineNote = FOCUS_STACK_UNAVAILABLE }
+                else -> Pipeline.BURST_MERGE
             }
             Pipeline.MOTION_AVERAGE, Pipeline.MOTION_LIGHTEN, Pipeline.MOTION_MEDIAN ->
                 if (support.motionStacking) requested else Pipeline.BURST_SHARPEST.also { pipelineNote = MOTION_UNAVAILABLE }
@@ -86,6 +97,5 @@ object OutcomeCapturePlanner {
         else -> "${missing.label} isn't available on this phone, using the best we can"
     }
 
-    const val FOCUS_STACK_UNAVAILABLE = "This lens can't focus-stack, so this is one sharp photo"
     const val MOTION_UNAVAILABLE = "Motion needs live analysis, which isn't running; took a normal photo"
 }

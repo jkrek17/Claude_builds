@@ -33,21 +33,27 @@ Unchanged from `COACHING_UI.md`, with these defaults:
 
 | Outcome | What the app does underneath | The one thing it asks of you |
 |---|---|---|
-| **Anything** | Auto scene detection, best available enhancement, sharpest-of-burst, auto-level | nothing |
-| **Portrait** | face coaching (light, headroom, looking room); vendor Bokeh extension when the phone offers it, else our mask-based background blur on review | "Turn so the light is on their face" when needed |
-| **Group** | everyone in frame and eyes open before it fires; edge cuts are blocking | "Someone's cut off" / "Eyes closed" |
-| **Landscape** | horizon level and placement; focus stack (3 focus distances merged by local sharpness) so near and far are sharp whenever the lens can focus manually; the HDR extension only when it cannot | "Level" / "Hold still" |
-| **Night** | vendor Night extension; longer steady hold with a progress ring | "Hold still" |
+| **Anything** | Auto scene detection; five full-resolution frames aligned and averaged with moving pixels rejected (burst merge: less noise, same sharpness), the vendor extension instead when the phone has one; auto-level | nothing |
+| **Portrait** | face coaching (light, headroom, looking room); burst merge; vendor Bokeh extension when the phone offers it, else our mask-based background blur on review (edge refined to the hair and shoulders) | "Turn so the light is on their face" when needed |
+| **Group** | everyone in frame and eyes open before it fires; edge cuts are blocking; a five-frame burst in which every face is taken from the frame where it looks best (eyes open, sharpest) | "Someone's cut off" / "Eyes closed" |
+| **Landscape** | horizon level and placement; exposure bracket (-2, 0, +2 EV fused for dynamic range, with the focus stack of three distances folded in when the lens can focus manually); always the plain session, never the HDR extension | "Level" / "Hold still" |
+| **Night** | vendor Night extension when the phone has one; otherwise our eight-frame stack at the longest handheld shutter the gyro allows; longer steady hold with a progress ring | "Hold still" |
 | **Light trails** | Motion stack, lighten blend, 3-4 s, gyro-aligned | "Hold still for 4 seconds" |
 | **Silky water** | Motion stack, average blend, 2-3 s | "Hold still for 3 seconds" |
 | **Clear the crowd** | Motion stack, median blend, 4-6 s; coach flags moving people first | "Hold still for 5 seconds" |
-| **Food & things** | object subject, top-down level (pitch) and shadow/light coaching, tighter crops suggested | "Tilt flatter" / "Closer" |
-| **Selfie** | front camera; mirror-aware cues, arm's-length framing, front-light coaching, countdown | "Chin down a touch" / "Arm out" |
+| **Food & things** | object subject, top-down level (pitch) and shadow/light coaching, tighter crops suggested; close-range focus stack (three near distances) when the lens can focus manually, else a burst merge | "Tilt flatter" / "Closer" |
+| **Selfie** | front camera; mirror-aware cues, arm's-length framing, front-light coaching, countdown; burst merge and a lighter background blur | "Chin down a touch" / "Arm out" |
 
 **Timer + Group.** Any outcome can be put on a 3 or 10 s timer; in Group the timer hands over to
 readiness: prop the phone, join the photo, and it fires when everyone is in frame with eyes open.
 
 **Photos only.** This is a stills camera by decision; there is no video mode, and the brand says so.
+
+**Multi-frame merges.** Everyday outcomes (Anything, Portrait, Selfie, Group, Landscape, Night, Food) shoot a short
+full-resolution burst and merge it; the Motion outcomes stack the live stream for as long as the effect needs, not
+a fixed time. The merged photo is saved next to the untouched first frame (Compare shows it), and when a merge
+cannot land (warm phone, frames that did not line up, low memory) the first frame is the photo and a short note
+on the review says why. Under Pro, "Multi-frame merges" turns the merges off for comparing with the stock camera.
 
 Outcomes that need a hold show the live accumulation in the preview with a progress ring and abort
 cleanly on heavy motion ("Too shaky, try again"). Every outcome saves a normal first frame alongside
@@ -95,8 +101,8 @@ All on-device, nothing leaves the phone, resettable in one tap.
 
 ## Hidden under Pro
 
-Exposure slider, zoom presets, enhancement selector, grid, guidance level, detection toggles,
-developer mode. One switch in Settings reveals them. Easy users never see them.
+Exposure slider, zoom presets, enhancement selector, grid, guidance level, multi-frame merges, detection
+toggles, developer mode. One switch in Settings reveals them. Easy users never see them.
 
 ## Principles (ordered)
 

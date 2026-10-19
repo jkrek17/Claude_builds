@@ -545,13 +545,17 @@ decision is `OutcomeCapturePlanner.plan(outcome, availableEnhancements, Pipeline
 |---|---|---|
 | enhancement preference list | first one the lens offers (OFF always) | missing *named* first choice (Night, HDR, Portrait) -> `degradedNote` "Night isn't available on this phone, using the best we can"; missing AUTO is not reported |
 | SINGLE | `captureSingle` | - |
-| BURST_SHARPEST | lucky imaging (no extension active) | SINGLE under an extension (the vendor merges frames itself) |
-| FOCUS_STACK | `FocusStacker` (no extension, `LensControl.supportsFocusStack`; binds OFF rather than AUTO when the lens can stack) | SINGLE under HDR; BURST_SHARPEST without manual focus (noted) |
+| BURST_SHARPEST | lucky imaging (no extension active, `ShotRequest.burst`) | SINGLE under an extension (the vendor merges frames itself); also what every merge becomes when `multi_frame_merges` is off |
+| BURST_MERGE (Anything, A person, Selfie) | `BurstMergeCapture`, mode BURST_MERGE | SINGLE under an extension (silent); lucky imaging when the capture cannot run |
+| NIGHT_STACK (Night) | `BurstMergeCapture`, mode NIGHT_STACK; bound OFF when the lens has no NIGHT extension | NIGHT extension available: bound, SINGLE (the extension stacks); a missing extension is not reported |
+| EXPOSURE_BRACKET (A view) | `ExposureBracketCapture` (focus stack folded in when `supportsFocusStack`); always binds OFF | SINGLE only if the user picks an extension on the Pro pill; lucky imaging when the capture cannot run |
+| GROUP_COMPOSITE (A group) | `GroupCompositeCapture` | SINGLE under an extension (silent) |
+| FOCUS_STACK (Food & things) | `FocusStacker` at `NEAR_FRACTIONS` (no extension, `LensControl.supportsFocusStack`; binds OFF rather than AUTO when the lens can stack) | BURST_MERGE without manual focus (silent) |
 | MOTION_AVERAGE / _LIGHTEN / _MEDIAN | `MotionCapture` over the live stream | BURST_SHARPEST without live frames (noted) |
 
 The enhancement is chosen at **bind** time, so `OutcomeBinding` (in the view model) plans when the outcome changes
 and on every bind result: `controller.setEnhancementOverride(override)` and
-`controller.setAnalysisResolutionHint(MOTION_ANALYSIS_RESOLUTION for Motion outcomes, else null)`, then a rebind
+`controller.setAnalysisResolutionHint(MotionCapture.analysisResolution() for Motion outcomes, else null)`, then a rebind
 when the next bind would request a different enhancement than the current one or the analysis size changed.
 The screen calls `CameraViewModel.configureController` on its fresh controller before each bind, so returning
 from the review never binds twice. Precedence: a real outcome change makes the plan's enhancement the override
@@ -560,7 +564,9 @@ until the next outcome change; on first launch there is none and the persisted p
 `CaptureSessionInfo.requestedEnhancement` keeps reporting the persisted `capture_enhancement`;
 `outcomeEnhancement` reports the override. The plan's degradation becomes `outcomeDegraded` and
 `outcomeDegradedNote` (`DegradedNote.of(plan)`, the translatable twin of `CapturePlan.degradedNote`, which stays in
-the diagnostics log).
+the diagnostics log). A *shot-level* note (what happened to one merge) travels in
+`ShotResult.diagnostics.degradedNote` as the capture class's English sentence; `DegradedNote.fromEnglish` maps it
+to a string resource and the review photo shows it as a small chip.
 
 * **Motion** (`MotionCapture`): starts stacking (gyro-aligned, see `:vision`'s README), takes a normal still
   through CameraX in parallel (the first frame, so the experiment never costs the shot), holds for
@@ -571,7 +577,7 @@ the diagnostics log).
   `CaptureRepository.exportProcessed` (`_silk`, `_trails`, `_clear`); `ShotResult.uri` is the stack and
   `companionUri` the still. Too shaky / too few frames: `uri` is the still, `motionStatus` says why and
   `degradedNote` carries "Too shaky, try again". Resolution is the analysis stream's (1280x960 with the hint).
-* **Focus stack** (`FocusStacker`): three in-memory captures at 0 (infinity), 1/3 and 2/3 of
+* **Focus stack** (`FocusStacker`; Food & things, and inside the exposure bracket): three in-memory captures at 0 (infinity), 1/3 and 2/3 (`FAR_FRACTIONS`; Food passes `NEAR_FRACTIONS`: the closest distance, then 0.8 and 0.6 of it) of
   `LENS_INFO_MINIMUM_FOCUS_DISTANCE` diopters (`Camera2CameraControl`: `CONTROL_AF_MODE_OFF` +
   `LENS_FOCUS_DISTANCE`, 180 ms settle each, AF restored in `finally`), the infinity frame saved untouched as
   the first frame, then `FocusMerge`: Laplacian energy at three window sizes on 8x-downscaled guides,
@@ -580,6 +586,31 @@ the diagnostics log).
   the stored buffer. Saved in stored orientation with the first frame's EXIF orientation and capture facts
   (`_stack`). Target <= 2.5 s for the three captures; the merge and encode add ~1-2 s on a 12 MP sensor
   (estimate) and are logged (`Focus stack: capture N ms, total M ms`).
+* **Burst merge** (`camera/merge/BurstMergeCapture`, `StripMerger`; math in `:vision` `merge/`): BURST_MERGE
+  takes five full-resolution JPEGs back to back with auto-exposure locked and the exposure a third of a stop
+  under (lifted back in the merge so highlights survive); NIGHT_STACK takes eight, with the longest shutter the
+  gyro's steadiness allows when the lens has manual sensor control. The sharpest frame is the reference; the
+  others are gyro-shifted, refined by block matching at 1/4 scale and averaged per pixel with weights that
+  reject anything that moved, then detail from the reference is added back. The first frame is saved first as the
+  companion; the merge runs in strips (`_merge`, `_night`) and is saved with the companion's EXIF. `PerformanceTier`
+  scales the frame count (MINIMAL: companion only).
+* **Exposure bracket** (`ExposureBracketCapture`, `ExposureFusion`): three frames at -2, 0, +2 EV through
+  exposure compensation (clamped to the lens range) with auto-exposure locked, fused with Mertens weights
+  (contrast, saturation, well-exposedness) over a Laplacian pyramid at guide scale, full-resolution strips
+  blended with the upsampled weights (`_hdr`). With `withFocusStack` (the lens can) the three 0 EV frames are
+  taken at the three focus distances, focus-merged, then fused with the two brackets (five frames).
+  Diagnostics name `+FOCUS_STACK` in the capture mode when that ran.
+* **Group composite** (`GroupCompositeCapture`, `FaceComposite`, `StillImageAnalyzer`): five frames, faces
+  detected on each at guide scale, matched across frames; the base frame is the one with the most open eyes, and
+  every face that looks better elsewhere (eyes open, sharper) is copied in from its best frame after alignment,
+  feathered. A large alignment residual keeps the base. Saved as `_group` (also when only the base changed).
+* **Notes and fallbacks.** Each capture class returns `mergedUri` (null when only the companion survived),
+  `firstUri` and a one-sentence English `note`. `MergedCaptures` turns that into a `ShotResult`:
+  merged photo as `uri` with the first frame as `companionUri` (the review's Compare), or the companion alone;
+  diagnostics get `pipeline` (the merge, or SINGLE when it did not land), `framesStacked` and the note. A merge that
+  cannot run (no camera, no exposure range) or throws falls back to lucky imaging. `ShotRequest.tier` (from
+  `CameraUiState.performanceTier`) and `ShotRequest.mergesEnabled` (`multi_frame_merges`) are set by
+  `CaptureFlowCoordinator`.
 * **Shutter sound**: the outcome capture calls `ShutterSound.playIfMandatory()` first, which plays
   `MediaActionSound.SHUTTER_CLICK` only when `ShutterSoundPolicy.isMandatory` (API 33+
   `MediaActionSound.mustPlayShutterSound()`; else the legacy `Camera.CameraInfo.canDisableShutterSound`,
@@ -709,6 +740,7 @@ one to three words, and every piece of arithmetic lives in a pure object with a 
 | `onboarding_seen` | bool | `false` | Whether the first-launch `OnboardingCard` has been dismissed |
 | `capture_enhancement` | string (`CaptureEnhancement` name) | `AUTO` | OFF / AUTO / HDR / NIGHT / BOKEH: CameraX Extensions session for captures; falls back to OFF for a bind whose lens does not offer it. Selecting an outcome sets it to the first of the outcome's preferences the lens offers |
 | `burst_sharpest` | bool | `true` | Lucky imaging (three frames, keep the sharpest); only runs when no extension is active, the flash is off, the device is not conserving power and the outcome's pipeline is not SINGLE |
+| `multi_frame_merges` | bool | `true` | Under Pro: the Wave 3 merges (burst merge, Night stack, exposure bracket, group composite). Off runs each as sharpest-of-burst, for comparing with the stock camera; Motion holds and the focus stack are unaffected. Ignored (merges on) while Pro controls are off (`CoachSettings.multiFrameMergesEffective`) |
 | `auto_level` | bool | `true` | Straighten 0.7-8 degree horizon tilts after saving (Easy default: "fix what can be fixed silently"; Compare shows the original) |
 | `auto_shoot` | bool | `true` | "Auto shoot when ready": every shutter tap arms shoot-at-the-peak, like a long-press (Easy default) |
 | `experience_mode` | string (`ExperienceMode` name) | `EASY` | EASY / COACH (`docs/PRODUCT.md`, "Two experiences") |

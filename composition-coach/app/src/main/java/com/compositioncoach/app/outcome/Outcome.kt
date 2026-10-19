@@ -7,7 +7,7 @@ import com.compositioncoach.composition.model.SceneIntent
 /**
  * How a capture is produced for an outcome.
  *
- * - SINGLE: one capture. BURST_SHARPEST: three in-memory frames, keep the sharpest.
+ * - SINGLE: one capture. BURST_SHARPEST: three in-memory frames, keep the sharpest (the fallback of every merge).
  * - BURST_MERGE: a full-resolution burst aligned and averaged with motion rejection (clean, sharp; Wave 3).
  * - NIGHT_STACK: BURST_MERGE with more frames and the longest handheld shutter the gyro allows (Wave 3).
  * - EXPOSURE_BRACKET: full-resolution exposure bracket fused for dynamic range, combined with the focus stack
@@ -22,6 +22,9 @@ enum class CapturePipeline {
     /** Pipelines that need the plain (non-extension) session: lucky imaging, merges and manual control cannot run under a vendor extension. */
     val needsPlainSession: Boolean get() = this != SINGLE
     val isMotion: Boolean get() = this == MOTION_AVERAGE || this == MOTION_LIGHTEN || this == MOTION_MEDIAN
+
+    /** The Wave 3 multi-frame merges that the "Multi-frame merges" setting switches off. */
+    val isMerge: Boolean get() = this == BURST_MERGE || this == NIGHT_STACK || this == EXPOSURE_BRACKET || this == GROUP_COMPOSITE
 }
 
 /** Post-processing applied on review (never automatic, never destructive). */
@@ -49,16 +52,16 @@ data class OutcomeSpec(
 
 /** The photograph the user wants. The strip above the shutter lists these in plain words. */
 enum class Outcome(val label: String, val spec: OutcomeSpec) {
-    ANYTHING("Anything", OutcomeSpec(SceneIntent.AUTO, listOf(CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_SHARPEST, 0, PostProcess.NONE, null, emptySet())),
-    PORTRAIT("A person", OutcomeSpec(SceneIntent.PORTRAIT, listOf(CaptureEnhancement.BOKEH, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_SHARPEST, 0, PostProcess.BOKEH_MASK, null, setOf(MetricCategory.LIGHT, MetricCategory.HEADROOM, MetricCategory.LOOKING_ROOM))),
-    GROUP("A group", OutcomeSpec(SceneIntent.GROUP_PORTRAIT, listOf(CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_SHARPEST, 0, PostProcess.NONE, null, setOf(MetricCategory.EDGE_TENSION, MetricCategory.LIGHT))),
-    LANDSCAPE("A view", OutcomeSpec(SceneIntent.LANDSCAPE, listOf(CaptureEnhancement.HDR, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.FOCUS_STACK, 0, PostProcess.NONE, null, setOf(MetricCategory.HORIZON, MetricCategory.LEADING_LINES))),
-    NIGHT("Night", OutcomeSpec(SceneIntent.AUTO, listOf(CaptureEnhancement.NIGHT, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.SINGLE, 2, PostProcess.NONE, "Hold still", emptySet())),
+    ANYTHING("Anything", OutcomeSpec(SceneIntent.AUTO, listOf(CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_MERGE, 0, PostProcess.NONE, null, emptySet())),
+    PORTRAIT("A person", OutcomeSpec(SceneIntent.PORTRAIT, listOf(CaptureEnhancement.BOKEH, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_MERGE, 0, PostProcess.BOKEH_MASK, null, setOf(MetricCategory.LIGHT, MetricCategory.HEADROOM, MetricCategory.LOOKING_ROOM))),
+    GROUP("A group", OutcomeSpec(SceneIntent.GROUP_PORTRAIT, listOf(CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.GROUP_COMPOSITE, 0, PostProcess.NONE, null, setOf(MetricCategory.EDGE_TENSION, MetricCategory.LIGHT))),
+    LANDSCAPE("A view", OutcomeSpec(SceneIntent.LANDSCAPE, listOf(CaptureEnhancement.HDR, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.EXPOSURE_BRACKET, 0, PostProcess.NONE, null, setOf(MetricCategory.HORIZON, MetricCategory.LEADING_LINES))),
+    NIGHT("Night", OutcomeSpec(SceneIntent.AUTO, listOf(CaptureEnhancement.NIGHT, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.NIGHT_STACK, 2, PostProcess.NONE, "Hold still", emptySet())),
     LIGHT_TRAILS("Light trails", OutcomeSpec(SceneIntent.AUTO, listOf(CaptureEnhancement.OFF), CapturePipeline.MOTION_LIGHTEN, 4, PostProcess.NONE, "Hold still for 4 seconds", emptySet())),
     SILKY_WATER("Silky water", OutcomeSpec(SceneIntent.LANDSCAPE, listOf(CaptureEnhancement.OFF), CapturePipeline.MOTION_AVERAGE, 3, PostProcess.NONE, "Hold still for 3 seconds", setOf(MetricCategory.HORIZON))),
     CLEAR_CROWD("Clear the crowd", OutcomeSpec(SceneIntent.ARCHITECTURE, listOf(CaptureEnhancement.OFF), CapturePipeline.MOTION_MEDIAN, 5, PostProcess.NONE, "Hold still for 5 seconds", setOf(MetricCategory.SYMMETRY, MetricCategory.HORIZON))),
-    FOOD("Food & things", OutcomeSpec(SceneIntent.OBJECT, listOf(CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_SHARPEST, 0, PostProcess.NONE, null, setOf(MetricCategory.LIGHT, MetricCategory.BACKGROUND_DISTRACTION))),
-    SELFIE("Selfie", OutcomeSpec(SceneIntent.SELFIE, listOf(CaptureEnhancement.BOKEH, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_SHARPEST, 0, PostProcess.BOKEH_MASK, null, setOf(MetricCategory.LIGHT, MetricCategory.HEADROOM), preferFrontCamera = true));
+    FOOD("Food & things", OutcomeSpec(SceneIntent.OBJECT, listOf(CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.FOCUS_STACK, 0, PostProcess.NONE, null, setOf(MetricCategory.LIGHT, MetricCategory.BACKGROUND_DISTRACTION))),
+    SELFIE("Selfie", OutcomeSpec(SceneIntent.SELFIE, listOf(CaptureEnhancement.BOKEH, CaptureEnhancement.AUTO, CaptureEnhancement.OFF), CapturePipeline.BURST_MERGE, 0, PostProcess.BOKEH_MASK, null, setOf(MetricCategory.LIGHT, MetricCategory.HEADROOM), preferFrontCamera = true));
 
     val needsHold: Boolean get() = spec.holdSeconds > 0
     val isMotion: Boolean get() = spec.pipeline.isMotion

@@ -11,7 +11,9 @@ import android.util.Log
 import androidx.camera.core.ImageCapture
 import androidx.exifinterface.media.ExifInterface
 import com.compositioncoach.app.outcome.Outcome
+import com.compositioncoach.app.camera.merge.BurstMergeMode
 import com.compositioncoach.vision.FrameStackingSource
+import com.compositioncoach.vision.PerformanceTier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -54,6 +56,7 @@ class CapturePipeline(
     /** Motion holds (see [MotionCapture]); its [MotionCapture.progress] is re-exposed as [holdProgress]. */
     private val motionCapture = MotionCapture(repository, motionSensor)
     private val stacked = StackedCaptures(repository, motionCapture, FocusStacker(repository, motionSensor), ::baseDiagnostics)
+    private val merged = MergedCaptures(repository, motionSensor, ::baseDiagnostics)
     private val shutterSound by lazy { ShutterSound(repository.context) }
 
     /** Night's steady hold ([awaitSteadyHold]) progress, null when none runs. */
@@ -74,6 +77,10 @@ class CapturePipeline(
         val shutterAtElapsedMs: Long,
         val steadiness: Steadiness,
         val waitedForSteadyMs: Long,
+        /** The thermal/power tier at the shutter; merges scale their frame counts by it (FULL when unknown). */
+        val tier: PerformanceTier = PerformanceTier.FULL,
+        /** The `multi_frame_merges` setting: false drops every merge to the sharpest-of-burst or single photo. */
+        val mergesEnabled: Boolean = true,
     )
 
     /**
@@ -152,7 +159,11 @@ class CapturePipeline(
      *
      * - SINGLE / BURST_SHARPEST: one capture, or lucky imaging when [ShotRequest.burst] allows and no extension
      *   is active.
-     * - FOCUS_STACK: [FocusStacker] when the lens takes manual focus and no extension is active, else burst.
+     * - FOCUS_STACK (Food & things): [FocusStacker] at the near distances when the lens takes manual focus and no
+     *   extension is active, else lucky imaging.
+     * - BURST_MERGE / NIGHT_STACK / EXPOSURE_BRACKET / GROUP_COMPOSITE (Wave 3, [MergedCaptures]): the merged photo
+     *   plus the untouched first frame as the companion; with no extension active only, and any failure falls
+     *   back to lucky imaging. With [ShotRequest.mergesEnabled] false they all run as BURST_SHARPEST.
      * - MOTION_*: [MotionCapture] over [stacking] (pass `frameSource as? FrameStackingSource`); without it the
      *   capture falls back to a burst and says so in [CaptureDiagnostics.degradedNote].
      *
@@ -171,28 +182,55 @@ class CapturePipeline(
         val plan = OutcomeCapturePlanner.plan(outcome, session?.availableEnhancements ?: setOf(CaptureEnhancement.OFF), support)
         shutterSound.playIfMandatory()
         val plain = active == CaptureEnhancement.OFF
-        val result = when (plan.pipeline) {
+        // "Multi-frame merges" off: every Wave 3 merge becomes the sharpest-of-burst photo (the stock-camera comparison).
+        val pipeline = if (!request.mergesEnabled && plan.pipeline.isMerge) OutcomePipeline.BURST_SHARPEST else plan.pipeline
+        val result = when (pipeline) {
             OutcomePipeline.SINGLE -> captureSingle(request).tagged(OutcomePipeline.SINGLE)
-            OutcomePipeline.BURST_SHARPEST -> captureAny(request.withBurst(plain && controller != null))
-                .let { it.tagged(if (it.diagnostics.burstScores != null) OutcomePipeline.BURST_SHARPEST else OutcomePipeline.SINGLE) }
-            OutcomePipeline.FOCUS_STACK -> (if (plain) stacked.focusStack(request, lens) else null)
-                ?: captureAny(request.withBurst(plain && controller != null)).tagged(OutcomePipeline.SINGLE)
-            // Wave 3 pipelines: until their captures are wired in, behave as today's best equivalent.
-            OutcomePipeline.BURST_MERGE, OutcomePipeline.NIGHT_STACK, OutcomePipeline.GROUP_COMPOSITE ->
-                captureAny(request.withBurst(plain && controller != null))
-                    .let { it.tagged(if (it.diagnostics.burstScores != null) OutcomePipeline.BURST_SHARPEST else OutcomePipeline.SINGLE) }
-            OutcomePipeline.EXPOSURE_BRACKET -> (if (plain) stacked.focusStack(request, lens) else null)
-                ?: captureAny(request.withBurst(plain && controller != null)).tagged(OutcomePipeline.SINGLE)
+            OutcomePipeline.BURST_SHARPEST -> sharpestOrSingle(request, plain)
+            OutcomePipeline.FOCUS_STACK -> (if (plain) stacked.focusStack(request, lens, focusFractionsFor(outcome)) else null)
+                ?: sharpestOrSingle(request, plain)
+            // The merges need the plain session; any that cannot run here (or fails outright) falls back to lucky imaging.
+            OutcomePipeline.BURST_MERGE -> mergeOrNull(plain) { merged.burstMerge(request, lens, BurstMergeMode.BURST_MERGE) }
+                ?: sharpestOrSingle(request, plain)
+            OutcomePipeline.NIGHT_STACK -> mergeOrNull(plain) { merged.burstMerge(request, lens, BurstMergeMode.NIGHT_STACK) }
+                ?: sharpestOrSingle(request, plain)
+            OutcomePipeline.EXPOSURE_BRACKET -> mergeOrNull(plain) { merged.exposureBracket(request, lens, withFocusStack = lens?.supportsFocusStack == true) }
+                ?: sharpestOrSingle(request, plain)
+            OutcomePipeline.GROUP_COMPOSITE -> mergeOrNull(plain) { merged.groupComposite(request, lens) }
+                ?: sharpestOrSingle(request, plain)
             OutcomePipeline.MOTION_AVERAGE, OutcomePipeline.MOTION_LIGHTEN, OutcomePipeline.MOTION_MEDIAN ->
-                stacked.motion(request, plan.pipeline, outcome.spec.holdSeconds, stacking!!, lens)
+                stacked.motion(request, pipeline, outcome.spec.holdSeconds, stacking!!, lens)
         }
         // What actually went wrong on this shot ("Too shaky") outranks what the plan expected ("no Night here").
         val diagnostics = result.diagnostics.copy(degradedNote = result.diagnostics.degradedNote ?: plan.degradedNote)
         return ShotResult(result.uri, diagnostics, result.companionUri, result.motionStatus, plan)
     }
 
+    /** Lucky imaging when [ShotRequest.burst] allows it (plain session, setting on, not conserving power), else one photo. */
+    private suspend fun sharpestOrSingle(request: ShotRequest, plain: Boolean): ShotResult =
+        captureAny(request.withBurst(request.burst && plain && request.controller != null))
+            .let { it.tagged(if (it.diagnostics.burstScores != null) OutcomePipeline.BURST_SHARPEST else OutcomePipeline.SINGLE) }
+
+    /** Runs [block] on the plain session only; null (so the caller falls back) when it cannot run or fails. */
+    private suspend fun mergeOrNull(plain: Boolean, block: suspend () -> ShotResult?): ShotResult? {
+        if (!plain) return null
+        return try {
+            block()
+        } catch (c: CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            Log.w(TAG, "Merge capture failed; falling back to a normal capture", t)
+            null
+        }
+    }
+
+    /** Food & things focuses on the near set; every other focus stack uses the far set. */
+    private fun focusFractionsFor(outcome: Outcome): List<Float> =
+        if (outcome == Outcome.FOOD) FocusStacker.NEAR_FRACTIONS else FocusStacker.FAR_FRACTIONS
+
     private fun ShotRequest.withBurst(burst: Boolean) = ShotRequest(
         controller, imageCapture, lensFacing, session, burst, zoomRatio, exposureIndex, shutterAtElapsedMs, steadiness, waitedForSteadyMs,
+        tier, mergesEnabled,
     )
 
     private fun ShotResult.tagged(pipeline: OutcomePipeline, frames: Int? = null) =

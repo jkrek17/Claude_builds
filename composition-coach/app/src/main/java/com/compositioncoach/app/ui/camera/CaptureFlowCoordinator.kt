@@ -153,6 +153,8 @@ internal class CaptureFlowCoordinator(
                     shutterAtElapsedMs = ctx.shutterAtElapsedMs,
                     steadiness = steadiness,
                     waitedForSteadyMs = waitedMs,
+                    tier = current.performanceTier,
+                    mergesEnabled = current.settings.multiFrameMergesEffective,
                 )
                 port.playShutterSound(current.settings.shutterSound)
                 val shot = port.capture(outcome, request)

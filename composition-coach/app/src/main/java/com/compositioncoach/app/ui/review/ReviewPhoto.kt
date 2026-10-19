@@ -37,6 +37,7 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.compositioncoach.app.R
 import com.compositioncoach.app.di.ReviewEntry
+import com.compositioncoach.app.ui.camera.DegradedNote
 import com.compositioncoach.app.ui.theme.OnScrim
 import com.compositioncoach.app.ui.theme.OnScrimMuted
 import com.compositioncoach.app.ui.theme.Scrim
@@ -64,7 +65,8 @@ fun rememberReviewPhoto(entry: ReviewEntry): ReviewPhoto {
 /**
  * The photo area: the photo fitted on black, or, while a card chip asks for it, the "What if" framing with its
  * "72 → 83", the processed portrait, or the tapped crop outlined on the full photo. The back arrow (= Keep),
- * the "Levelling…" line and the Compare chip (when auto-level kept an original) sit over it.
+ * the "Levelling…" line, the Compare chip (when auto-level or a merge kept an original) and the merge's note
+ * (when it fell short) sit over it.
  */
 @Composable
 fun BoxScope.ReviewPhotoArea(entry: ReviewEntry, photo: ReviewPhoto, view: CardViewState, onKeep: () -> Unit) {
@@ -99,6 +101,20 @@ fun BoxScope.ReviewPhotoArea(entry: ReviewEntry, photo: ReviewPhoto, view: CardV
 
     IconButton(onClick = onKeep, modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.card_back_keep), tint = OnScrim)
+    }
+    // What happened to this photo's merge ("The frames didn't line up, so this is the single photo."), translatable.
+    DegradedNote.fromEnglish(entry.diagnostics.degradedNote)?.takeUnless { view.whatIfShowing }?.let { note ->
+        Text(
+            text = stringResource(note.resId),
+            color = OnScrim,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 12.dp, start = 56.dp, end = 16.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Scrim)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+        )
     }
     if (entry.processing) {
         Text(

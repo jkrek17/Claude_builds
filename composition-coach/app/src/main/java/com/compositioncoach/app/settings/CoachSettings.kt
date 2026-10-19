@@ -59,6 +59,12 @@ data class CoachSettings(
      */
     val burstSharpest: Boolean = true,
     /**
+     * Multi-frame merges (`multi_frame_merges`, under Pro): the Wave 3 burst, exposure and face merges. Off drops
+     * each to the sharpest-of-burst photo, so testers can compare against the stock camera. Motion holds and the
+     * focus stack are the point of their outcomes and are not affected.
+     */
+    val multiFrameMerges: Boolean = true,
+    /**
      * Straighten small (0.7-8 degree) horizon tilts after saving (`auto_level`). On by default (Easy defaults,
      * "fix what can be fixed silently"); the review's Compare chip shows the photo as captured.
      */
@@ -103,6 +109,12 @@ data class CoachSettings(
      */
     fun burstSharpestEffective(activeEnhancement: CaptureEnhancement, conservingPower: Boolean): Boolean =
         burstSharpest && activeEnhancement == CaptureEnhancement.OFF && !conservingPower
+
+    /**
+     * Whether captures run the multi-frame merges: the [multiFrameMerges] switch lives under Pro, so with Pro
+     * controls off the merges always run (a hidden switch must not silently turn the best photo off).
+     */
+    val multiFrameMergesEffective: Boolean get() = multiFrameMerges || !proControls
 
     /** Target interval between vision analyses, see [FrameAnalysisSource.setTargetIntervalMs]. */
     val analysisIntervalMs: Long get() = if (batterySaver) BATTERY_SAVER_INTERVAL_MS else DEFAULT_INTERVAL_MS

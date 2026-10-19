@@ -20,55 +20,89 @@ class OutcomeCaptureTest {
     private val none = PipelineSupport(motionStacking = false, focusStacking = false)
 
     @Test
-    fun `night falls back to the next available enhancement and says so once`() {
-        val plan = OutcomeCapturePlanner.plan(Outcome.NIGHT, setOf(OFF, AUTO), full)
-        assertEquals(AUTO, plan.enhancement)
-        assertEquals(NIGHT, plan.missingEnhancement)
-        assertEquals("Night isn't available on this phone, using the best we can", plan.degradedNote)
-        assertEquals(Pipeline.SINGLE, plan.pipeline)
+    fun `night uses the extension when there is one, else stacks eight frames itself and says nothing`() {
+        val ext = OutcomeCapturePlanner.plan(Outcome.NIGHT, setOf(OFF, AUTO, NIGHT), full)
+        assertEquals(NIGHT, ext.enhancement)
+        assertEquals(Pipeline.SINGLE, ext.pipeline)
+        assertEquals(Pipeline.NIGHT_STACK, ext.requested)
+        assertFalse(ext.degraded)
+        for (available in listOf(setOf(OFF), setOf(OFF, AUTO), setOf(OFF, AUTO, HDR, BOKEH))) {
+            val plan = OutcomeCapturePlanner.plan(Outcome.NIGHT, available, full)
+            // The stack needs the plain session, so even an AUTO extension is not bound for it.
+            assertEquals(OFF, plan.enhancement)
+            assertEquals(Pipeline.NIGHT_STACK, plan.pipeline)
+            assertNull(plan.missingEnhancement)
+            assertNull(plan.degradedNote)
+        }
+        assertEquals(2, Outcome.NIGHT.spec.holdSeconds)
     }
 
     @Test
-    fun `portrait uses the vendor bokeh when offered and skips lucky imaging under it`() {
+    fun `the everyday outcomes merge a burst, and the extension replaces the merge silently`() {
+        for (outcome in listOf(Outcome.ANYTHING, Outcome.PORTRAIT, Outcome.SELFIE)) {
+            val plain = OutcomeCapturePlanner.plan(outcome, setOf(OFF), full)
+            assertEquals("$outcome", Pipeline.BURST_MERGE, plain.pipeline)
+            assertEquals("$outcome", Pipeline.BURST_MERGE, plain.requested)
+        }
+        val auto = OutcomeCapturePlanner.plan(Outcome.ANYTHING, setOf(OFF, AUTO), full)
+        assertEquals(AUTO, auto.enhancement)
+        assertEquals(Pipeline.SINGLE, auto.pipeline)
+        assertFalse(auto.degraded)
+    }
+
+    @Test
+    fun `portrait uses the vendor bokeh when offered and skips the merge under it`() {
         val plan = OutcomeCapturePlanner.plan(Outcome.PORTRAIT, setOf(OFF, BOKEH), full)
         assertEquals(BOKEH, plan.enhancement)
         assertEquals(Pipeline.SINGLE, plan.pipeline)
         assertFalse(plan.degraded)
         val without = OutcomeCapturePlanner.plan(Outcome.PORTRAIT, setOf(OFF), full)
         assertEquals(OFF, without.enhancement)
-        assertEquals(Pipeline.BURST_SHARPEST, without.pipeline)
+        assertEquals(Pipeline.BURST_MERGE, without.pipeline)
         assertEquals(BOKEH, without.missingEnhancement)
     }
 
     @Test
-    fun `landscape focus stacks whenever the lens can, else takes the sharpest frame`() {
-        // Even with an HDR extension on offer, the stack wins: it binds the plain session.
-        val withHdr = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, HDR), full)
-        assertEquals(Pipeline.FOCUS_STACK, withHdr.pipeline)
-        assertEquals(OFF, withHdr.enhancement)
-        assertFalse(withHdr.degraded)
-        val stacked = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), full)
-        assertEquals(Pipeline.FOCUS_STACK, stacked.pipeline)
-        // A missing HDR extension is not a degradation: the standard pipeline is HDR on such phones (Pixels).
-        assertNull(stacked.missingEnhancement)
-        assertFalse(stacked.degraded)
-        val noFocus = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), none)
-        assertEquals(Pipeline.BURST_SHARPEST, noFocus.pipeline)
-        // So the only note left is the pipeline fallback.
-        assertNull(noFocus.missingEnhancement)
-        assertEquals("This lens can't focus-stack, so this is one sharp photo", noFocus.degradedNote)
-        val noFocusNoHdrWanted = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, HDR), none)
-        assertEquals(Pipeline.SINGLE, noFocusNoHdrWanted.pipeline)
+    fun `a group composites faces on the plain session`() {
+        val plan = OutcomeCapturePlanner.plan(Outcome.GROUP, setOf(OFF), none)
+        assertEquals(Pipeline.GROUP_COMPOSITE, plan.pipeline)
+        assertFalse(plan.degraded)
+        assertEquals(Pipeline.SINGLE, OutcomeCapturePlanner.plan(Outcome.GROUP, setOf(OFF, AUTO), none).pipeline)
     }
 
     @Test
-    fun `the focus stack beats AUTO and HDR, and HDR is bound only when the lens cannot stack`() {
-        val plan = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO), full)
-        assertEquals(OFF, plan.enhancement)
-        assertEquals(Pipeline.FOCUS_STACK, plan.pipeline)
-        assertEquals(OFF, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO, HDR), full).enhancement)
-        assertEquals(HDR, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO, HDR), none).enhancement)
-        assertEquals(AUTO, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, AUTO), none).enhancement)
+    fun `a view brackets exposures on the plain session whatever the lens offers`() {
+        // The bracket (with the focus stack inside) beats AUTO and HDR: no vendor session can carry it.
+        for (support in listOf(full, none)) for (available in listOf(setOf(OFF), setOf(OFF, AUTO), setOf(OFF, HDR), setOf(OFF, AUTO, HDR))) {
+            val plan = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, available, support)
+            assertEquals("$available, $support", OFF, plan.enhancement)
+            assertEquals("$available, $support", Pipeline.EXPOSURE_BRACKET, plan.pipeline)
+            // A missing HDR extension is not a degradation: the standard pipeline is HDR on such phones (Pixels).
+            assertNull(plan.missingEnhancement)
+            assertFalse(plan.degraded)
+        }
+    }
+
+    @Test
+    fun `food focus stacks at the near distances when the lens can, else merges a burst, without a note`() {
+        val stacked = OutcomeCapturePlanner.plan(Outcome.FOOD, setOf(OFF, AUTO), full)
+        assertEquals(Pipeline.FOCUS_STACK, stacked.pipeline)
+        assertEquals(OFF, stacked.enhancement)
+        assertFalse(stacked.degraded)
+        val noFocus = OutcomeCapturePlanner.plan(Outcome.FOOD, setOf(OFF), none)
+        assertEquals(Pipeline.BURST_MERGE, noFocus.pipeline)
+        assertEquals(Pipeline.FOCUS_STACK, noFocus.requested)
+        assertNull(noFocus.degradedNote)
+        // Without manual focus an AUTO extension is still the better session for food.
+        val ext = OutcomeCapturePlanner.plan(Outcome.FOOD, setOf(OFF, AUTO), none)
+        assertEquals(AUTO, ext.enhancement)
+        assertEquals(Pipeline.SINGLE, ext.pipeline)
+    }
+
+    @Test
+    fun `merge pipelines are flagged for the settings switch`() {
+        val merges = Pipeline.entries.filter { it.isMerge }.toSet()
+        assertEquals(setOf(Pipeline.BURST_MERGE, Pipeline.NIGHT_STACK, Pipeline.EXPOSURE_BRACKET, Pipeline.GROUP_COMPOSITE), merges)
     }
 
     @Test
@@ -85,7 +119,7 @@ class OutcomeCaptureTest {
         val plan = OutcomeCapturePlanner.plan(Outcome.ANYTHING, setOf(OFF), full)
         assertEquals(OFF, plan.enhancement)
         assertNull(plan.degradedNote)
-        assertEquals(Pipeline.BURST_SHARPEST, plan.pipeline)
+        assertEquals(Pipeline.BURST_MERGE, plan.pipeline)
     }
 
     @Test

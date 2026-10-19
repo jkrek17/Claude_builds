@@ -7,6 +7,7 @@ import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.camera.CaptureQuality
 import com.compositioncoach.app.camera.CaptureSessionInfo
 import com.compositioncoach.app.camera.LensFacing
+import com.compositioncoach.app.camera.MotionCapture
 import com.compositioncoach.app.camera.OutcomeCapturePlanner
 import com.compositioncoach.app.di.CaptureOrchestrationPort
 import com.compositioncoach.app.outcome.Outcome
@@ -28,9 +29,12 @@ object OutcomeBindingRules {
     fun bindTarget(override: CaptureEnhancement?, persisted: CaptureEnhancement, available: Set<CaptureEnhancement>): CaptureEnhancement =
         CaptureQuality.resolveEnhancement(override ?: persisted, available)
 
-    /** Motion outcomes stack the analysis stream, so they bind it at 1280x960; everything else at the default. */
+    /**
+     * Motion outcomes stack the analysis stream, so they bind it at [MotionCapture.analysisResolution] (1920x1440,
+     * or 1280x960 once a device has shown it cannot sustain the larger size); everything else at the default.
+     */
     fun analysisResolutionHint(outcome: Outcome): Size? =
-        if (outcome.isMotion) CameraController.MOTION_ANALYSIS_RESOLUTION else null
+        if (outcome.isMotion) MotionCapture.analysisResolution() else null
 }
 
 /**

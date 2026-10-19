@@ -56,7 +56,9 @@ class CaptureStillAnalysisPort(
         val full = repository.decodeFull(uri) ?: return null
         val separated: Bitmap = withContext(Dispatchers.Default) {
             try {
-                BackgroundSeparator.apply(full, mask)
+                // The front camera's subject sits closer and fills more of the frame: a lighter blur.
+                val radiusScale = if (analysis.isFrontCamera) BackgroundSeparator.SELFIE_RADIUS_SCALE else 1f
+                BackgroundSeparator.apply(full, mask, radiusScale = radiusScale)
             } finally {
                 full.recycle()
             }

@@ -59,6 +59,7 @@ fun SettingsScreen(
             onSubjectMaskChange = viewModel::setSubjectMaskEnabled,
             onPoseDetectionChange = viewModel::setPoseDetectionEnabled,
             onDebugModeChange = viewModel::setDebugMode,
+            onMultiFrameMergesChange = viewModel::setMultiFrameMerges,
             onReviewCardModeChange = viewModel::setReviewCardMode,
         ),
         actions = actions.copy(
@@ -92,6 +93,7 @@ data class SettingsHandlers(
     val onSubjectMaskChange: (Boolean) -> Unit = {},
     val onPoseDetectionChange: (Boolean) -> Unit = {},
     val onDebugModeChange: (Boolean) -> Unit = {},
+    val onMultiFrameMergesChange: (Boolean) -> Unit = {},
     val onReviewCardModeChange: (ReviewCardMode) -> Unit = {},
 )
 
@@ -100,7 +102,7 @@ data class SettingsHandlers(
  *  1. **Experience** (Easy · Coach); Coach adds "Show score".
  *  2. **Your eye**, then the **Pro controls** switch; with Pro on, Guidance level and Grid appear.
  *  3. **More** (collapsed): capture rows (Enhancement only under Pro), Guide by vibration / voice, "Card only
- *     when there's something to say" (`review_card_mode`), Composition guidance, Battery saver, then under Pro the detection toggles and Developer mode; Reset coaching preferences.
+ *     when there's something to say" (`review_card_mode`), Composition guidance, Battery saver, then under Pro Multi-frame merges, the detection toggles and Developer mode; Reset coaching preferences.
  *  4. **About**: privacy line, Privacy, Open-source licences, Send feedback, version.
  * The shooting-mode chips are gone: the outcome strip on the camera is the control, and it sets the scene.
  */
@@ -199,9 +201,15 @@ fun SettingsContent(
     }
 }
 
-/** Detection toggles and developer mode: Pro only. */
+/** Multi-frame merges, detection toggles and developer mode: Pro only. */
 @Composable
 private fun ProDetectionRows(settings: CoachSettings, handlers: SettingsHandlers) {
+    SwitchRow(
+        label = stringResource(R.string.settings_multi_frame_merges),
+        subtitle = stringResource(R.string.settings_multi_frame_merges_subtitle),
+        checked = settings.multiFrameMerges,
+        onCheckedChange = handlers.onMultiFrameMergesChange,
+    )
     SwitchRow(label = stringResource(R.string.settings_detect_objects), checked = settings.detectObjectsEnabled, onCheckedChange = handlers.onDetectObjectsChange)
     SwitchRow(
         label = stringResource(R.string.settings_subject_mask),

@@ -18,6 +18,7 @@ class CaptureSettingsTest {
         val defaults = emptyPreferences().toCoachSettings()
         assertEquals(CaptureEnhancement.AUTO, defaults.captureEnhancement)
         assertTrue(defaults.burstSharpest)
+        assertTrue(defaults.multiFrameMerges)
         assertTrue(defaults.autoLevel)
         assertTrue(defaults.autoShoot)
         assertEquals(CoachSettings(), defaults)
@@ -39,6 +40,7 @@ class CaptureSettingsTest {
             onboardingSeen = true,
             captureEnhancement = CaptureEnhancement.NIGHT,
             burstSharpest = false,
+            multiFrameMerges = false,
             autoLevel = false,
             autoShoot = false,
         )
@@ -46,6 +48,7 @@ class CaptureSettingsTest {
         assertEquals(custom, prefs.toCoachSettings())
         assertEquals("NIGHT", prefs[SettingsRepository.Keys.CAPTURE_ENHANCEMENT])
         assertEquals(false, prefs[SettingsRepository.Keys.BURST_SHARPEST])
+        assertEquals(false, prefs[SettingsRepository.Keys.MULTI_FRAME_MERGES])
         assertEquals(false, prefs[SettingsRepository.Keys.AUTO_LEVEL])
         assertEquals(false, prefs[SettingsRepository.Keys.AUTO_SHOOT])
     }
@@ -54,6 +57,7 @@ class CaptureSettingsTest {
     fun `key names are the documented on-disk contract`() {
         assertEquals("capture_enhancement", SettingsRepository.Keys.CAPTURE_ENHANCEMENT.name)
         assertEquals("burst_sharpest", SettingsRepository.Keys.BURST_SHARPEST.name)
+        assertEquals("multi_frame_merges", SettingsRepository.Keys.MULTI_FRAME_MERGES.name)
         assertEquals("auto_level", SettingsRepository.Keys.AUTO_LEVEL.name)
         assertEquals("auto_shoot", SettingsRepository.Keys.AUTO_SHOOT.name)
     }
@@ -73,5 +77,13 @@ class CaptureSettingsTest {
         assertFalse(on.burstSharpestEffective(CaptureEnhancement.NIGHT, conservingPower = false))
         assertFalse(on.burstSharpestEffective(CaptureEnhancement.OFF, conservingPower = true))
         assertFalse(CoachSettings(burstSharpest = false).burstSharpestEffective(CaptureEnhancement.OFF, conservingPower = false))
+    }
+
+    @Test
+    fun `the merges switch is hidden under Pro, so it only takes effect with Pro on`() {
+        assertTrue(CoachSettings().multiFrameMergesEffective)
+        assertTrue(CoachSettings(multiFrameMerges = false, proControls = false).multiFrameMergesEffective)
+        assertFalse(CoachSettings(multiFrameMerges = false, proControls = true).multiFrameMergesEffective)
+        assertTrue(CoachSettings(multiFrameMerges = true, proControls = true).multiFrameMergesEffective)
     }
 }

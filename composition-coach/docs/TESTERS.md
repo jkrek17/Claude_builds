@@ -37,6 +37,33 @@ To update, install the newer `.apk` the same way; it replaces the old one and ke
 - **Settings > Experience**: Easy (default) or Coach, which adds the score number and a short reason under
   each cue. Settings > Your eye shows what the app has learned about your taste, and Start fresh forgets it.
 
+## What to compare against the stock camera
+
+Take the same scene with SceneRight and with your phone's own camera, then zoom to 100 % on both. Each outcome
+saves a normal first frame next to the merged photo (the review's **Compare** shows it), so you can also compare
+the two SceneRight files directly.
+
+- **Anything, A person, Selfie:** shadows and dark walls. The merge should be cleaner (less speckle) with the same
+  sharpness; check that anything that moved (hands, hair, leaves) is not smeared or ghosted.
+- **A group:** shoot a group that blinks or looks away. Faces should come from the frame where they look best;
+  check the edges around a swapped face. If it says the photo was kept as shot, that is fine.
+- **A view:** a bright sky over a dark foreground. Look for sky detail, shadow detail and halos around the
+  horizon, and (on phones that can) near and far both sharp.
+- **Night:** a dim room or street, hands only, no tripod. Compare noise, blur and how bright it ends up with
+  the stock Night mode.
+- **Food & things:** a plate or object a hand away. The near edge and the far edge should both be sharp.
+- **Light trails, Silky water, Clear the crowd:** hold still for the full ring; it may run longer than the
+  minimum until the effect has settled. Compare with the stock long exposure or a person-removal mode.
+
+The merges take a few seconds after the shutter. The review shows the first frame until the merged photo lands.
+When a merge did not work, a short note on the review says why (a warm phone, frames that did not line up, low
+memory) and the photo is the normal first frame.
+
+**Pro > Multi-frame merges.** Turn on Pro controls in Settings; "Multi-frame merges" is on by default. Off saves
+a single (sharpest-of-burst) photo for the everyday outcomes, which is the fairest comparison with the stock
+camera. Say in your feedback which way it was set. Find the capture details with
+`adb logcat -s CaptureDiagnostics` (`pipeline=`, `stacked=`, `degraded=`).
+
 ## What we want to know
 
 - Did the advice make sense, and did following it make the shot look better?

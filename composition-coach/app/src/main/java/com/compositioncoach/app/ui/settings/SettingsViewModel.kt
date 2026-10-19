@@ -43,6 +43,7 @@ class SettingsViewModel(
     fun setSubjectMaskEnabled(enabled: Boolean) = launch { repository.setSubjectMaskEnabled(enabled) }
 
     fun setBurstSharpest(enabled: Boolean) = launch { repository.setBurstSharpest(enabled) }
+    fun setMultiFrameMerges(enabled: Boolean) = launch { repository.setMultiFrameMerges(enabled) }
     fun setAutoLevel(enabled: Boolean) = launch { repository.setAutoLevel(enabled) }
     fun setAutoShoot(enabled: Boolean) = launch { repository.setAutoShoot(enabled) }
 
