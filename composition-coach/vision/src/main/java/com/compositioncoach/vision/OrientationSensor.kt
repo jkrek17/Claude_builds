@@ -54,17 +54,22 @@ import kotlin.math.hypot
  * `(gx, gy, gz)` vector (not to the derived angles, which would need messy wraparound handling)
  * before computing roll/pitch, smoothing sensor jitter frame to frame.
  *
- * ### Physical device rotation (the "Pixel style" fix)
- * The app is portrait-locked, so [Display.getRotation] never itself changes — but the raw `rollDegrees`
- * computed above already *is* the phone's true physical rotation away from natural portrait (the
- * `currentDisplayRotation()` remap above is a defensive no-op in practice, since it always reads back
- * `Surface.ROTATION_0` for a locked activity). [DeviceRotationQuantizer] buckets that continuous roll
- * into a stable [Surface.ROTATION_0]/`90`/`180`/`270`-degree band ([deviceRotationDegrees]), which
- * [VisionPipeline] uses (via [UprightRotation]) to analyze every frame in true physical-up coordinates
- * instead of the fixed portrait-display orientation. [current]'s own `rollDegrees` is then re-referenced
- * onto that same quantized rotation (see [referenceRollToDeviceRotation]) so a level hold reads ~0
- * degrees in *every* physical orientation, not just natural portrait — e.g. a phone held level in
- * landscape (raw roll ~90) reports `rollDegrees` ~0 once [deviceRotationDegrees] has settled on 90.
+ * ### Physical device rotation: the platform is the source of truth
+ * The app is portrait-locked, so [Display.getRotation] never itself changes. The phone's physical rotation
+ * (`deviceRotationDegrees`, `Surface.ROTATION_*` sense: counter-clockwise from natural, right edge up = 90)
+ * comes from the **platform's own** `OrientationEventListener`, wrapped by [DeviceRotationSource], exactly as
+ * production camera apps do — not from our own gravity maths. It is started and stopped alongside this
+ * sensor. [lastRotationSource] records who produced the value ([ROTATION_SOURCE_PLATFORM] or
+ * [ROTATION_SOURCE_GRAVITY]) and `VisionPipeline` surfaces it as `detectorTimings["rotation_src"]`.
+ *
+ * The gravity-derived roll/pitch above are still computed here (the horizon analyzer needs them), and the
+ * gravity-based [DeviceRotationQuantizer] still runs, but it is a **documented fallback only**: it supplies
+ * the rotation solely when the platform listener reports `canDetectOrientation() == false` (or fails to
+ * start). With both paths implemented against the same physical truth they agree for the four holds (see
+ * `RotationSourcesAgreeTest`). [current]'s own `rollDegrees` is re-referenced onto whichever rotation is
+ * active (see [referenceRollToDeviceRotation]) so a level hold reads ~0 degrees in *every* physical
+ * orientation — e.g. a phone held level in landscape (raw roll ~90) reports `rollDegrees` ~0 once the
+ * rotation has settled on 90, so the horizon stays physical-up referenced.
  */
 class OrientationSensor(private val context: Context) : SensorEventListener {
 
@@ -80,21 +85,48 @@ class OrientationSensor(private val context: Context) : SensorEventListener {
     private var fz = 0f
     private var initialized = false
 
+    /** Fallback only: used when the platform listener can't detect orientation. */
     private val rotationQuantizer = DeviceRotationQuantizer()
+
+    /** The platform's own rotation signal (`OrientationEventListener`); the source of truth. */
+    private val rotationSource = DeviceRotationSource(context)
 
     @Volatile
     var current: DeviceOrientation = DeviceOrientation(0f, 0f, isReliable = false)
         private set
 
     /**
-     * The phone's quantized physical rotation from natural portrait (0/90/180/270), per
-     * [DeviceRotationQuantizer]. Mirrors [DeviceOrientation.deviceRotationDegrees] on [current]; exposed
-     * separately so [VisionPipeline] can read it without unwrapping a nullable [DeviceOrientation].
+     * Who produced the most recent [deviceRotationDegrees]: [ROTATION_SOURCE_PLATFORM] (0) or
+     * [ROTATION_SOURCE_GRAVITY] (1, the fallback). Surfaced by `VisionPipeline` as
+     * `detectorTimings["rotation_src"]` so the debug overlay's timings table shows it.
      */
-    val deviceRotationDegrees: Int get() = rotationQuantizer.currentRotation
+    @Volatile
+    var lastRotationSource: Int = ROTATION_SOURCE_PLATFORM
+        private set
 
-    /** Registers the best available sensor. Safe to call again after [stop]. */
+    /**
+     * The phone's quantized physical rotation from natural portrait (0/90/180/270, `Surface.ROTATION_*`
+     * sense), from the platform listener, or from the gravity quantizer if the listener is unavailable.
+     * Mirrors [DeviceOrientation.deviceRotationDegrees] on [current]; exposed separately so [VisionPipeline]
+     * can read it synchronously (0 if the listener hasn't reported yet) without unwrapping a nullable
+     * [DeviceOrientation]. Updates [lastRotationSource] as a side effect.
+     */
+    val deviceRotationDegrees: Int
+        get() = if (rotationSource.isAvailable) {
+            lastRotationSource = ROTATION_SOURCE_PLATFORM
+            rotationSource.currentRotation
+        } else {
+            lastRotationSource = ROTATION_SOURCE_GRAVITY
+            rotationQuantizer.currentRotation
+        }
+
+    /**
+     * Registers the platform rotation listener and the best available gravity sensor. Safe to call again
+     * after [stop]. After this returns [deviceRotationDegrees] can be read synchronously.
+     */
     fun start() {
+        rotationSource.start()
+        lastRotationSource = if (rotationSource.isAvailable) ROTATION_SOURCE_PLATFORM else ROTATION_SOURCE_GRAVITY
         val sm = sensorManager ?: run {
             current = DeviceOrientation(0f, 0f, isReliable = false)
             return
@@ -115,6 +147,7 @@ class OrientationSensor(private val context: Context) : SensorEventListener {
 
     /** Unregisters the sensor listener. Call from the camera screen's lifecycle (onStop/onPause). */
     fun stop() {
+        rotationSource.stop()
         sensorManager?.unregisterListener(this)
         activeSensor = null
     }
@@ -152,7 +185,10 @@ class OrientationSensor(private val context: Context) : SensorEventListener {
         val isReliable = gravityReadingIsReliable(fx, fy, fz, magnitudeScale)
         // SensorEvent.timestamp is elapsed-realtime nanoseconds (monotonic, consistent across sensor
         // types), so it doubles as the quantizer's debounce clock without an extra syscall per event.
-        val quantizedRotation = rotationQuantizer.update(rollDegrees, isReliable, event.timestamp / 1_000_000L)
+        // The gravity quantizer is always fed so the fallback is warm, but only used when the platform
+        // listener is unavailable (see deviceRotationDegrees).
+        rotationQuantizer.update(rollDegrees, isReliable, event.timestamp / 1_000_000L)
+        val quantizedRotation = deviceRotationDegrees
         val physicalRoll = referenceRollToDeviceRotation(rollDegrees, quantizedRotation)
         current = DeviceOrientation(physicalRoll, pitchDegrees, isReliable = isReliable, deviceRotationDegrees = quantizedRotation)
     }
@@ -204,6 +240,12 @@ class OrientationSensor(private val context: Context) : SensorEventListener {
     companion object {
         private const val LOW_PASS_ALPHA = 0.2f
         private const val EARTH_GRAVITY = 9.81f
+
+        /** [lastRotationSource]: rotation came from `OrientationEventListener` (the normal case). */
+        const val ROTATION_SOURCE_PLATFORM = 0
+
+        /** [lastRotationSource]: rotation came from the gravity quantizer (listener unavailable). */
+        const val ROTATION_SOURCE_GRAVITY = 1
     }
 }
 

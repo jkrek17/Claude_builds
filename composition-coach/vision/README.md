@@ -11,11 +11,13 @@ FrameAnalysisSource        // contract (unchanged, see vision/.../FrameAnalysisS
 VisionFeatureToggles       // additional settings :app can opt into (object/segmentation toggles)
 VisionPipelineFactory      // .create(context) -> FrameAnalysisSource
 VisionPipeline             // real implementation (also implements VisionFeatureToggles)
-OrientationSensor          // device roll/pitch relative to gravity, plus quantized physical rotation
+OrientationSensor          // device roll/pitch relative to gravity; physical rotation from DeviceRotationSource
+DeviceRotationSource       // android.view.OrientationEventListener wrapper: the SOURCE OF TRUTH for rotation
+PlatformRotationQuantizer  // pure: listener degrees (clockwise) -> bands + hysteresis/debounce -> Surface sense
 gravityToRollDegrees       // pure gravity -> roll/pitch/reliability math, extracted from the sensor so
 gravityToPitchDegrees      //   the rotation chain can be driven from a gravity vector in a JVM test
 gravityReadingIsReliable   //   (top-level functions in OrientationSensor.kt)
-DeviceRotationQuantizer    // hysteresis/debounce quantizer, raw roll -> 0/90/180/270 (pure Kotlin)
+DeviceRotationQuantizer    // FALLBACK ONLY: gravity-roll hysteresis/debounce quantizer -> 0/90/180/270 (pure)
 UprightRotation            // display-upright rotation -> physically-upright rotation, facing-aware (pure)
 FrameCoordinateMapper      // rotation/crop/mirror math (pure Kotlin)
 AdaptiveSampler            // frame-rate throttle (pure Kotlin)
@@ -69,6 +71,8 @@ launch on a dedicated single-thread coroutine dispatcher ("vision-pipeline")
         │
         ├─ OrientationSensor.current                          ── latest roll/pitch (own sensor
         │                                                          callback thread, no camera stall)
+        ├─ OrientationSensor.deviceRotationDegrees            ── platform OrientationEventListener value
+        │                                                          (volatile read; 0 until first reading)
         │
         ├─ AdaptiveSampler.onFrameProcessed(latencyMs)         ── adapts the next interval
         │
@@ -90,8 +94,11 @@ crashing the camera.
 however, must reason in the scene's *physical* orientation, or headroom/thirds/horizon logic runs along the
 wrong axis whenever the phone is held sideways. Bridging those two frames is the whole of this section, and
 getting one sign wrong in it has shipped twice — so it is stated below as a table derived from physics, and
-every row is asserted by a test that starts from a gravity vector and runs the same functions the pipeline
-runs (`:app`'s `RotationTruthTableTest`, plus `UprightRotationTest` and `DeviceRotationQuantizerTest` here).
+every row is asserted by a test that starts from a gravity vector and runs the same pure functions the pipeline
+uses (`:app`'s `RotationTruthTableTest`, plus `UprightRotationTest` and `DeviceRotationQuantizerTest` here).
+**The runtime source of `theta`, however, is the platform's own `OrientationEventListener`, not that gravity
+maths** — see "Where the device rotation comes from" below; `RotationSourcesAgreeTest` asserts the two agree
+for the four holds.
 
 ### The four conventions everything is derived from
 
@@ -108,6 +115,36 @@ runs (`:app`'s `RotationTruthTableTest`, plus `UprightRotationTest` and `DeviceR
   camera looks along `+z`, so `r = -x` (device-right is image-**left**). That is why a front-camera photo
   shows your right hand on the image's left — and it is why the buffer correction's sign differs per
   facing.
+
+### Where the device rotation comes from: the platform listener
+
+Three earlier builds derived `theta` from our own gravity-vector maths, and a tester on a Pixel still saw
+the chrome not rotate even though the JVM truth table passed (a JVM test can prove the maths, never the
+sensor plumbing around it). `deviceRotationDegrees` is now whatever **`android.view.OrientationEventListener`**
+says, exactly as every production camera app does it:
+
+* `DeviceRotationSource` wraps the listener (`SENSOR_DELAY_NORMAL`); `OrientationSensor.start()/stop()`
+  enable/disable it alongside the gravity sensor, and `VisionPipeline.start()/stop()` drive that, before the
+  detectors warm up, so the very first frames carry the real hold (a synchronous volatile read; 0 if the
+  listener has not yet reported a usable angle).
+* The listener reports degrees **clockwise** from natural portrait (0..359) or `ORIENTATION_UNKNOWN` (-1,
+  phone flat). The app's convention is `Surface.ROTATION_*` sense, **counter-clockwise** from natural. So
+  for a quantized clockwise band `q`: `deviceRotation = (360 - q) % 360`.
+  Worked example: turn the phone counter-clockwise so its right edge points up. That is 90 degrees
+  counter-clockwise = 270 clockwise, so the listener reports about 270, and the Surface-sense value is
+  `(360 - 270) % 360 = 90` (`ROTATION_90`, right edge up). Table: listener 0/270/180/90 -> 0/90/180/270.
+* `PlatformRotationQuantizer` (pure, unit-tested) buckets it: a reading votes for a band only within +/-35
+  degrees of the band's centre (so the 45-degree boundaries never flap), a new band is adopted after
+  continuous votes for 300 ms (a timer re-checks the last reading, since the platform only calls back on
+  change), unknown keeps the last value, and the first valid reading after start is adopted at once.
+* **Gravity is the documented fallback only**: if `canDetectOrientation()` is false (or the listener fails to
+  start), `OrientationSensor` uses the old gravity-roll `DeviceRotationQuantizer` for `theta`. The gravity
+  roll and pitch are always computed regardless, for the horizon analyzer, and the roll is still
+  re-referenced onto the active `theta` (`referenceRollToDeviceRotation`) so it stays physical-up referenced.
+* **Which source produced it** is `FrameAnalysis.detectorTimings["rotation_src"]`: 0 = platform listener,
+  1 = gravity fallback (not a wall time; it shows in the debug overlay's timings table).
+* **Debug overlay**: the `Rot:` line's `device=` is now the platform value (so on a Pixel, with the phone
+  turned counter-clockwise to right-edge-up it must read `device=90`, `rotation_src` 0).
 
 ### The truth table
 
@@ -162,9 +199,11 @@ In prose:
   the whole chain from a gravity vector rather than from an intermediate roll whose sign would otherwise
   have to be taken on trust. `pitchDegrees = atan2(-gz, gy)`, positive = camera pointed above the horizon;
   reliability is false within ~25 degrees of straight up/down, where roll is numerically undefined.
-* `DeviceRotationQuantizer` — buckets the continuous roll into a stable `Surface.ROTATION_*` band, with
-  +/-25 degrees of hysteresis and a 400 ms debounce so it doesn't flap near a 45-degree hold, and freezes
-  on the last committed band while readings are unreliable.
+* `DeviceRotationSource` + `PlatformRotationQuantizer` — the runtime source of `theta` (see above).
+* `DeviceRotationQuantizer` — the **fallback** (used only when the platform listener is unavailable):
+  buckets the continuous gravity roll into a stable `Surface.ROTATION_*` band, with +/-25 degrees of
+  hysteresis and a 400 ms debounce so it doesn't flap near a 45-degree hold, and freezes on the last
+  committed band while readings are unreliable.
 * `UprightRotation.computeUprightRotationDegrees(R0, theta, isFrontCamera)` — the facing-aware correction
   above. Applied *before* anything else: it is what `FrameCoordinateMapper` is built with and what
   `InputImage.fromMediaImage` is handed, so detectors, luma statistics, the segmentation mask and
@@ -395,8 +434,8 @@ an empty list or a `null` horizon under low confidence is expected, correct beha
   any executor (a single dedicated background thread is fine); this class does its own heavy work on
   its own internal dispatcher regardless, so the calling executor is only used for the (very cheap)
   throttle check.
-- **Lifecycle**: call `start()` when the camera screen becomes active (registers the orientation
-  sensor and (re)creates all four ML Kit detectors — face, pose, object, segmenter) and `stop()` when
+- **Lifecycle**: call `start()` when the camera screen becomes active (registers the platform
+  `OrientationEventListener` and the gravity orientation sensor, and (re)creates all four ML Kit detectors — face, pose, object, segmenter) and `stop()` when
   it stops/pauses (unregisters the sensor and closes all four). Both are **idempotent** — a second
   `start()` while already running, or a second `stop()` while already stopped, is a no-op — so `:app`
   can safely call them from more than one lifecycle hook (Compose composition entry/exit *and* the
