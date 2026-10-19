@@ -55,13 +55,84 @@ class FrameAccumulatorTest {
     }
 
     @Test
-    fun `median ring is bounded and decimates to span the hold`() {
-        val acc = FrameAccumulator(StackBlend.MEDIAN, 100, 100, expectedFrames = 100, medianBudgetBytes = 10L * 100 * 100 * 4)
+    fun `median store is bounded and decimates adaptively to span the hold`() {
+        val acc = FrameAccumulator(StackBlend.MEDIAN, 100, 100, medianBudgetBytes = 10L * 100 * 100 * 4)
         assertEquals(10, acc.medianCapacity)
         repeat(100) { acc.add(IntArray(100 * 100) { rgb(it % 256, 0, 0) }) }
         assertEquals(100, acc.framesOffered)
-        assertEquals(10, acc.result()!!.frames)
+        val kept = acc.result()!!.frames
+        assertTrue("kept $kept", kept in 5..10)
         assertTrue(FrameAccumulator(StackBlend.MEDIAN, 2, 2, 1000).medianCapacity <= FrameAccumulator.MAX_MEDIAN_FRAMES)
+        assertTrue(FrameAccumulator(StackBlend.MEDIAN, 2000, 2000, 1000).medianCapacity >= FrameAccumulator.MIN_MEDIAN_FRAMES)
+    }
+
+    @Test
+    fun `median decimation keeps frames from the whole hold, not only the latest`() {
+        // Frame i is the flat value i: whatever is kept, the median must come from the middle of the hold.
+        val acc = FrameAccumulator(StackBlend.MEDIAN, 4, 4, medianBudgetBytes = 8L * 4 * 4 * 4)
+        repeat(200) { i -> acc.add(IntArray(16) { rgb(i.coerceAtMost(255), 0, 0) }) }
+        val median = red(acc.result()!!.rgb[0])
+        assertTrue("median $median", median in 70..130)
+    }
+
+    @Test
+    fun `average of identical frames converges at the first comparison, noise does not`() {
+        val still = FrameAccumulator(StackBlend.AVERAGE, 16, 12)
+        repeat(15) { still.add(IntArray(16 * 12) { rgb(90, 90, 90) }) }
+        assertFalse("needs a half-length snapshot first", still.converged)
+        still.add(IntArray(16 * 12) { rgb(90, 90, 90) })
+        assertTrue(still.converged)
+        assertEquals(1f, still.convergence, 0f)
+
+        val noisy = FrameAccumulator(StackBlend.AVERAGE, 64, 48)
+        var seed = 12345
+        fun noise(): Int { seed = seed * 1103515245 + 12345; return (seed ushr 8) and 0xFF }
+        repeat(64) { noisy.add(IntArray(64 * 48) { rgb(noise(), noise(), noise()) }) }
+        assertFalse(noisy.converged)
+        assertTrue(noisy.convergence in 0f..1f)
+    }
+
+    @Test
+    fun `lighten converges once new frames stop raising pixels`() {
+        val acc = FrameAccumulator(StackBlend.LIGHTEN, 16, 12)
+        val dark = rgb(5, 5, 5)
+        // A light sweeping across the first 12 frames keeps raising pixels (8 of 192 = 4 % a frame).
+        for (f in 0 until 12) acc.add(IntArray(16 * 12) { i -> if (i % 16 == f && i / 16 < 8) rgb(200, 200, 200) else dark })
+        assertFalse(acc.converged)
+        // Then a static scene: nothing is raised, and the 5-frame window empties of the earlier raises.
+        repeat(8) { acc.add(IntArray(16 * 12) { dark }) }
+        assertTrue(acc.converged)
+    }
+
+    @Test
+    fun `lighten ends the hold on an over-exposed stack`() {
+        val acc = FrameAccumulator(StackBlend.LIGHTEN, 16, 12)
+        // 5 % of the frame clipped to white from the start while pixels still get raised every frame.
+        for (f in 0 until 9) acc.add(IntArray(16 * 12) { i -> if (i < 10) rgb(255, 255, 255) else rgb(10 + f * 20, 0, 0) })
+        assertTrue(acc.converged)
+    }
+
+    @Test
+    fun `median converges when the median stops changing`() {
+        val acc = FrameAccumulator(StackBlend.MEDIAN, 16, 12)
+        repeat(20) { acc.add(IntArray(16 * 12) { rgb(100, 100, 100) }) }
+        assertTrue(acc.converged)
+    }
+
+    @Test
+    fun `temporal variance is zero where the scene is still and large where it flickers`() {
+        val acc = FrameAccumulator(StackBlend.AVERAGE, 16, 12)
+        repeat(10) { f ->
+            acc.add(IntArray(16 * 12) { i -> if (i % 16 < 8) rgb(120, 120, 120) else if (f % 2 == 0) rgb(0, 0, 0) else rgb(255, 255, 255) })
+        }
+        val image = acc.result()!!
+        val sd = image.temporalStdDev!!
+        assertEquals(4, image.guideWidth)
+        assertEquals(3, image.guideHeight)
+        for (gy in 0 until 3) {
+            assertEquals(0f, sd[gy * 4], 1e-4f)
+            assertTrue(sd[gy * 4 + 3] > 0.3f)
+        }
     }
 
     @Test

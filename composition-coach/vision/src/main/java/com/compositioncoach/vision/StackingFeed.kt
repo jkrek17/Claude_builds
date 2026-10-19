@@ -15,7 +15,14 @@ internal class StackingFeed {
         private set
 
     private val _progress = MutableStateFlow<Float?>(null)
+
+    /** Convergence estimate of the stack in progress (0..1), null when none. */
     val progress: StateFlow<Float?> = _progress.asStateFlow()
+
+    private val _status = MutableStateFlow<StackingStatus?>(null)
+
+    /** Frames, convergence and verdict of the stack in progress, null when none. */
+    val status: StateFlow<StackingStatus?> = _status.asStateFlow()
 
     /** Scratch copies of the three YUV planes while stacking; pipeline thread only. */
     private val planeScratch = Array(3) { ByteArray(0) }
@@ -23,18 +30,21 @@ internal class StackingFeed {
     fun start(newSession: StackingSession) {
         session = newSession
         _progress.value = 0f
+        _status.value = StackingStatus(0, 0f, false)
     }
 
     /** Ends the stack (call on the pipeline thread) and returns it for its result, or null when none ran. */
     fun detach(): StackingSession? = session.also {
         session = null
         _progress.value = null
+        _status.value = null
     }
 
     /** Drops any stack in progress (the pipeline stopped). */
     fun clear() {
         session = null
         _progress.value = null
+        _status.value = null
     }
 
     /** Converts the frame and adds it to [session]; runs on the pipeline thread with the frame still open. */
@@ -55,6 +65,7 @@ internal class StackingFeed {
             return YuvConverter.Plane(bytes, plane.rowStride, plane.pixelStride)
         }
         session.offer(copy(0), copy(1), copy(2), displayMapper, front, imageProxy.imageInfo.timestamp)
-        _progress.value = session.progress
+        _progress.value = session.convergence
+        _status.value = StackingStatus(session.framesStacked, session.convergence, session.converged)
     }
 }

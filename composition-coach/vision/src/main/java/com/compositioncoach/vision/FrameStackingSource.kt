@@ -1,6 +1,16 @@
 package com.compositioncoach.vision
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * What a running Motion stack reports, for the hold loop.
+ *
+ * @param framesStacked frames the stack has been offered so far (the real, measured count).
+ * @param convergence 0..1 estimate of how close the stack is to converging (see `merge.Convergence`).
+ * @param converged true once more frames would no longer change the result.
+ */
+data class StackingStatus(val framesStacked: Int, val convergence: Float, val converged: Boolean)
 
 /**
  * Motion stacking on the live analysis stream, implemented by [VisionPipeline]. CameraX allows one
@@ -9,17 +19,24 @@ import kotlinx.coroutines.flow.StateFlow
  * before binding for a Motion outcome) and fed to a [FrameAccumulator]. The ML detectors are skipped while
  * stacking (the last faces/objects/mask are re-reported) so more frames reach the stack.
  *
+ * The stack has no frame budget of its own: how long it runs is the caller's decision, made from
+ * [stackingStatus] (convergence) and the clock, never from a frame count assumed at some frame rate.
+ *
  * `:app` reaches it with `(frameSource as? FrameStackingSource)`.
  */
 interface FrameStackingSource {
-    /** frames stacked / maxFrames (0..1) while stacking, null otherwise. For the hold's progress ring. */
+    /** Convergence estimate 0..1 of the running stack (1 = converged), null when not stacking. For the hold's progress ring. */
     val stackingProgress: StateFlow<Float?>
+
+    /** Frames stacked, convergence estimate and verdict of the running stack; null when not stacking. */
+    val stackingStatus: StateFlow<StackingStatus?> get() = MutableStateFlow(null)
 
     /**
      * Starts a stack, discarding any unfinished one. Returns false when the pipeline is not running.
      *
-     * @param maxFrames frames expected over the hold; progress reaches 1 there and frames beyond it are
-     *   ignored (MEDIAN additionally decimates to fit its ring, see [FrameAccumulator]).
+     * @param maxFrames a safety ceiling on frames stacked, far above what any hold can reach (frames beyond it
+     *   are ignored). It is *not* an estimate of the hold: MEDIAN decimates adaptively to fit its memory
+     *   budget, see [FrameAccumulator].
      * @param aligner gyro rotation since the start for a frame; null = no alignment.
      * @param focalToLongEdge focal length / long image edge for the bound lens and zoom
      *   ([GyroAlignment.DEFAULT_FOCAL_TO_LONG_EDGE] when unknown).

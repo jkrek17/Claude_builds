@@ -24,7 +24,14 @@ internal class StackingSession(
 
     val framesStacked: Int get() = accumulator?.framesOffered ?: 0
 
+    /** Frames stacked as a fraction of the safety ceiling [maxFrames] (not the hold's progress, see [convergence]). */
     val progress: Float get() = (framesStacked.toFloat() / maxFrames.coerceAtLeast(1)).coerceIn(0f, 1f)
+
+    /** 0..1: how close the stack is to converging (1 = converged); 0 before the first frame. */
+    val convergence: Float get() = accumulator?.convergence ?: 0f
+
+    /** True once more frames would no longer change the stack. */
+    val converged: Boolean get() = accumulator?.converged ?: false
 
     /**
      * Adds one frame. [displayMapper] must be built with the frame's display rotation (no hold correction).
@@ -44,7 +51,7 @@ internal class StackingSession(
         val acc = accumulator ?: run {
             val longEdge = maxOf(width, height)
             uprightExtraDegrees = extraRotation(displayMapper.rotationDegrees, deviceRotationAtStart, isFrontCamera)
-            FrameAccumulator(mode, width, height, maxFrames, maxShiftPx = (longEdge * maxShiftFraction).toInt())
+            FrameAccumulator(mode, width, height, maxFrames, maxShiftPx = (longEdge * maxShiftFraction).toInt(), medianBudgetBytes = medianBudget())
                 .also { accumulator = it }
         }
         if (acc.width != width || acc.height != height) return
@@ -61,6 +68,12 @@ internal class StackingSession(
     fun result(): AccumulatedImage? = accumulator?.result(uprightExtraDegrees)
 
     companion object {
+        /** MEDIAN keeps frames: a quarter of the heap, between 64 and 96 MB (13 to 20 frames at 1280x960). */
+        private fun medianBudget(): Long = (Runtime.getRuntime().maxMemory() / 4).coerceIn(
+            FrameAccumulator.DEFAULT_MEDIAN_BUDGET_BYTES,
+            FrameAccumulator.DEFAULT_MEDIAN_BUDGET_BYTES * 3 / 2,
+        )
+
         /**
          * Clockwise rotation still needed after display-portrait to stand the image physically upright: the
          * difference between [UprightRotation]'s full rotation and the display rotation. The front camera's

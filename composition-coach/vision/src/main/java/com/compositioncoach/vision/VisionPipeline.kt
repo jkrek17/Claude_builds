@@ -453,6 +453,8 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
 
     override val stackingProgress: StateFlow<Float?> get() = stackFeed.progress
 
+    override val stackingStatus: StateFlow<StackingStatus?> get() = stackFeed.status
+
     override fun startAccumulating(
         mode: StackBlend,
         maxFrames: Int,
