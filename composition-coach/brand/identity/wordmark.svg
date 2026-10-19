@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="160" viewBox="0 0 640 160">
+  <title>Eyebright wordmark</title>
+  <!--
+    Lockup: the mark (readiness ring + catchlight) and the name set lowercase in a system-safe sans,
+    semibold, tight tracking. Inter where installed, else Roboto (Android), else the platform sans.
+    For print or for the Play feature graphic PNG, convert the text to outlines in a vector editor
+    so the rendering does not depend on installed fonts.
+    Clear space: one ring diameter (the mark's width) on every side. Minimum size: 24 px tall mark.
+    On light grounds use #121212 for the text and keep the ring green and the catchlight #121212.
+  -->
+  <rect width="640" height="160" fill="#000000"/>
+  <g transform="translate(40,32)">
+    <circle cx="48" cy="48" r="40" fill="none" stroke="#34D399" stroke-width="11"/>
+    <circle cx="33.5" cy="33.5" r="9" fill="#FFFFFF"/>
+  </g>
+  <text x="160" y="108"
+        font-family="Inter, Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="80" font-weight="600" letter-spacing="-1.5" fill="#F2F2F2">eyebright</text>
+</svg>
