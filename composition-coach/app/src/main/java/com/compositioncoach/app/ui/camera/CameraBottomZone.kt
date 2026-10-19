@@ -50,6 +50,7 @@ fun CameraBottomZone(
     zoomPresets: List<Float> = emptyList(),
     onZoomPresetSelected: (Float) -> Unit = {},
     shootAtPeak: ShootAtPeakState? = null,
+    selectedZoomPreset: Float? = null,
 ) {
     Box(modifier.fillMaxWidth()) {
         if (analysisUnavailable) {
@@ -93,6 +94,7 @@ fun CameraBottomZone(
                 onSelect = onZoomPresetSelected,
                 deviceRotationDegrees = deviceRotationDegrees,
                 animationsEnabled = animationsEnabled,
+                selectedPreset = selectedZoomPreset,
             )
 
             ModeStrip(

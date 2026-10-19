@@ -20,9 +20,24 @@ data class ReviewEntry(
      * (e.g. Coil `memoryCacheKey("$photoUri#$revision")`) to pick up the new pixels.
      */
     val revision: Int = 0,
-    /** True while auto-level is still running for this photo (the review screen may show a subtle spinner). */
+    /** True while auto-level is still running for this photo (the review screen shows "Levelling…"). */
     val processing: Boolean = false,
+    /**
+     * A private `file:` copy of the photo as captured, before auto-level rewrote [photoUri] (in the app's cache,
+     * never the gallery; see `OriginalCopyStore`). Set only when auto-level actually ran; drives the review's
+     * Compare chip. Deleted when this entry leaves the store ([staleOriginalOf]).
+     */
+    val originalPhotoUri: Uri? = null,
 )
+
+/**
+ * The original copy that just became unreachable when the store went from [previous] to [current] (Keep or
+ * Retake cleared it, or a newer capture replaced it), or null if it is still in use or there was none.
+ */
+fun staleOriginalOf(previous: ReviewEntry?, current: ReviewEntry?): Uri? {
+    val old = previous?.originalPhotoUri ?: return null
+    return old.takeIf { it != current?.originalPhotoUri }
+}
 
 /**
  * Tiny in-memory hand-off between the camera and review screens. Navigation-compose does not carry rich

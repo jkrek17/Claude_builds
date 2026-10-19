@@ -27,7 +27,6 @@ import com.compositioncoach.app.camera.toIntRange
 import com.compositioncoach.app.di.AppContainer
 import com.compositioncoach.app.di.ReviewEntry
 import com.compositioncoach.composition.model.CompositionResult
-import com.compositioncoach.composition.model.DeviceOrientation
 import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.SceneIntent
@@ -107,6 +106,14 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
 
     private val _events = MutableSharedFlow<CameraEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<CameraEvent> = _events
+
+    /** Auto-level after the review shows, and the lifetime of its Compare original. */
+    private val levelling = PostCaptureLevelling(
+        container = container,
+        scope = viewModelScope,
+        onPhotoRewritten = { uri -> _uiState.update { it.withLastPhotoUri(uri) } },
+        onFinished = ::logDiagnostics,
+    )
 
     @Volatile private var lastFrame: FrameAnalysis? = null
 
@@ -397,14 +404,14 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                         CompositionResult.empty()
                     }
                 }
-                val levelling = state.settings.autoLevel && orientationAtShutter != null &&
+                val levels = state.settings.autoLevel && orientationAtShutter != null &&
                     AutoLevelGeometry.shouldLevel(orientationAtShutter.rollDegrees, orientationAtShutter.isReliable)
-                container.reviewStore.put(ReviewEntry(shot.uri, result, shot.diagnostics, processing = levelling))
+                container.reviewStore.put(ReviewEntry(shot.uri, result, shot.diagnostics, processing = levels))
                 _uiState.update { it.withCaptureFinished().withLastPhotoUri(shot.uri) }
                 clearPostCaptureFadeAfterDelay()
                 _events.tryEmit(CameraEvent.NavigateToReview)
-                if (levelling) {
-                    autoLevelInBackground(shot.uri, shot.diagnostics, orientationAtShutter!!)
+                if (levels) {
+                    levelling.run(shot.uri, shot.diagnostics, orientationAtShutter!!)
                 } else {
                     logDiagnostics(shot.diagnostics)
                 }
@@ -417,30 +424,6 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 // An enhancement change that arrived mid-capture was deferred (a rebind would kill the capture).
                 rebindForEnhancementIfNeeded()
             }
-        }
-    }
-
-    /**
-     * Auto-level runs after the review screen is already showing the photo (decode + rotate + re-encode of a
-     * 12 MP JPEG is ~0.5-1 s), then updates the review entry with the applied angle and a new `revision` so
-     * the review image reloads. A failure just leaves the unlevelled photo in place.
-     */
-    private fun autoLevelInBackground(uri: Uri, diagnostics: CaptureDiagnostics, orientation: DeviceOrientation) {
-        viewModelScope.launch {
-            val applied = try {
-                container.autoLevelProcessor.apply(uri, orientation.rollDegrees, orientation.isReliable)
-            } catch (c: CancellationException) {
-                throw c
-            } catch (t: Throwable) {
-                Log.w(TAG, "Auto-level failed; keeping the photo as captured", t)
-                null
-            }
-            val updated = diagnostics.copy(autoLevelAppliedDegrees = applied)
-            container.reviewStore.updateIfCurrent(uri) {
-                it.copy(diagnostics = updated, revision = if (applied != null) it.revision + 1 else it.revision, processing = false)
-            }
-            if (applied != null) _uiState.update { it.withLastPhotoUri(uri) }
-            logDiagnostics(updated)
         }
     }
 
@@ -518,6 +501,16 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 if (step < ZOOM_ANIMATION_STEPS) delay(ZOOM_ANIMATION_MS / ZOOM_ANIMATION_STEPS)
             }
         }
+    }
+
+    /**
+     * Pinch-to-zoom by the multiplicative [scale]: cancels a preset ease still in flight (so the two never fight
+     * over the ratio) and applies the delta to the bound camera. [CameraUiState.zoomRatio] then follows through
+     * the camera's `ZoomState`; the returned ratio (null with no camera) is for the screen's instant readout.
+     */
+    fun onPinchZoom(scale: Float): Float? {
+        zoomAnimationJob?.cancel()
+        return boundController?.applyZoomDelta(scale)
     }
 
     /**

@@ -36,8 +36,16 @@ data class CoachSettings(
      * extension's own multi-frame merge already does better than picking one of three frames.
      */
     val burstSharpest: Boolean = true,
-    /** Straighten small (0.7-8 degree) horizon tilts after saving (`auto_level`). */
-    val autoLevel: Boolean = true,
+    /**
+     * Straighten small (0.7-8 degree) horizon tilts after saving (`auto_level`). Off by default: levelling
+     * crops the edges of a frame the coach just helped compose and resamples every pixel, so it is opt-in.
+     */
+    val autoLevel: Boolean = false,
+    /**
+     * "Auto shoot when ready" (`auto_shoot`): every shutter tap arms shoot-at-the-peak (as a long-press does)
+     * instead of firing at once.
+     */
+    val autoShoot: Boolean = false,
 ) {
     /**
      * Whether a capture taken with [activeEnhancement] (what the bound session actually uses, not the

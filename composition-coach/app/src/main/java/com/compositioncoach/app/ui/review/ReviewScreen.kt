@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -35,6 +36,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
 import com.compositioncoach.app.camera.CaptureRepository
 import com.compositioncoach.app.di.ReviewEntry
 import com.compositioncoach.app.ui.theme.Background
@@ -46,8 +48,11 @@ import kotlinx.coroutines.launch
  * The photo just taken, letterboxed on black, with [ReviewCard] beneath it and the three actions the spec
  * gives this screen: Retake (outlined, deletes and returns), Share (icon), Keep (filled).
  *
- * [originalPhotoUri], when the camera kept the capture from before its own corrections (auto-level), adds
- * a hold-to-compare [CompareChip] over the photo; without one there is nothing to compare and no chip.
+ * The image is keyed on [ReviewEntry.revision] (`"$uri#$revision"` for Coil's memory and disk caches): the
+ * Uri does not change when auto-level rewrites the file, so without it the cached unlevelled bitmap would stay.
+ * While [ReviewEntry.processing] is true a quiet "Levelling…" line sits under the photo. When auto-level kept
+ * the capture from before its correction ([ReviewEntry.originalPhotoUri]), a hold-to-compare [CompareChip]
+ * shows over the photo; without one there is nothing to compare and no chip.
  *
  * The system back gesture and the top-left arrow both mean **Keep** — a captured photo is never silently
  * lost by backing out of this screen.
@@ -58,7 +63,6 @@ fun ReviewScreen(
     captureRepository: CaptureRepository,
     onKeep: () -> Unit,
     onRetakeComplete: () -> Unit,
-    originalPhotoUri: Uri? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -81,9 +85,12 @@ fun ReviewScreen(
                 // bounding box's aspect ratio follows the decoded image rather than a hardcoded 3:4 —
                 // otherwise a landscape photo would be letterboxed down to a sliver. Falls back to 3:4
                 // until the image reports a real size.
-                val painter = rememberAsyncImagePainter(
-                    if (showingOriginal && originalPhotoUri != null) originalPhotoUri else entry.photoUri,
-                )
+                val originalPhotoUri = entry.originalPhotoUri
+                val showOriginal = showingOriginal && originalPhotoUri != null
+                val photoRequest = remember(context, entry.photoUri, entry.revision) {
+                    reviewImageRequest(context, entry.photoUri, entry.revision)
+                }
+                val painter = rememberAsyncImagePainter(if (showOriginal) originalPhotoUri else photoRequest)
                 val intrinsic = painter.intrinsicSize
                 val photoAspectRatio = if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) {
                     intrinsic.width / intrinsic.height
@@ -98,6 +105,14 @@ fun ReviewScreen(
                 )
                 IconButton(onClick = onKeep, modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Keep photo and go back", tint = OnScrim)
+                }
+                if (entry.processing) {
+                    Text(
+                        text = LEVELLING_TEXT,
+                        color = OnScrimMuted,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+                    )
                 }
                 // Only when an uncorrected original exists to compare against.
                 if (originalPhotoUri != null) {
@@ -137,6 +152,23 @@ fun ReviewScreen(
         }
     }
 }
+
+private const val LEVELLING_TEXT = "Levelling…"
+
+/**
+ * The review photo's Coil request, keyed on [revision] for both caches so a file rewritten in place under the
+ * same Uri (auto-level) is decoded again instead of served from cache. Pure key format in [reviewImageCacheKey].
+ */
+private fun reviewImageRequest(context: Context, uri: Uri, revision: Int): ImageRequest {
+    val key = reviewImageCacheKey(uri.toString(), revision)
+    return ImageRequest.Builder(context).data(uri).memoryCacheKey(key).diskCacheKey(key).apply {
+        // Keep the previous revision on screen while the rewritten file decodes, so the swap does not blink.
+        if (revision > 0) placeholderMemoryCacheKey(reviewImageCacheKey(uri.toString(), revision - 1))
+    }.build()
+}
+
+/** `"$uri#$revision"`: the cache key of one revision of a review photo. */
+internal fun reviewImageCacheKey(uri: String, revision: Int): String = "$uri#$revision"
 
 private fun sharePhoto(context: Context, entry: ReviewEntry) {
     val intent = Intent(Intent.ACTION_SEND).apply {

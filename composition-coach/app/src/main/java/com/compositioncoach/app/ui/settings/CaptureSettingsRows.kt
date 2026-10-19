@@ -15,86 +15,84 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.R
 import com.compositioncoach.app.camera.CaptureEnhancement
+import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.ui.camera.EnhancementCycle
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.app.ui.theme.OnSurface
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 
 /**
- * The three capture switches whose settings keys are not in `CoachSettings` yet. The integrator moves them
- * into `CoachSettings`/`SettingsRepository` under these exact keys and deletes this class:
+ * What the Settings "Enhancement" row shows, given the persisted `capture_enhancement` and what the bound
+ * lens offers. Pure, unit-tested in `EnhancementRowModelTest`.
  *
- * | field | key | default |
- * |---|---|---|
- * | [burstSharpest] | `burst_sharpest` (bool) | on |
- * | [autoLevel] | `auto_level` (bool) | off |
- * | [autoShoot] | `auto_shoot` (bool) | off |
+ * The row shows the *persisted* choice (the pill shows what is running). An explicit HDR/Night choice the
+ * current lens lacks (a switch to the front camera) stays selected, greyed, with "Not available on this
+ * camera", so the user sees it is kept for the lens that has it. AUTO is different: it is the default, not
+ * necessarily a choice, and is documented as "AUTO when supported, else OFF", so on a lens that does not offer
+ * it the row shows Off, which is what runs, instead of telling a first-run user about a mode they never picked.
  *
- * (`capture_enhancement` — the fourth key — is already reachable through `CameraUiState.enhancement` /
- * `CameraViewModel.onEnhancementSelected`, so the Enhancement row binds to those instead.)
+ * @param options the segments, in enum order; empty means "nothing beyond Off on this camera" (disabled row).
+ * @param selected the segment to fill.
+ * @param unavailableOnLens true when [selected] is the persisted choice but this lens cannot run it.
  */
-data class UiSettingsDraft(
-    val burstSharpest: Boolean = true,
-    val autoLevel: Boolean = false,
-    val autoShoot: Boolean = false,
-)
+data class EnhancementRowModel(
+    val options: List<CaptureEnhancement>,
+    val selected: CaptureEnhancement?,
+    val unavailableOnLens: Boolean,
+) {
+    /** Whether a segment can be picked (an unavailable persisted choice is shown, not offered). */
+    fun isSelectable(option: CaptureEnhancement): Boolean = !(unavailableOnLens && option == selected)
 
-/**
- * Process-lifetime home for [UiSettingsDraft] until those keys are persisted: the Settings rows write it and
- * the camera screen reads [UiSettingsDraft.autoShoot] from it, so "Auto shoot when ready" already works
- * for the session. Not persisted; a cold start returns to the defaults.
- */
-object UiSettingsDraftStore {
-    private val _draft = MutableStateFlow(UiSettingsDraft())
-    val draft: StateFlow<UiSettingsDraft> = _draft.asStateFlow()
-
-    fun update(transform: (UiSettingsDraft) -> UiSettingsDraft) = _draft.update(transform)
+    companion object {
+        fun of(persisted: CaptureEnhancement, available: Set<CaptureEnhancement>): EnhancementRowModel {
+            val offered = EnhancementCycle.options(available)
+            if (offered.isEmpty()) return EnhancementRowModel(emptyList(), null, unavailableOnLens = false)
+            val shown = if (persisted == CaptureEnhancement.AUTO && persisted !in offered) CaptureEnhancement.OFF else persisted
+            val unavailable = shown !in offered
+            val options = if (unavailable) CaptureEnhancement.entries.filter { it in offered || it == shown } else offered
+            return EnhancementRowModel(options, shown, unavailable)
+        }
+    }
 }
 
 /**
- * The capture rows at the top of "More": Enhancement (a segmented control over what the lens offers, or a
- * disabled row explaining it is not available), then Sharpest of burst, Auto-level horizon and Auto shoot
- * when ready.
+ * The capture rows at the top of "More", all persisted (`SettingsRepository`): Enhancement (a segmented
+ * control over what the lens offers, see [EnhancementRowModel]), then Sharpest of burst, Auto-level horizon
+ * and Auto shoot when ready. [settings] is the persisted state; [availableEnhancements] comes from the camera,
+ * since only the bound lens knows what it offers.
  */
 @Composable
 fun CaptureSettingsRows(
-    enhancement: CaptureEnhancement,
+    settings: CoachSettings,
     availableEnhancements: Set<CaptureEnhancement>,
     onEnhancementChange: (CaptureEnhancement) -> Unit,
-    draft: UiSettingsDraft,
-    onDraftChange: (UiSettingsDraft) -> Unit,
+    onBurstSharpestChange: (Boolean) -> Unit,
+    onAutoLevelChange: (Boolean) -> Unit,
+    onAutoShootChange: (Boolean) -> Unit,
 ) {
-    EnhancementSetting(enhancement, availableEnhancements, onEnhancementChange)
+    EnhancementSetting(EnhancementRowModel.of(settings.captureEnhancement, availableEnhancements), onEnhancementChange)
     SwitchRow(
         label = stringResource(R.string.settings_burst_sharpest),
         subtitle = stringResource(R.string.settings_burst_sharpest_subtitle),
-        checked = draft.burstSharpest,
-        onCheckedChange = { onDraftChange(draft.copy(burstSharpest = it)) },
+        checked = settings.burstSharpest,
+        onCheckedChange = onBurstSharpestChange,
     )
     SwitchRow(
         label = stringResource(R.string.settings_auto_level),
         subtitle = stringResource(R.string.settings_auto_level_subtitle),
-        checked = draft.autoLevel,
-        onCheckedChange = { onDraftChange(draft.copy(autoLevel = it)) },
+        checked = settings.autoLevel,
+        onCheckedChange = onAutoLevelChange,
     )
     SwitchRow(
         label = stringResource(R.string.settings_auto_shoot),
         subtitle = stringResource(R.string.settings_auto_shoot_subtitle),
-        checked = draft.autoShoot,
-        onCheckedChange = { onDraftChange(draft.copy(autoShoot = it)) },
+        checked = settings.autoShoot,
+        onCheckedChange = onAutoShootChange,
     )
 }
 
 @Composable
-private fun EnhancementSetting(
-    current: CaptureEnhancement,
-    available: Set<CaptureEnhancement>,
-    onChange: (CaptureEnhancement) -> Unit,
-) {
-    val options = EnhancementCycle.options(available)
+private fun EnhancementSetting(model: EnhancementRowModel, onChange: (CaptureEnhancement) -> Unit) {
+    val options = model.options
     if (options.isEmpty()) {
         SettingsRow(
             label = stringResource(R.string.settings_enhancement),
@@ -108,15 +106,18 @@ private fun EnhancementSetting(
         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth().padding(horizontal = SETTINGS_GUTTER)) {
             options.forEachIndexed { index, option ->
                 SegmentedButton(
-                    selected = current == option,
-                    onClick = { onChange(option) },
+                    selected = model.selected == option,
+                    onClick = { if (option != model.selected) onChange(option) },
+                    enabled = model.isSelectable(option),
                     shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                     label = { Text(option.label) },
                 )
             }
         }
         Text(
-            text = stringResource(R.string.settings_enhancement_subtitle),
+            text = stringResource(
+                if (model.unavailableOnLens) R.string.settings_enhancement_unavailable else R.string.settings_enhancement_subtitle,
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = OnSurface.copy(alpha = 0.6f),
             modifier = Modifier.padding(horizontal = SETTINGS_GUTTER, vertical = 6.dp),
@@ -130,11 +131,12 @@ private fun CaptureSettingsRowsPreview() {
     CompositionCoachTheme {
         Column {
             CaptureSettingsRows(
-                enhancement = CaptureEnhancement.AUTO,
+                settings = CoachSettings(autoShoot = true),
                 availableEnhancements = setOf(CaptureEnhancement.AUTO, CaptureEnhancement.HDR, CaptureEnhancement.NIGHT),
                 onEnhancementChange = {},
-                draft = UiSettingsDraft(autoShoot = true),
-                onDraftChange = {},
+                onBurstSharpestChange = {},
+                onAutoLevelChange = {},
+                onAutoShootChange = {},
             )
         }
     }
@@ -146,11 +148,29 @@ private fun CaptureSettingsRowsUnavailablePreview() {
     CompositionCoachTheme {
         Column {
             CaptureSettingsRows(
-                enhancement = CaptureEnhancement.OFF,
+                settings = CoachSettings(),
                 availableEnhancements = emptySet(),
                 onEnhancementChange = {},
-                draft = UiSettingsDraft(),
-                onDraftChange = {},
+                onBurstSharpestChange = {},
+                onAutoLevelChange = {},
+                onAutoShootChange = {},
+            )
+        }
+    }
+}
+
+@Preview(name = "Capture settings, Night kept for another lens", showBackground = true, backgroundColor = 0xFF121212)
+@Composable
+private fun CaptureSettingsRowsElsewherePreview() {
+    CompositionCoachTheme {
+        Column {
+            CaptureSettingsRows(
+                settings = CoachSettings(captureEnhancement = CaptureEnhancement.NIGHT),
+                availableEnhancements = setOf(CaptureEnhancement.OFF, CaptureEnhancement.HDR),
+                onEnhancementChange = {},
+                onBurstSharpestChange = {},
+                onAutoLevelChange = {},
+                onAutoShootChange = {},
             )
         }
     }

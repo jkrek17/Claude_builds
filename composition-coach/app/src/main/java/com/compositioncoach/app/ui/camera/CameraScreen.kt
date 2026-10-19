@@ -27,7 +27,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -42,7 +41,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.camera.CameraController
 import com.compositioncoach.app.ui.theme.Background
-import com.compositioncoach.composition.model.SceneClassification
 import kotlinx.coroutines.launch
 
 private const val POST_CAPTURE_FADE_ALPHA = 0.3f
@@ -58,7 +56,9 @@ private const val POST_CAPTURE_FADE_ALPHA = 0.3f
  * normalized-to-pixel multiply (see its class doc). The rest of the screen is plain black.
  *
  * All coaching visuals live in [CoachingLayer]; this composable owns camera plumbing, gestures and the
- * screen's zones, and deliberately holds no coaching logic of its own.
+ * screen's zones, and deliberately holds no coaching logic of its own. What is drawn from [CameraUiState] is in
+ * [CameraPreviewChrome] and [CameraBottomChrome] (derived values in [CameraChromeModel]), so the wiring from
+ * state to chips is testable without a camera.
  */
 @Composable
 fun CameraScreen(
@@ -105,7 +105,9 @@ fun CameraScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.onScreenResumed() }
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { viewModel.onScreenPaused() }
 
-    // Capture mode is fixed at bind time, so a change to the fast-capture preference rebinds.
+    // Capture mode is fixed at bind time, so a change to the fast-capture preference rebinds. The enhancement is
+    // deliberately NOT a key here: CameraViewModel.onEnhancementSelected persists it and the view model owns
+    // that rebind (CameraController.rebind), so keying on it would bind twice.
     DisposableEffect(lifecycleOwner, uiState.lensFacing, uiState.preferFastCapture, retryTrigger) {
         val job = scope.launch {
             cameraController.setPreferFastCapture(uiState.preferFastCapture)
@@ -158,28 +160,16 @@ fun CameraScreen(
         animationSpec = tween(motionDuration(300, animationsEnabled)),
         label = "postCaptureFade",
     )
-    val hasScene = uiState.composition.scene != SceneClassification.UNKNOWN
-    val shootReady = GuidanceFormatter.effectiveShootReady(
-        uiState.composition.isShootReady,
-        uiState.composition.awaitingSubject,
-    )
+    val chrome = CameraChromeModel.of(uiState)
     // Shoot at the peak: hold the shutter (or tap, with "Auto shoot when ready" on) and the photo is taken
     // the first moment the framing is ready and the phone is still. Double tick on arm, medium on fire.
     val shootAtPeak = rememberShootAtPeakState(
-        readyToFire = SteadyHint.peakReached(shootReady, uiState.steadiness),
+        readyToFire = SteadyHint.peakReached(chrome.shootReady, uiState.steadiness),
         enabled = !uiState.isCapturing,
         latchOnTap = autoShootOnTap,
         onCapture = onShutterClick,
         onArmed = rememberDoubleTick(),
         onFire = { capture(HapticFeedbackType.LongPress) },
-    )
-    val holdStill = SteadyHint.showsHoldStill(uiState.steadiness, shootAtPeak.engaged || uiState.isCapturing, shootReady)
-    val headline = GuidanceFormatter.headline(uiState.composition.activeRecommendations, uiState.settings.guidanceLevel)
-    val quietCheck = GuidanceFormatter.showsQuietCheck(
-        hasHeadline = headline != null,
-        displayScore = uiState.composition.displayScore,
-        isShootReady = uiState.composition.isShootReady,
-        hasScene = hasScene,
     )
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }, containerColor = Background) { innerPadding ->
@@ -200,99 +190,59 @@ fun CameraScreen(
                                 }
                             }
                             .pointerInput(cameraController) {
+                                // Through the view model, so a pinch cancels a preset ease still in flight;
+                                // zoomRatio then follows the camera's own ZoomState.
                                 detectTransformGestures { _, _, pinch, _ ->
-                                    cameraController.applyZoomDelta(pinch)?.let(zoom::onPinch)
+                                    viewModel.onPinchZoom(pinch)?.let(zoom::onPinch)
                                 }
                             },
                     )
 
                     focusTapOffset?.let { offset ->
                         key(focusTapId) { FocusRingOverlay(tapOffset = offset) }
-                        ExposureSlider(offset, focusTapId, uiState.exposureRange, uiState.exposureIndex, exposureStepEv, { index ->
-                            cameraController.setExposureCompensation(index)
-                            viewModel.onExposureCompensationChanged(index)
-                        }, animationsEnabled)
+                        // The view model applies the index to the camera; a rebind resets exposureIndex to 0.
+                        ExposureSlider(
+                            tapOffset = offset,
+                            tapId = focusTapId,
+                            range = uiState.exposureRange,
+                            index = uiState.exposureIndex,
+                            stepEv = exposureStepEv,
+                            onIndexChange = viewModel::onExposureCompensationChanged,
+                            animationsEnabled = animationsEnabled,
+                        )
                     }
 
                     if (uiState.settings.showThirdsGrid) ThirdsGridOverlay()
 
-                    CoachingLayer(
-                        composition = uiState.composition,
-                        guidanceLevel = uiState.settings.guidanceLevel,
-                        showScore = uiState.settings.showScore,
-                        hasScene = hasScene,
-                        deviceRotationDegrees = uiState.deviceRotationDegrees,
+                    CameraPreviewChrome(
+                        state = uiState,
                         animationsEnabled = animationsEnabled,
-                        modifier = Modifier.alpha(postCaptureFadeAlpha),
-                        pausedText = null, // TODO(integrator): wire `analysisPausedByEnhancement`, see app/README.md
-                    )
-
-                    if (uiState.settings.debugMode) {
-                        DebugGeometryOverlay(
-                            uiState.composition,
-                            uiState.debugFrame,
-                            deviceRotationDegrees = uiState.deviceRotationDegrees,
-                        )
-                    }
-
-                    CameraTopBar(
-                        showDebugChip = uiState.settings.debugMode,
-                        flashMode = uiState.flashMode,
-                        hasFlashUnit = uiState.hasFlashUnit,
                         onFlashClick = { viewModel.onFlashModeChanged(cameraController.cycleFlashMode()) },
-                        onSettingsClick = onOpenSettings,
-                        deviceRotationDegrees = uiState.deviceRotationDegrees,
-                        modifier = Modifier.align(Alignment.TopCenter),
-                        enhancement = uiState.enhancement,
-                        availableEnhancements = uiState.availableEnhancements,
+                        onOpenSettings = onOpenSettings,
                         onEnhancementSelected = viewModel::onEnhancementSelected,
-                        animationsEnabled = animationsEnabled,
+                        onOnboardingDismissed = viewModel::onOnboardingDismissed,
+                        coachingAlpha = postCaptureFadeAlpha,
+                        model = chrome,
                     )
-
-                    if (uiState.settings.debugMode) {
-                        DebugOverlay(
-                            composition = uiState.composition,
-                            debugStats = uiState.debugStats,
-                            performanceTier = uiState.performanceTier.name,
-                            deviceRotationDegrees = uiState.deviceRotationDegrees,
-                            modifier = Modifier.align(Alignment.CenterStart).padding(start = 8.dp),
-                        )
-                    }
-
-                    if (!uiState.settings.onboardingSeen) {
-                        OnboardingCard(
-                            onDismiss = viewModel::onOnboardingDismissed,
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp).padding(horizontal = 4.dp),
-                        )
-                    }
                 }
 
-                CameraBottomZone(
-                    sceneIntent = uiState.settings.sceneIntent,
-                    onSceneIntentSelected = viewModel::onSceneIntentSelected,
-                    isCapturing = uiState.isCapturing,
-                    isShootReady = shootReady,
-                    score = uiState.composition.displayScore,
-                    awaitingSubject = uiState.composition.awaitingSubject,
-                    showQuietCheck = quietCheck,
-                    analysisUnavailable = uiState.analysisUnavailable,
-                    zoomRatio = zoom.ratio,
+                CameraBottomChrome(
+                    state = uiState,
+                    displayZoomRatio = zoom.ratio,
                     zoomChipVisible = zoom.chipVisible,
                     lastPhotoUri = uiState.lastPhotoUri ?: lastPhotoUri,
-                    onShutterClick = onShutterClick,
-                    onSwitchLensClick = { viewModel.onSwitchLensRequested() },
-                    onOpenGallery = { openGallery(context, uiState.lastPhotoUri ?: lastPhotoUri) },
-                    deviceRotationDegrees = uiState.deviceRotationDegrees,
                     animationsEnabled = animationsEnabled,
-                    modifier = Modifier.weight(1f),
-                    holdStill = holdStill,
-                    arcAlpha = SteadyHint.arcAlpha(uiState.composition.awaitingSubject, uiState.steadiness),
-                    zoomPresets = uiState.zoomPresets,
+                    onShutterClick = onShutterClick,
+                    onSwitchLensClick = viewModel::onSwitchLensRequested,
+                    onOpenGallery = { openGallery(context, uiState.lastPhotoUri ?: lastPhotoUri) },
+                    onSceneIntentSelected = viewModel::onSceneIntentSelected,
                     onZoomPresetSelected = { ratio ->
                         zoom.ratio = ratio
                         viewModel.onZoomPresetSelected(ratio)
                     },
+                    modifier = Modifier.weight(1f),
                     shootAtPeak = shootAtPeak,
+                    model = chrome,
                 )
             }
 

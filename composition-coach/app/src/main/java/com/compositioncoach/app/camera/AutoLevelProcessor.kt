@@ -10,6 +10,7 @@ import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.util.Locale
 
 /**
@@ -30,20 +31,36 @@ import java.util.Locale
  * space to buffer space by [AutoLevelGeometry.bufferRotationDegrees]. Exposure, lens and date tags are copied
  * from the original so the levelled file still explains itself, and `Software` records the correction.
  */
-class AutoLevelProcessor(private val repository: CaptureRepository) {
+class AutoLevelProcessor(
+    private val repository: CaptureRepository,
+    private val originals: OriginalCopyStore,
+) {
 
     /**
-     * Levels the photo at [uri] by [rollDegrees] (the reading at shutter time). Returns the clockwise display
-     * rotation applied (`-rollDegrees`), or null if nothing was done (out of band, decode failure).
+     * What levelling did: the clockwise display rotation applied (`-rollDegrees`) and a private cache copy of
+     * the pre-level JPEG for the review's Compare chip (null if the copy could not be written; the levelled
+     * photo is kept either way). The caller owns [original] and deletes it through [OriginalCopyStore].
      */
-    suspend fun apply(uri: Uri, rollDegrees: Float, isReliable: Boolean): Float? {
+    class Levelled(val appliedDegrees: Float, val original: File?)
+
+    /**
+     * Levels the photo at [uri] by [rollDegrees] (the reading at shutter time), or returns null if nothing was
+     * done (out of band, decode failure); the original copy is only made when the photo was actually levelled.
+     */
+    suspend fun apply(uri: Uri, rollDegrees: Float, isReliable: Boolean): Levelled? {
         if (!AutoLevelGeometry.shouldLevel(rollDegrees, isReliable)) return null
         val original = repository.readBytes(uri)
         val scratch = repository.newScratchFile()
         try {
             val applied = withContext(Dispatchers.Default) { levelInto(original, rollDegrees, scratch.absolutePath) } ?: return null
-            repository.overwrite(uri, scratch)
-            return applied
+            val copy = withContext(Dispatchers.IO) { originals.save(original) }
+            try {
+                repository.overwrite(uri, scratch)
+            } catch (t: Throwable) {
+                copy?.let { originals.delete(it.path) }
+                throw t
+            }
+            return Levelled(applied, copy)
         } finally {
             scratch.delete()
         }

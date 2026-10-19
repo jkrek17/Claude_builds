@@ -52,7 +52,9 @@ import com.compositioncoach.composition.model.SmoothedComposition
 /**
  * The capture-enhancement pill in the top strip ("Auto", "HDR", "Night", "Off"). A tap moves to the next
  * option ([EnhancementCycle.next]) with a 200ms crossfade and a light tick; a long-press opens a small menu
- * listing every option. Renders nothing when the lens offers nothing beyond Off, so the top strip stays
+ * listing every option, each one whose session cannot carry live analysis ([pausingCoaching],
+ * `CaptureSessionInfo.enhancementsPausingCoaching`) marked "pauses coaching" so the trade is known before it is
+ * made. [current] is what the camera is running (`CameraUiState.enhancement`). Renders nothing when the lens offers nothing beyond Off, so the top strip stays
  * "flash · settings" on cameras without extensions.
  *
  * Does not rotate itself; [CameraTopBar] wraps it in [RotatedChrome] like its icons.
@@ -64,6 +66,7 @@ fun EnhancementPill(
     onSelect: (CaptureEnhancement) -> Unit,
     animationsEnabled: Boolean,
     modifier: Modifier = Modifier,
+    pausingCoaching: Set<CaptureEnhancement> = emptySet(),
 ) {
     if (!EnhancementCycle.isVisible(available)) return
     val haptic = LocalHapticFeedback.current
@@ -113,7 +116,7 @@ fun EnhancementPill(
         ) {
             EnhancementCycle.options(available).forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option.label, color = OnScrim) },
+                    text = { EnhancementMenuText(option, EnhancementCycle.menuNote(option, pausingCoaching)) },
                     trailingIcon = {
                         if (option == current) {
                             Icon(Icons.Outlined.Check, contentDescription = "Selected", tint = OnScrim)
@@ -130,6 +133,17 @@ fun EnhancementPill(
                     },
                 )
             }
+        }
+    }
+}
+
+/** An option's label, plus a small muted note ("pauses coaching") when it has one. */
+@Composable
+private fun EnhancementMenuText(option: CaptureEnhancement, note: String?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(option.label, color = OnScrim)
+        if (note != null) {
+            Text(note, color = OnScrimMuted, style = MaterialTheme.typography.labelSmall)
         }
     }
 }

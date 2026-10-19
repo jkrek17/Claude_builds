@@ -27,6 +27,16 @@ object ZoomPresets {
         return atOrBelow.maxByOrNull { presets[it] } ?: presets.indices.minBy { presets[it] }
     }
 
+    /**
+     * The chip to fill. [selectedPreset] is the camera state's own verdict (`CameraUiState.selectedZoomPreset`:
+     * the preset the live ratio is within 5% of) and wins whenever there is one; between presets (null) the
+     * chip for the range the displayed [ratio] falls in is lit instead ([activeIndex]), reading that ratio.
+     */
+    fun litIndex(presets: List<Float>, selectedPreset: Float?, ratio: Float): Int {
+        val selected = selectedPreset?.let { target -> presets.indexOfFirst { abs(it - target) < 1e-3f } } ?: -1
+        return if (selected >= 0) selected else activeIndex(presets, ratio)
+    }
+
     /** Whether [ratio] is sitting on [preset], rather than somewhere between it and the next. */
     fun isOnPreset(preset: Float, ratio: Float): Boolean = abs(ratio - preset) <= preset * ON_PRESET_TOLERANCE
 
@@ -37,9 +47,9 @@ object ZoomPresets {
     }
 
     /** The text on one chip. */
-    fun chipLabel(preset: Float, ratio: Float, active: Boolean): String = when {
+    fun chipLabel(preset: Float, ratio: Float, active: Boolean, sittingOn: Boolean = isOnPreset(preset, ratio)): String = when {
         !active -> presetNumber(preset)
-        isOnPreset(preset, ratio) -> "${presetNumber(preset)}×"
+        sittingOn -> "${presetNumber(preset)}×"
         else -> ZoomChipFormatter.format(ratio)
     }
 

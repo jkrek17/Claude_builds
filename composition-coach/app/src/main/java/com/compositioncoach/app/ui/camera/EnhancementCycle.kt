@@ -43,4 +43,17 @@ object EnhancementCycle {
 
     /** The one-line chip shown while an enhancement has paused live analysis (e.g. Night). */
     fun pausedText(enhancement: CaptureEnhancement): String = "Coaching paused in ${enhancement.label}"
+
+    /**
+     * The coaching layer's paused chip for the camera state: [pausedText] of the enhancement actually running,
+     * only while that session cannot carry live analysis; null (coaching runs) otherwise.
+     */
+    fun pausedTextFor(running: CaptureEnhancement, analysisPausedByEnhancement: Boolean): String? =
+        pausedText(running).takeIf { analysisPausedByEnhancement && running != CaptureEnhancement.OFF }
+
+    /** The note beside an option in the long-press menu: "pauses coaching" for a session without live analysis. */
+    fun menuNote(option: CaptureEnhancement, pausingCoaching: Set<CaptureEnhancement>): String? =
+        PAUSES_COACHING_NOTE.takeIf { option in pausingCoaching }
+
+    const val PAUSES_COACHING_NOTE = "pauses coaching"
 }
