@@ -11,6 +11,8 @@ enum class CaptureEnhancement(val label: String) {
     AUTO("Auto"),
     HDR("HDR"),
     NIGHT("Night"),
+    /** Vendor portrait/bokeh pipeline (`ExtensionMode.BOKEH`), when the lens offers it. */
+    BOKEH("Portrait"),
 }
 
 /**

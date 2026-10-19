@@ -28,6 +28,23 @@ data class ReviewEntry(
      * Compare chip. Deleted when this entry leaves the store ([staleOriginalOf]).
      */
     val originalPhotoUri: Uri? = null,
+    // --- Wave 2 after-action contract (filled asynchronously after capture; null/empty until then) ---
+    /** The captured photo analysed by the vision detectors (not the last preview frame). */
+    val stillAnalysis: com.compositioncoach.composition.model.FrameAnalysis? = null,
+    /** The engine's evaluation of [stillAnalysis] at COACH level with the user's adaptive weights. */
+    val stillResult: com.compositioncoach.composition.model.CompositionResult? = null,
+    /** Verdict, what worked, try next time: built from [stillResult] (falls back to the live result). */
+    val report: com.compositioncoach.composition.engine.AfterActionReport? = null,
+    /** Up to three better crops with predicted scores. */
+    val crops: List<com.compositioncoach.composition.model.CropSuggestion> = emptyList(),
+    /** The optimizer's best framing as a crop, for the press-and-hold "What if". */
+    val whatIf: com.compositioncoach.composition.model.NormalizedRect? = null,
+    /** True while still analysis / crops / post-processing are still being computed. */
+    val analysing: Boolean = false,
+    /** The outcome this capture was taken under. */
+    val outcome: com.compositioncoach.app.outcome.Outcome = com.compositioncoach.app.outcome.Outcome.DEFAULT,
+    /** Bokeh/background-separated copy when the outcome produced one (preview on review, save as copy). */
+    val processedPreviewUri: Uri? = null,
 )
 
 /**

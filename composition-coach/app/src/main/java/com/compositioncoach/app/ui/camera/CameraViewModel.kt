@@ -18,6 +18,7 @@ import com.compositioncoach.app.camera.CameraBindResult
 import com.compositioncoach.app.camera.CameraController
 import com.compositioncoach.app.camera.CaptureDiagnostics
 import com.compositioncoach.app.camera.CaptureEnhancement
+import com.compositioncoach.app.outcome.Outcome
 import com.compositioncoach.app.camera.CapturePipeline
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.FrameFpsTracker
@@ -547,6 +548,26 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
         zoomLiveData?.removeObserver(zoomObserver)
         zoomLiveData = camera.cameraInfo.zoomState.also { it.observeForever(zoomObserver) }
     }
+
+    // --- Wave 2 contract (state engineer implements; UI calls) -------------------------------------
+
+    /** User picked an outcome on the strip. STATUS: stub. */
+    fun onOutcomeSelected(outcome: Outcome) { _uiState.update { it.copy(outcome = outcome) } }
+
+    /** User set the self-timer (0, 3 or 10 s). STATUS: stub. */
+    fun onTimerSelected(seconds: Int) { _uiState.update { it.copy(timerSeconds = seconds) } }
+
+    /** Review: the advice was wrong. STATUS: stub. */
+    fun onNotHelpful() {}
+
+    /** Review: user saved a crop. STATUS: stub. */
+    fun onCropChosen(crop: com.compositioncoach.composition.model.CropSuggestion) {}
+
+    /** Review: "Shoot again" / gallery long-press "Use as guide". STATUS: stub. */
+    fun onUseAsGhost(rect: com.compositioncoach.composition.model.NormalizedRect?) { _uiState.update { it.copy(ghostRect = rect) } }
+
+    /** Review: Keep / Retake outcome for the learning loop. STATUS: stub. */
+    fun onReviewDecision(kept: Boolean) {}
 
     override fun onCleared() {
         pausePipeline()

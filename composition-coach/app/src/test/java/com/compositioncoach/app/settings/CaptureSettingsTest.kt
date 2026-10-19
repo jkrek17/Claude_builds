@@ -62,7 +62,7 @@ class CaptureSettingsTest {
     fun `CaptureEnhancementCodec round-trips and falls back to AUTO`() {
         CaptureEnhancement.entries.forEach { assertEquals(it, CaptureEnhancementCodec.decode(CaptureEnhancementCodec.encode(it))) }
         assertEquals(CaptureEnhancement.AUTO, CaptureEnhancementCodec.decode(null))
-        assertEquals(CaptureEnhancement.AUTO, CaptureEnhancementCodec.decode("BOKEH"))
+        assertEquals(CaptureEnhancement.AUTO, CaptureEnhancementCodec.decode("NOT_A_MODE"))
     }
 
     @Test

@@ -721,4 +721,5 @@ internal fun CaptureEnhancement.extensionMode(): Int? = when (this) {
     CaptureEnhancement.AUTO -> ExtensionMode.AUTO
     CaptureEnhancement.HDR -> ExtensionMode.HDR
     CaptureEnhancement.NIGHT -> ExtensionMode.NIGHT
+    CaptureEnhancement.BOKEH -> ExtensionMode.BOKEH
 }

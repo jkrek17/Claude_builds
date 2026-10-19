@@ -10,7 +10,7 @@ class ModeStripLogicTest {
     @Test
     fun `the strip lists the modes in the order the spec gives`() {
         assertEquals(
-            listOf("Auto", "Portrait", "Group", "Landscape", "Architecture", "Object / food"),
+            listOf("Auto", "Portrait", "Group", "Landscape", "Architecture", "Object / food", "Selfie"),
             ModeStripLogic.modes.map { it.label },
         )
     }
@@ -26,6 +26,7 @@ class ModeStripLogicTest {
         // Wrapping would make a hard swipe at either end jump the whole way across the strip, which is
         // not how a camera's mode dial behaves.
         assertEquals(SceneIntent.AUTO, ModeStripLogic.modeAfterSteps(SceneIntent.AUTO, -1))
-        assertEquals(SceneIntent.OBJECT, ModeStripLogic.modeAfterSteps(SceneIntent.OBJECT, 1))
+        assertEquals(SceneIntent.SELFIE, ModeStripLogic.modeAfterSteps(SceneIntent.OBJECT, 1))
+        assertEquals(SceneIntent.SELFIE, ModeStripLogic.modeAfterSteps(SceneIntent.SELFIE, 1))
     }
 }

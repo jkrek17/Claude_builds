@@ -5,6 +5,8 @@ import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.camera.CaptureSessionInfo
 import com.compositioncoach.app.camera.ZoomPresets
 import com.compositioncoach.app.camera.Steadiness
+import com.compositioncoach.app.outcome.ExperienceMode
+import com.compositioncoach.app.outcome.Outcome
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.settings.CoachSettings
@@ -104,6 +106,26 @@ data class CameraUiState(
     /** Current zoom ratio and the preset chips to offer (e.g. 0.6, 1, 2), already clamped to the lens. */
     val zoomRatio: Float = 1f,
     val zoomPresets: List<Float> = listOf(1f),
+
+    // --- Wave 2 contract: outcomes, holds, timer, group, ghost (state engineer implements; UI consumes) ---
+    /** The photograph the user asked for; drives scene intent, pipeline and the hold instruction. */
+    val outcome: Outcome = Outcome.DEFAULT,
+    /** Easy (default) or Coach experience. */
+    val experienceMode: ExperienceMode = ExperienceMode.EASY,
+    /** 0..1 progress of a Motion/Night hold in progress, null when no hold is running. */
+    val holdProgress: Float? = null,
+    /** The chip to show while the outcome needs something from the user ("Hold still for 4 seconds"). */
+    val holdInstruction: String? = null,
+    /** Group readiness from the latest frame (null outside group scenes). */
+    val groupStatus: com.compositioncoach.composition.model.GroupStatus? = null,
+    /** Self-timer length in seconds (0 = off) and the running countdown (null when idle). */
+    val timerSeconds: Int = 0,
+    val timerCountdown: Int? = null,
+    /** Outline of the previous shot's subject for the re-shoot ghost (null = none). */
+    val ghostRect: com.compositioncoach.composition.model.NormalizedRect? = null,
+    /** Whether the current outcome's preferred pipeline/enhancement is available on this phone. */
+    val outcomeDegraded: Boolean = false,
+    val outcomeDegradedNote: String? = null,
     /**
      * True when the selected enhancement runs in a vendor extensions session that cannot also carry
      * ImageAnalysis, so live coaching is paused while it is selected (the camera still previews and captures).
