@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fantasy-coach"
+version = "0.1.0"
+description = "Read-only Yahoo Fantasy Football MCP server: league history, waiver, trade and lineup advice"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "mcp>=2.3,<3",
+    "yahoo_fantasy_api>=2.12.2",
+    "yahoo-oauth>=2.1",
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+fantasy-coach = "fantasy_coach.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"fantasy_coach.vendor.yahoo_fantasy_mcp" = ["LICENSE", "VENDORED.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,6 @@
+{
+  "enabledMcpjsonServers": ["fantasy-coach"],
+  "permissions": {
+    "allow": ["mcp__fantasy-coach"]
+  }
+}

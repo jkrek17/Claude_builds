@@ -71,9 +71,9 @@ Once all four secrets exist, the `release` CI job (below) both builds *and* publ
 `release-latest` pre-release automatically. Until then, `assembleRelease`/`bundleRelease` keep working
 (debug-keystore fallback) so CI and local builds never break — they just aren't Play-uploadable yet.
 
-## 4. What CI does (`.github/workflows/android.yml`)
+## 4. What CI does (`.github/workflows/composition-coach.yml` at the repo root)
 
-On every push:
+On every push that changes `composition-coach/` (or the workflow itself):
 
 - **`build` job** (unchanged): unit tests, lint, a debug APK uploaded as a build artifact and published
   to the rolling `debug-latest` pre-release, exactly as before.

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "fantasy-coach": {
+      "command": "sh",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/fantasy/scripts/serve-mcp.sh"]
+    }
+  }
+}

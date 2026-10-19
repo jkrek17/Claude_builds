@@ -1,16 +1,5 @@
-*.iml
-.gradle/
-/local.properties
-/.idea/
+# Repo-wide ignores only; each project keeps its own .gitignore in its folder.
 .DS_Store
-build/
-/captures
-.externalNativeBuild
-.cxx
-*.apk
-*.aab
-*.ap_
-*.dex
-*.class
-.kotlin/
 .claude/worktrees/
+# Never commit Yahoo (or other) OAuth token files, wherever they're created.
+oauth2.json
