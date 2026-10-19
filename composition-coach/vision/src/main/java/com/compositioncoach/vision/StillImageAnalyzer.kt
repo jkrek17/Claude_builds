@@ -80,6 +80,31 @@ class StillImageAnalyzer {
             }
         }
 
+    /**
+     * Face detection only, for the frames of a group-photo burst (`GroupCompositeCapture`): one detector (the
+     * same accurate-mode, classification-on options as [analyze], so [DetectedFace.eyesOpenProbability] is
+     * filled) shared by all [bitmaps], which must be upright software bitmaps; each is run at its own size
+     * (callers pass guide-scale decodes, at most [MAX_LONG_EDGE_PX] on the long edge is plenty). Bounds are
+     * normalized in the given bitmap, unmirrored. The result has one entry per bitmap: the faces, or null
+     * when the detector failed for that frame (so "no faces" and "could not look" stay distinguishable).
+     * Never throws except on cancellation; the detector is closed afterwards.
+     */
+    suspend fun detectFaces(bitmaps: List<Bitmap>): List<List<DetectedFace>?> = withContext(Dispatchers.Default) {
+        val client = runCatching { FaceDetection.getClient(FACE_OPTIONS) }.getOrNull()
+            ?: return@withContext bitmaps.map { null }
+        try {
+            bitmaps.map { bitmap ->
+                runCatching {
+                    val mapper = FrameCoordinateMapper(bitmap.width, bitmap.height, 0, 0, 0, bitmap.width, bitmap.height, mirror = false)
+                    client.process(InputImage.fromBitmap(bitmap, 0)).await().mapIndexed { i, face -> MlKitResultMapping.mapFace(i, face, mapper) }
+                }.onFailure { if (it is CancellationException) throw it else Log.w(TAG, "Burst face detection failed", it) }
+                    .getOrNull()
+            }
+        } finally {
+            runCatching { client.close() }
+        }
+    }
+
     private class Detections(val faces: List<DetectedFace>, val objects: List<DetectedObject>, val mask: SubjectMask?)
 
     private suspend fun detect(bitmap: Bitmap, mapper: FrameCoordinateMapper, timings: MutableMap<String, Long>): Detections {
