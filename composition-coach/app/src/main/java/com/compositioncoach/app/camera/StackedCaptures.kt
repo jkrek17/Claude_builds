@@ -14,7 +14,8 @@ import com.compositioncoach.app.outcome.CapturePipeline as OutcomePipeline
 /**
  * The two multi-frame outcome pipelines of [CapturePipeline.capture] (outcome overload): the focus stack and
  * the Motion hold, each turned into a [ShotResult] with diagnostics (`pipeline`, `framesStacked`, and a
- * `degradedNote` when only the first frame survived). Split out of [CapturePipeline] to keep both readable.
+ * `degradedNote` when only the first frame survived, or [DETAIL_RESTORE_FAILED] when the stack was saved without
+ * its full-resolution detail). Split out of [CapturePipeline] to keep both readable.
  */
 internal class StackedCaptures(
     private val repository: CaptureRepository,
@@ -62,6 +63,8 @@ internal class StackedCaptures(
             imageCapture = request.imageCapture,
             isFrontCamera = request.lensFacing == LensFacing.FRONT,
             focalToLongEdge = lens?.focalToLongEdge(),
+            lens = lens,
+            controller = request.controller,
         )
         val savedAt = SystemClock.elapsedRealtime()
         val tapped = request.controller?.captureResultTap?.latestSince(request.shutterAtElapsedMs)
@@ -75,8 +78,13 @@ internal class StackedCaptures(
             degradedNote = when (motion.status) {
                 MotionStatus.TOO_SHAKY -> TOO_SHAKY_NOTE
                 MotionStatus.NO_FRAMES -> NO_FRAMES_NOTE
-                MotionStatus.STACKED -> if (stack == null) STACK_SAVE_FAILED else null
+                MotionStatus.STACKED -> if (stack == null) STACK_SAVE_FAILED else motion.note
             },
+        )
+        Log.i(
+            TAG,
+            "Motion: held ${motion.holdMs} ms, ${motion.framesStacked} frames, converged=${motion.converged}, " +
+                "firstSecondFps=${motion.firstSecondFps}, exposure=${motion.exposureSummary}, staticRestored=${motion.staticRestored}",
         )
         return if (stack != null) {
             ShotResult(stack, diagnostics, companionUri = motion.stillUri, motionStatus = motion.status)
@@ -90,6 +98,8 @@ internal class StackedCaptures(
         private const val FOCUS_STACK_FRAMES = 3
         const val TOO_SHAKY_NOTE = "Too shaky, try again"
         const val NO_FRAMES_NOTE = "The stack didn't get enough frames; here is the normal photo"
+        /** The stack was saved but the full-resolution detail pass failed (see [MotionCapture.DETAIL_RESTORE_FAILED_NOTE]). */
+        const val DETAIL_RESTORE_FAILED = MotionCapture.DETAIL_RESTORE_FAILED_NOTE
         const val STACK_SAVE_FAILED = "The stack couldn't be saved; here is the normal photo"
         const val FOCUS_MERGE_FAILED = "The focus stack couldn't be merged; here is the normal photo"
     }

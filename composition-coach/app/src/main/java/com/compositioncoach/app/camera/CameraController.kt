@@ -112,8 +112,8 @@ class CameraController(
 
     /**
      * Sets the analysis stream's target size for the **next** bind (CameraX fixes it at build time): pass
-     * [MOTION_ANALYSIS_RESOLUTION] (1280x960) while a Motion outcome is selected, so its stacks are built from
-     * ~1.2 MP frames, and null to return to the 640x480 coaching default. Returns true when the value changed,
+     * [MOTION_ANALYSIS_RESOLUTION] (1920x1440, or the fallback after a slow hold) while a Motion outcome is
+     * selected, so its stacks are built from 1.2 to 2.8 MP frames, and null to return to the 640x480 coaching default. Returns true when the value changed,
      * i.e. the caller should [rebind] for it to apply. Higher analysis resolution makes live detection slower
      * (detectors scale with input size), which is why it is only raised for Motion outcomes.
      */
@@ -338,8 +338,15 @@ class CameraController(
         /** The coaching analysis stream: enough for the detectors, cheap enough for 10 Hz. */
         val DEFAULT_ANALYSIS_RESOLUTION = Size(640, 480)
 
-        /** The analysis stream while a Motion outcome is selected (stacks are built from these frames). */
-        val MOTION_ANALYSIS_RESOLUTION = Size(1280, 960)
+        /**
+         * The analysis stream while a Motion outcome is selected (stacks are built from these frames): the
+         * largest 4:3 size tried, CameraX picks the closest it offers. [MOTION_ANALYSIS_FALLBACK_RESOLUTION]
+         * replaces it when a hold measured under 8 fps at this size (see `MotionCapture.analysisResolution`).
+         */
+        val MOTION_ANALYSIS_RESOLUTION = Size(1920, 1440)
+
+        /** The smaller Motion analysis size for devices that cannot sustain 8 fps at [MOTION_ANALYSIS_RESOLUTION]. */
+        val MOTION_ANALYSIS_FALLBACK_RESOLUTION = Size(1280, 960)
 
         private fun defaultEnhancementPreference(context: Context): suspend () -> CaptureEnhancement = {
             SettingsRepository(context).settings.first().captureEnhancement
