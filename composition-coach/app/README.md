@@ -602,28 +602,40 @@ one to three words, and every piece of arithmetic lives in a pure object with a 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `guidance_enabled` | bool | `true` | Master switch; off = preview only, coach never runs |
-| `show_score` | bool | `true` | Show/hide `ScoreChip` (the numeric readout; the arc always shows) |
+| `show_score` | bool | `true` | Stored "show the number" preference. What the screen does is `CoachSettings.effectiveShowScore(mode)` / `CameraUiState.showScoreNumber`: never in Easy, this value in Coach, so it survives switching |
 | `show_thirds_grid` | bool | `false` | Rule-of-thirds overlay |
 | `guidance_level` | string (`GuidanceLevel` name) | `BALANCED` | MINIMAL / BALANCED / COACH |
 | `pose_detection_enabled` | bool | `true` | Forwarded to `frameSource.setPoseDetectionEnabled` |
 | `battery_saver` | bool | `false` | 200ms analysis interval instead of 100ms |
 | `debug_mode` | bool | `false` | Shows `DebugOverlay` + `DebugGeometryOverlay` + the DEBUG chip |
-| `scene_intent` | string (`SceneIntent` name) | `AUTO` | Shooting mode: AUTO / PORTRAIT / GROUP_PORTRAIT / LANDSCAPE / ARCHITECTURE / OBJECT |
+| `scene_intent` | string (`SceneIntent` name) | `AUTO` | **Derived**, no longer user-set: always written as `outcome.spec.sceneIntent`; read only to migrate a Wave 1 install to the matching `outcome` (`Outcome.forSceneIntent`) |
 | `detect_objects` | bool | `true` | Forwarded to `(frameSource as? VisionFeatureToggles)?.setObjectDetectionEnabled` |
 | `subject_mask` | bool | `true` | User's own preference; see `CoachSettings.effectiveSubjectMaskEnabled` below for what's actually applied |
 | `onboarding_seen` | bool | `false` | Whether the first-launch `OnboardingCard` has been dismissed |
-| `capture_enhancement` | string (`CaptureEnhancement` name) | `AUTO` | OFF / AUTO / HDR / NIGHT: CameraX Extensions session for captures; falls back to OFF for a bind whose lens does not offer it |
-| `burst_sharpest` | bool | `true` | Lucky imaging (three frames, keep the sharpest); only runs when no extension is active, the flash is off and the device is not conserving power |
-| `auto_level` | bool | `false` | Straighten 0.7-8 degree horizon tilts after saving (opt-in: it crops and resamples) |
-| `auto_shoot` | bool | `false` | "Auto shoot when ready": every shutter tap arms shoot-at-the-peak, like a long-press |
+| `capture_enhancement` | string (`CaptureEnhancement` name) | `AUTO` | OFF / AUTO / HDR / NIGHT / BOKEH: CameraX Extensions session for captures; falls back to OFF for a bind whose lens does not offer it. Selecting an outcome sets it to the first of the outcome's preferences the lens offers |
+| `burst_sharpest` | bool | `true` | Lucky imaging (three frames, keep the sharpest); only runs when no extension is active, the flash is off, the device is not conserving power and the outcome's pipeline is not SINGLE |
+| `auto_level` | bool | `true` | Straighten 0.7-8 degree horizon tilts after saving (Easy default: "fix what can be fixed silently"; Compare shows the original) |
+| `auto_shoot` | bool | `true` | "Auto shoot when ready": every shutter tap arms shoot-at-the-peak, like a long-press (Easy default) |
+| `experience_mode` | string (`ExperienceMode` name) | `EASY` | EASY / COACH (`docs/PRODUCT.md`, "Two experiences") |
+| `pro_controls` | bool | `false` | Reveals exposure, zoom presets, enhancement chips, grid, guidance level, detection toggles, developer mode |
+| `outcome` | string (`Outcome` name) | `ANYTHING` | The photograph the user wants; drives scene intent, enhancement, capture pipeline, hold instruction, front lens (Selfie), group mode |
+| `review_card_mode` | string (`ReviewCardMode` name) | `ALWAYS` | ALWAYS / ONLY_WHEN_USEFUL (a Try-next-time or a crop) |
+| `haptic_guidance` | bool | `false` | "Guide by vibration" |
+| `voice_guidance` | bool | `false` | "Guide by voice" |
+| `timer_seconds` | int | `0` | Self-timer: 0 (off), 3 or 10; other values snap to the nearest (`TimerSecondsCodec`) |
+| `adaptive_weights` | string (`AdaptiveWeights.serialize()`) | `""` (NEUTRAL) | The taste model; written back normalised. "Reset coaching preferences" sets NEUTRAL and clears the photo journal |
+| `shutter_sound` | string (`ShutterSoundMode` name) | `AUTO` | AUTO: only where the device reports the shutter sound mandatory (`CameraInfo.mustPlayShutterSound()`); ALWAYS: every capture. No "never" |
 
-An unrecognized or missing `guidance_level` value falls back to `BALANCED`, and an unrecognized,
-missing, or legacy `scene_intent` value falls back to `AUTO`, rather than crashing
-(`GuidanceLevelCodec` / `SceneIntentCodec`, unit-tested in `CoachSettingsTest`) — this is the intended
+An unrecognized or missing `guidance_level` value falls back to `BALANCED`, rather than crashing
+(`GuidanceLevelCodec`, unit-tested in `CoachSettingsTest`) — this is the intended
 way to evolve the schema, not a bug to "fix" by renaming keys in place. `capture_enhancement` falls back to
-`AUTO` the same way (`CaptureEnhancementCodec`); AUTO is "AUTO when the lens offers it, else OFF" at bind time. Every key's read/write round trip is unit-tested on the JVM
-through the pure `Preferences.toCoachSettings()` / `MutablePreferences.writeCoachSettings()` pair that
-`SettingsRepository` itself uses (`CaptureSettingsTest`).
+`AUTO` the same way (`CaptureEnhancementCodec`); AUTO is "AUTO when the lens offers it, else OFF" at bind time.
+The Wave 2 enums fall back to their defaults the same way (`OutcomeCodec`, `EnumCodec`), and a corrupt
+`adaptive_weights` string degrades to NEUTRAL. Defaults apply to keys that were never written: a Wave 1 install
+that had saved any setting keeps its explicit `auto_level`/`auto_shoot`/`show_score` values. Every key's
+read/write round trip is unit-tested on the JVM through the pure `Preferences.toCoachSettings()` /
+`MutablePreferences.writeCoachSettings()` pair that `SettingsRepository` itself uses (`CaptureSettingsTest`,
+`WaveTwoSettingsTest`).
 
 ## Detection settings (`VisionFeatureToggles`)
 

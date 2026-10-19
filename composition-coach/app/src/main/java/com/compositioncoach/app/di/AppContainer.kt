@@ -10,10 +10,12 @@ import com.compositioncoach.app.camera.OriginalCopyStore
 import com.compositioncoach.app.camera.ThermalPolicy
 import com.compositioncoach.app.settings.SettingsRepository
 import com.compositioncoach.composition.engine.CompositionCoach
+import com.compositioncoach.composition.engine.CropSuggester
 import com.compositioncoach.vision.FrameAnalysisSource
 import com.compositioncoach.vision.VisionPipelineFactory
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
+import java.io.File
 
 /**
  * Manual dependency container, one instance per process (see [com.compositioncoach.app.CompositionCoachApp]).
@@ -44,6 +46,31 @@ class AppContainer(private val appContext: Context) {
 
     /** [CompositionCoach.create] is pure Kotlin/JVM and cheap; never fails. */
     val coach: CompositionCoach by lazy { CompositionCoach.create() }
+
+    /** "Better crop?" suggestions for the after-action card. Pure Kotlin. */
+    val cropSuggester: CropSuggester by lazy { CropSuggester() }
+
+    // --- Wave 2 ports: the integrator binds the capture engineer's classes here, nowhere else ----------------
+
+    /** Still-photo analysis and background separation; see [StillAnalysisPort] for what to bind. */
+    val stillAnalysisPort: StillAnalysisPort by lazy { StillAnalysisPort.Unavailable }
+
+    /** Outcome captures, hold progress, group mode and the shutter sound; see [CaptureOrchestrationPort]. */
+    val captureOrchestrationPort: CaptureOrchestrationPort by lazy { DefaultCaptureOrchestrationPort(capturePipeline) }
+
+    // --- Learning -------------------------------------------------------------------------------------------
+
+    /** One record per capture in `filesDir/journal.jsonl`. */
+    val photoJournal: PhotoJournal by lazy { PhotoJournal(File(appContext.filesDir, PhotoJournal.FILE_NAME)) }
+
+    /** "Your eye" screen data from the journal and the taste model. */
+    val yourEyeRepository: YourEyeRepository by lazy { YourEyeRepository(photoJournal, settingsRepository) }
+
+    /** Settings > More > "Reset coaching preferences": neutral taste model and an empty journal. */
+    suspend fun resetCoachingPreferences() {
+        settingsRepository.resetAdaptiveWeights()
+        photoJournal.clear()
+    }
 
     /**
      * The vision pipeline the app was handed at build time is a stub whose `create()` throws

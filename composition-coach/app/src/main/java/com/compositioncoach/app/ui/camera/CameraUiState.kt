@@ -7,6 +7,9 @@ import com.compositioncoach.app.camera.ZoomPresets
 import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.outcome.ExperienceMode
 import com.compositioncoach.app.outcome.Outcome
+import com.compositioncoach.app.outcome.OutcomePlan
+import com.compositioncoach.app.outcome.OutcomePlanner
+import com.compositioncoach.composition.model.NormalizedRect
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.settings.CoachSettings
@@ -169,7 +172,56 @@ val CameraUiState.preferFastCapture: Boolean
 // The functions below are pure state transforms with no Android dependency, extracted so the
 // camera view model's reducer logic is unit-testable on the plain JVM (see CameraUiStateTest).
 
-fun CameraUiState.withSettings(settings: CoachSettings): CameraUiState = copy(settings = settings)
+/**
+ * New settings. The experience mode and timer length mirror their settings. The outcome is not taken from
+ * here: [CameraViewModel] applies it ([withOutcome]) with its side effects, ignoring a stale emission while a
+ * just-selected outcome is still being saved.
+ */
+fun CameraUiState.withSettings(settings: CoachSettings): CameraUiState = copy(
+    settings = settings,
+    experienceMode = settings.experienceMode,
+    timerSeconds = settings.timerSeconds,
+)
+
+// --- Wave 2 reducers -------------------------------------------------------------------------------------
+
+/** Whether the score number shows: Coach mode and the user's stored preference (Easy shows the ring only). */
+val CameraUiState.showScoreNumber: Boolean get() = settings.effectiveShowScore(experienceMode)
+
+/**
+ * The shoot-at-the-peak condition (with steadiness on top, see `SteadyHint.peakReached`): in a group scene
+ * (the engine reports a [GroupStatus][com.compositioncoach.composition.model.GroupStatus], or the Group outcome
+ * is selected and no group is in frame yet) everyone must be ready; otherwise the usual shoot-ready.
+ */
+val CameraUiState.peakReady: Boolean
+    get() = when {
+        groupStatus != null -> groupStatus.ready
+        outcome == Outcome.GROUP -> false
+        else -> composition.isShootReady
+    }
+
+/** A hold is pending while a hold outcome's capture runs (from the shutter to the saved file) or reports progress. */
+private val CameraUiState.holdPending: Boolean get() = isCapturing || holdProgress != null
+
+/** Selects [outcome]; re-derives the hold instruction. Degradation is set separately ([withOutcomePlan]). */
+fun CameraUiState.withOutcome(outcome: Outcome): CameraUiState =
+    copy(outcome = outcome, holdInstruction = OutcomePlanner.holdInstruction(outcome, holdPending))
+
+/** Whether the selected outcome had to fall back on this phone, and the one-line note saying so. */
+fun CameraUiState.withOutcomePlan(plan: OutcomePlan): CameraUiState =
+    copy(outcomeDegraded = plan.degraded, outcomeDegradedNote = plan.note)
+
+/** The capture port's hold progress (0..1, null when no hold runs). */
+fun CameraUiState.withHoldProgress(progress: Float?): CameraUiState {
+    val next = copy(holdProgress = progress?.coerceIn(0f, 1f))
+    return next.copy(holdInstruction = OutcomePlanner.holdInstruction(outcome, next.holdPending))
+}
+
+/** The self-timer's displayed value (seconds left, 0 while a group hand-over waits, null when idle). */
+fun CameraUiState.withTimerCountdown(value: Int?): CameraUiState = copy(timerCountdown = value)
+
+/** The re-shoot ghost outline (null clears it). */
+fun CameraUiState.withGhost(rect: NormalizedRect?): CameraUiState = copy(ghostRect = rect)
 
 /**
  * A (re)bind succeeded. CameraX resets exposure compensation to 0 whenever a camera is rebound, so the
@@ -235,7 +287,9 @@ fun CameraUiState.withCameraError(message: String): CameraUiState = copy(cameraE
 
 fun CameraUiState.withFlashMode(mode: FlashMode): CameraUiState = copy(flashMode = mode)
 
-fun CameraUiState.withCaptureStarted(): CameraUiState = copy(isCapturing = true, captureError = null)
+/** The shutter fired. A hold outcome shows its instruction from here until the file is saved. */
+fun CameraUiState.withCaptureStarted(): CameraUiState =
+    copy(isCapturing = true, captureError = null, holdInstruction = OutcomePlanner.holdInstruction(outcome, holdPending = true))
 
 /**
  * Capture finished successfully: stops the shutter's disabled state and starts the post-capture fade
@@ -243,11 +297,23 @@ fun CameraUiState.withCaptureStarted(): CameraUiState = copy(isCapturing = true,
  * abrupt jump from full-opacity UI. [CameraViewModel] clears [postCaptureFadeActive] again ~1s later via
  * [withPostCaptureFadeEnded], whether or not navigation actually happened by then.
  */
-fun CameraUiState.withCaptureFinished(): CameraUiState =
-    copy(isCapturing = false, isWaitingForSteady = false, postCaptureFadeActive = true)
+fun CameraUiState.withCaptureFinished(): CameraUiState = copy(
+    isCapturing = false,
+    isWaitingForSteady = false,
+    postCaptureFadeActive = true,
+    holdProgress = null,
+    holdInstruction = null,
+    ghostRect = null,
+)
 
-fun CameraUiState.withCaptureError(message: String): CameraUiState =
-    copy(isCapturing = false, isWaitingForSteady = false, captureError = message, postCaptureFadeActive = false)
+fun CameraUiState.withCaptureError(message: String): CameraUiState = copy(
+    isCapturing = false,
+    isWaitingForSteady = false,
+    captureError = message,
+    postCaptureFadeActive = false,
+    holdProgress = null,
+    holdInstruction = null,
+)
 
 /** Ends the post-capture fade window started by [withCaptureFinished]. */
 fun CameraUiState.withPostCaptureFadeEnded(): CameraUiState = copy(postCaptureFadeActive = false)
@@ -276,8 +342,9 @@ fun CameraUiState.withFrameUpdate(
     ),
     debugFrame = debugFrame,
     deviceRotationDegrees = deviceRotationDegrees,
+    groupStatus = composition.raw.groupStatus,
 )
 
-/** True exactly on the transition into shoot-ready, used to fire the haptic tick once per entry. */
+/** True exactly on the transition into [peakReady] (group-aware shoot-ready), used to fire the haptic tick once per entry. */
 fun CameraUiState.justEnteredShootReady(previous: CameraUiState): Boolean =
-    composition.isShootReady && !previous.composition.isShootReady
+    peakReady && !previous.peakReady

@@ -49,6 +49,20 @@ enum class Outcome(val label: String, val spec: OutcomeSpec) {
     companion object {
         val DEFAULT = ANYTHING
         fun fromName(name: String?): Outcome = entries.firstOrNull { it.name == name } ?: DEFAULT
+
+        /**
+         * The outcome a legacy scene-intent choice maps to (Wave 1 `scene_intent` migration and the old scene
+         * strip). Intents with no outcome of their own (ARCHITECTURE) map to [DEFAULT].
+         */
+        fun forSceneIntent(intent: SceneIntent): Outcome = when (intent) {
+            SceneIntent.AUTO -> ANYTHING
+            SceneIntent.PORTRAIT -> PORTRAIT
+            SceneIntent.GROUP_PORTRAIT -> GROUP
+            SceneIntent.LANDSCAPE -> LANDSCAPE
+            SceneIntent.OBJECT -> FOOD
+            SceneIntent.SELFIE -> SELFIE
+            SceneIntent.ARCHITECTURE -> DEFAULT
+        }
     }
 }
 

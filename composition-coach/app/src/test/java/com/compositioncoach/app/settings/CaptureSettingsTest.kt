@@ -4,7 +4,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.composition.model.GuidanceLevel
-import com.compositioncoach.composition.model.SceneIntent
+import com.compositioncoach.app.outcome.Outcome
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -14,12 +14,12 @@ import org.junit.Test
 class CaptureSettingsTest {
 
     @Test
-    fun `defaults are AUTO enhancement, burst on, auto-level off, auto shoot off`() {
+    fun `defaults are AUTO enhancement, burst on, auto-level on, auto shoot on`() {
         val defaults = emptyPreferences().toCoachSettings()
         assertEquals(CaptureEnhancement.AUTO, defaults.captureEnhancement)
         assertTrue(defaults.burstSharpest)
-        assertFalse(defaults.autoLevel)
-        assertFalse(defaults.autoShoot)
+        assertTrue(defaults.autoLevel)
+        assertTrue(defaults.autoShoot)
         assertEquals(CoachSettings(), defaults)
     }
 
@@ -33,21 +33,21 @@ class CaptureSettingsTest {
             poseDetectionEnabled = false,
             batterySaver = true,
             debugMode = true,
-            sceneIntent = SceneIntent.LANDSCAPE,
+            outcome = Outcome.LANDSCAPE,
             detectObjectsEnabled = false,
             subjectMaskEnabled = false,
             onboardingSeen = true,
             captureEnhancement = CaptureEnhancement.NIGHT,
             burstSharpest = false,
-            autoLevel = true,
-            autoShoot = true,
+            autoLevel = false,
+            autoShoot = false,
         )
         val prefs = mutablePreferencesOf().apply { writeCoachSettings(custom) }
         assertEquals(custom, prefs.toCoachSettings())
         assertEquals("NIGHT", prefs[SettingsRepository.Keys.CAPTURE_ENHANCEMENT])
         assertEquals(false, prefs[SettingsRepository.Keys.BURST_SHARPEST])
-        assertEquals(true, prefs[SettingsRepository.Keys.AUTO_LEVEL])
-        assertEquals(true, prefs[SettingsRepository.Keys.AUTO_SHOOT])
+        assertEquals(false, prefs[SettingsRepository.Keys.AUTO_LEVEL])
+        assertEquals(false, prefs[SettingsRepository.Keys.AUTO_SHOOT])
     }
 
     @Test

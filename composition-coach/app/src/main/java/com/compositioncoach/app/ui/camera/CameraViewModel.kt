@@ -13,32 +13,34 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.compositioncoach.app.camera.AutoLevelGeometry
 import com.compositioncoach.app.camera.CameraBindResult
 import com.compositioncoach.app.camera.CameraController
 import com.compositioncoach.app.camera.CaptureDiagnostics
 import com.compositioncoach.app.camera.CaptureEnhancement
-import com.compositioncoach.app.outcome.Outcome
-import com.compositioncoach.app.camera.CapturePipeline
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.FrameFpsTracker
 import com.compositioncoach.app.camera.LensFacing
-import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.camera.toIntRange
 import com.compositioncoach.app.di.AppContainer
-import com.compositioncoach.app.di.ReviewEntry
-import com.compositioncoach.composition.model.CompositionResult
+import com.compositioncoach.app.di.YourEyeSnapshot
+import com.compositioncoach.app.outcome.Outcome
+import com.compositioncoach.app.outcome.OutcomePlanner
+import com.compositioncoach.app.settings.CoachSettings
+import com.compositioncoach.app.settings.TimerSecondsCodec
+import com.compositioncoach.composition.engine.AdaptiveWeights
+import com.compositioncoach.composition.engine.Feedback
+import com.compositioncoach.composition.model.CropSuggestion
 import com.compositioncoach.composition.model.FrameAnalysis
-import com.compositioncoach.composition.model.GuidanceLevel
+import com.compositioncoach.composition.model.NormalizedRect
 import com.compositioncoach.composition.model.SceneIntent
 import com.compositioncoach.composition.model.SmoothedComposition
 import com.compositioncoach.vision.VisionFeatureToggles
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -52,7 +54,6 @@ import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
-import kotlinx.coroutines.withContext
 
 /** One-shot UI events the screen reacts to but that don't belong in persistent state. */
 sealed interface CameraEvent {
@@ -68,6 +69,10 @@ sealed interface CameraEvent {
  * Frame handling in short: every analyzed [FrameAnalysis] is scored immediately (so the temporal smoother
  * in [AppContainer.coach] sees every frame and stays stable), but the *UI* only redraws at ~10 Hz via
  * [sample] — the coach can process frames faster than the screen needs to repaint.
+ *
+ * The shutter (timer, capture) lives in [CaptureFlowCoordinator]; the after-action card's background work and
+ * the review's learning signals in [ReviewFlowCoordinator]; this class keeps the camera, the live state, the
+ * outcome and the taste model.
  */
 @OptIn(FlowPreview::class)
 class CameraViewModel(private val container: AppContainer) : ViewModel() {
@@ -76,7 +81,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     private val coach = container.coach
     private val thermalPolicy = container.thermalPolicy
     private val motionSensor = container.motionSensor
-    private val capturePipeline = container.capturePipeline
+    private val capturePort = container.captureOrchestrationPort
 
     /**
      * The controller that produced the latest successful bind ([CameraBindResult.Success.controller]). Kept so
@@ -108,12 +113,42 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     private val _events = MutableSharedFlow<CameraEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<CameraEvent> = _events
 
+    /** "Your eye" screen data (tendencies, keepers, follow rates, best three), recomputed as the journal grows. */
+    val yourEye: Flow<YourEyeSnapshot> get() = container.yourEyeRepository.snapshot
+
     /** Auto-level after the review shows, and the lifetime of its Compare original. */
     private val levelling = PostCaptureLevelling(
         container = container,
         scope = viewModelScope,
         onPhotoRewritten = { uri -> _uiState.update { it.withLastPhotoUri(uri) } },
         onFinished = ::logDiagnostics,
+    )
+
+    private val feedbackTracker = FeedbackTracker()
+
+    private val reviewFlow = ReviewFlowCoordinator(
+        scope = viewModelScope,
+        reviewStore = container.reviewStore,
+        journal = container.photoJournal,
+        stillAnalysis = container.stillAnalysisPort,
+        coach = coach,
+        cropSuggester = container.cropSuggester,
+        applyFeedback = container.settingsRepository::applyFeedback,
+    )
+
+    private val captureFlow = CaptureFlowCoordinator(
+        scope = viewModelScope,
+        state = _uiState,
+        coach = coach,
+        motionSensor = motionSensor,
+        capturePipeline = container.capturePipeline,
+        port = capturePort,
+        reviewFlow = reviewFlow,
+        levelling = levelling,
+        feedback = feedbackTracker,
+        emit = { _events.tryEmit(it) },
+        logDiagnostics = ::logDiagnostics,
+        onCaptureSettled = ::rebindForEnhancementIfNeeded,
     )
 
     @Volatile private var lastFrame: FrameAnalysis? = null
@@ -127,6 +162,23 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     /** Whether [resumePipeline]/[pausePipeline] currently consider the pipeline running; makes both idempotent. */
     @Volatile private var pipelineActive = false
 
+    // --- Outcome and taste-model state -------------------------------------------------------------------
+
+    /** The outcome whose side effects (intent, enhancement, lens, group mode) are in force; null before settings load. */
+    private var appliedOutcome: Outcome? = null
+
+    /** An outcome the user just picked that DataStore has not echoed back yet; stale emissions must not undo it. */
+    private var pendingOutcome: Outcome? = null
+
+    /** Apply the outcome's preferred enhancement once the (re)bound lens reports what it offers. */
+    private var enhancementPlanPending = false
+
+    /** The persisted `adaptive_weights` string and the weights the engine uses (that plus the outcome's focus). */
+    private var userWeightsRaw: String? = null
+    @Volatile private var effectiveWeights: AdaptiveWeights = AdaptiveWeights.NEUTRAL
+
+    private var ghostJob: Job? = null
+
     /**
      * Last-resort net for the frame-processing pipeline: logs and lets [viewModelScope] carry on rather
      * than letting an uncaught exception here crash the app (the per-frame `try`/`catch` in
@@ -139,22 +191,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            container.settingsRepository.settings.collect { settings ->
-                _uiState.update { it.withSettings(settings) }
-                frameSource?.setPoseDetectionEnabled(settings.poseDetectionEnabled)
-                frameSource?.setTargetIntervalMs(settings.analysisIntervalMs)
-                val toggles = frameSource as? VisionFeatureToggles
-                toggles?.setObjectDetectionEnabled(settings.detectObjectsEnabled)
-                toggles?.setSegmentationEnabled(settings.effectiveSubjectMaskEnabled)
-                // Shooting mode changed: reset the smoother so advice/scoring from the old mode doesn't linger.
-                if (lastSceneIntent != null && lastSceneIntent != settings.sceneIntent) {
-                    coach.reset()
-                }
-                lastSceneIntent = settings.sceneIntent
-                settingsLoaded = true
-                // capture_enhancement changed (from the chips or Settings): the session type depends on it.
-                rebindForEnhancementIfNeeded()
-            }
+            container.settingsRepository.settings.collect(::onSettings)
         }
         viewModelScope.launch {
             motionSensor.steadiness.collect { steadiness -> _uiState.update { it.withSteadiness(steadiness) } }
@@ -178,6 +215,10 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                 (frameSource as? VisionFeatureToggles)?.setPerformanceTier(tier)
             }
         }
+        // A Motion/Night hold's progress, from the capture port.
+        viewModelScope.launch {
+            capturePort.holdProgress.collect { progress -> _uiState.update { it.withHoldProgress(progress) } }
+        }
         // Restore the last saved photo's Uri on a fresh process start (CameraUiState.lastPhotoUri is
         // otherwise only set by a capture happening this process) so a gallery-shortcut button has
         // something to show immediately rather than waiting for the user's next capture.
@@ -185,6 +226,34 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
             container.captureRepository.latestPhotoUri()?.let { uri -> _uiState.update { it.withLastPhotoUri(uri) } }
         }
         observeFrames()
+    }
+
+    private fun onSettings(settings: CoachSettings) {
+        _uiState.update { it.withSettings(settings) }
+        frameSource?.setPoseDetectionEnabled(settings.poseDetectionEnabled)
+        frameSource?.setTargetIntervalMs(settings.analysisIntervalMs)
+        val toggles = frameSource as? VisionFeatureToggles
+        toggles?.setObjectDetectionEnabled(settings.detectObjectsEnabled)
+        toggles?.setSegmentationEnabled(settings.effectiveSubjectMaskEnabled)
+        // Shooting mode changed: reset the smoother so advice/scoring from the old mode doesn't linger.
+        if (lastSceneIntent != null && lastSceneIntent != settings.sceneIntent) {
+            coach.reset()
+        }
+        lastSceneIntent = settings.sceneIntent
+        if (settings.adaptiveWeights != userWeightsRaw) {
+            userWeightsRaw = settings.adaptiveWeights
+            recomputeWeights()
+        }
+        // The outcome (from the strip or Settings). While a just-picked outcome is being saved, an older emission
+        // must not switch it back.
+        val pending = pendingOutcome
+        if (pending == null || pending == settings.outcome) {
+            pendingOutcome = null
+            applyOutcome(settings.outcome)
+        }
+        settingsLoaded = true
+        // capture_enhancement changed (from the chips or Settings): the session type depends on it.
+        rebindForEnhancementIfNeeded()
     }
 
     private fun observeFrames() {
@@ -204,7 +273,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
                     // keeps collecting. frameProcessingExceptionHandler below is the last-resort net for
                     // anything that still escapes this (e.g. from onEach/the FPS tracker).
                     try {
-                        coach.process(frame, settings.guidanceLevel, settings.sceneIntent)
+                        coach.process(frame, settings.guidanceLevel, settings.sceneIntent, effectiveWeights)
                     } catch (t: Throwable) {
                         Log.e(TAG, "Composition engine threw while scoring a frame; keeping the last result", t)
                         _uiState.value.composition
@@ -248,6 +317,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
         if (_uiState.value.justEnteredShootReady(previous)) {
             _events.tryEmit(CameraEvent.ShootReadyHapticTick)
         }
+        feedbackTracker.onComposition(SystemClock.elapsedRealtime(), update.composition)?.let(::applyFeedback)
     }
 
     // --- Camera lifecycle & controls -------------------------------------------------------------------
@@ -284,7 +354,7 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
         frameSource?.start()
         thermalPolicy.start()
         motionSensor.start()
-        coach.reset()
+        resetCoaching()
     }
 
     /** Stops [frameSource], [thermalPolicy] and the gyro unless already inactive. Mirrors [resumePipeline]. */
@@ -294,14 +364,27 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
         frameSource?.stop()
         thermalPolicy.stop()
         motionSensor.stop()
+        // A self-timer must not fire into a backgrounded camera.
+        captureFlow.cancelCountdown()
+    }
+
+    /** Smoother and feedback tracking start over (lens switch, outcome change, resume). */
+    private fun resetCoaching() {
+        coach.reset()
+        feedbackTracker.reset()
     }
 
     fun onSwitchLensRequested() {
         val next = if (_uiState.value.lensFacing == LensFacing.BACK) LensFacing.FRONT else LensFacing.BACK
+        switchLens(next)
+    }
+
+    private fun switchLens(next: LensFacing) {
+        if (_uiState.value.lensFacing == next) return
         // Tell the pipeline about the mirror change *before* the rebind so no frame from the new lens is
         // normalized with the old mirroring; onCameraBindResult corrects it if the device fell back.
         frameSource?.setFrontCamera(next == LensFacing.FRONT)
-        coach.reset()
+        resetCoaching()
         _uiState.update { it.copy(lensFacing = next) }
     }
 
@@ -314,13 +397,15 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
         when (result) {
             is CameraBindResult.Success -> {
                 frameSource?.setFrontCamera(result.lensFacing == LensFacing.FRONT)
-                coach.reset()
+                resetCoaching()
                 result.controller?.let { boundController = it }
                 observeZoom(result.camera)
                 _uiState.update {
                     it.withCameraBound(result.lensFacing, result.hasFlashUnit, result.exposureRange.toIntRange(), result.session)
                 }
                 if (!framesFlowing()) _uiState.update { it.withDeviceRotation(motionSensor.deviceRotationDegrees.value) }
+                // What this lens offers decides the outcome's enhancement and whether it is degraded.
+                refreshOutcomePlan()
                 // The preference may have changed while this bind was in flight.
                 rebindForEnhancementIfNeeded()
             }
@@ -357,87 +442,31 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     /**
      * The shutter. [imageCapture] is the screen's `cameraController.imageCapture`; when this view model has a
      * bound controller (always, after the first successful bind) its own `imageCapture` is used instead, which
-     * is the same object. Everything runs off the main thread except CameraX's `takePicture` calls; see
-     * [CapturePipeline] for the steps and the README's "Capture pipeline" section for the settings that
-     * affect each. Order of events the UI sees: `isCapturing` true -> (`isWaitingForSteady` true while the gyro
-     * gate waits, at most 450 ms) -> [CameraEvent.NavigateToReview] with the [ReviewEntry] already in
-     * `AppContainer.reviewStore` -> later, if auto-level ran, that entry is replaced with a higher `revision`.
+     * is the same object. With a self-timer set this starts the countdown (pressing again cancels it); see
+     * [CaptureFlowCoordinator] for the order of events the UI sees.
      */
     fun onShutterClick(imageCapture: ImageCapture?) {
         val controller = boundController
         val capture = controller?.imageCapture ?: imageCapture ?: return
         if (_uiState.value.isCapturing) return
+        captureFlow.onShutter { captureFlow.shoot(shutterContext(boundController ?: controller, capture)) }
+    }
+
+    /**
+     * Snapshots the shutter-time frame and orientation: the coaching result and the auto-level roll must describe
+     * the moment the photo is taken, not whatever arrives during the capture.
+     */
+    private fun shutterContext(controller: CameraController?, capture: ImageCapture): ShutterContext {
         val shutterAt = SystemClock.elapsedRealtime()
-        // Snapshot the shutter-time frame and orientation now: the coaching result and the auto-level roll must
-        // describe the moment the photographer pressed, not whatever arrives during the capture.
-        val frameAtShutter = lastFrame
-        val orientationAtShutter = frameAtShutter?.orientation
+        val frame = lastFrame
+        val orientation = frame?.orientation
             ?.takeIf { shutterAt - lastFrameAtElapsedMs <= ORIENTATION_MAX_AGE_MS }
             ?: motionSensor.orientation
-        _uiState.update { it.withCaptureStarted() }
-        viewModelScope.launch {
-            try {
-                val gateNeeded = motionSensor.steadiness.value == Steadiness.MOVING
-                if (gateNeeded) _uiState.update { it.withWaitingForSteady(true) }
-                val (steadiness, waitedMs) = capturePipeline.awaitSteady()
-                if (gateNeeded) _uiState.update { it.withWaitingForSteady(false) }
-
-                val state = _uiState.value
-                val session = controller?.session
-                val shot = capturePipeline.capture(
-                    CapturePipeline.ShotRequest(
-                        controller = controller,
-                        imageCapture = capture,
-                        lensFacing = session?.lensFacing ?: state.lensFacing,
-                        session = session,
-                        burst = state.burstSharpestActive && session?.activeEnhancement == CaptureEnhancement.OFF,
-                        zoomRatio = controller?.currentZoomRatio ?: state.zoomRatio,
-                        exposureIndex = state.exposureIndex,
-                        shutterAtElapsedMs = shutterAt,
-                        steadiness = steadiness,
-                        waitedForSteadyMs = waitedMs,
-                    ),
-                )
-                val result = withContext(Dispatchers.Default) {
-                    if (frameAtShutter != null) {
-                        coach.evaluateOnce(frameAtShutter, GuidanceLevel.COACH, state.settings.sceneIntent)
-                    } else {
-                        CompositionResult.empty()
-                    }
-                }
-                val levels = state.settings.autoLevel && orientationAtShutter != null &&
-                    AutoLevelGeometry.shouldLevel(orientationAtShutter.rollDegrees, orientationAtShutter.isReliable)
-                container.reviewStore.put(ReviewEntry(shot.uri, result, shot.diagnostics, processing = levels))
-                _uiState.update { it.withCaptureFinished().withLastPhotoUri(shot.uri) }
-                clearPostCaptureFadeAfterDelay()
-                _events.tryEmit(CameraEvent.NavigateToReview)
-                if (levels) {
-                    levelling.run(shot.uri, shot.diagnostics, orientationAtShutter!!)
-                } else {
-                    logDiagnostics(shot.diagnostics)
-                }
-            } catch (c: CancellationException) {
-                throw c
-            } catch (t: Throwable) {
-                Log.e(TAG, "Capture failed", t)
-                _uiState.update { it.withCaptureError("Couldn't save photo: ${t.message ?: "unknown error"}") }
-            } finally {
-                // An enhancement change that arrived mid-capture was deferred (a rebind would kill the capture).
-                rebindForEnhancementIfNeeded()
-            }
-        }
+        return ShutterContext(controller, controller?.imageCapture ?: capture, shutterAt, frame, orientation, effectiveWeights)
     }
 
     private fun logDiagnostics(diagnostics: CaptureDiagnostics) {
         Log.i(DIAGNOSTICS_TAG, diagnostics.toLogLine())
-    }
-
-    /** Ends the score-badge/banner post-capture fade ~1s after it started, see [CameraUiState.postCaptureFadeActive]. */
-    private fun clearPostCaptureFadeAfterDelay() {
-        viewModelScope.launch {
-            delay(POST_CAPTURE_FADE_MS)
-            _uiState.update { it.withPostCaptureFadeEnded() }
-        }
     }
 
     /**
@@ -450,14 +479,66 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     // --- Shooting mode -------------------------------------------------------------------------------------
 
     /**
-     * The mode strip above the shutter writes the *same* DataStore value Settings > Shooting mode does, so
-     * the two controls can never disagree: this is a pass-through to `SettingsRepository.setSceneIntent`,
-     * and the change comes back to the UI through the settings flow this view model already collects
-     * (which is also what resets the smoother on a mode change — see `init`).
+     * Legacy scene strip: the scene intent is derived from the outcome now, so this selects the outcome the
+     * intent maps to ([Outcome.forSceneIntent]).
      */
-    fun onSceneIntentSelected(intent: SceneIntent) {
-        if (_uiState.value.settings.sceneIntent == intent) return
-        viewModelScope.launch { container.settingsRepository.setSceneIntent(intent) }
+    fun onSceneIntentSelected(intent: SceneIntent) = onOutcomeSelected(Outcome.forSceneIntent(intent))
+
+    /**
+     * User picked an outcome on the strip: persisted (`outcome`), shown at once, and applied: scene intent (the
+     * smoother resets), the first of the outcome's enhancements the lens offers, the front lens for Selfie (and
+     * back again when leaving it), group mode, and `outcomeDegraded`/`outcomeDegradedNote` when the outcome's
+     * first choice is missing on this phone.
+     */
+    fun onOutcomeSelected(outcome: Outcome) {
+        if (appliedOutcome == outcome && pendingOutcome == null) return
+        pendingOutcome = outcome
+        applyOutcome(outcome)
+        viewModelScope.launch { container.settingsRepository.setOutcome(outcome) }
+    }
+
+    private fun applyOutcome(outcome: Outcome) {
+        val previous = appliedOutcome
+        if (previous == outcome) return
+        appliedOutcome = outcome
+        _uiState.update { it.withOutcome(outcome) }
+        recomputeWeights()
+        capturePort.setGroupModeEnabled(outcome == Outcome.GROUP)
+        if (previous != null) resetCoaching()
+        val lens = _uiState.value.lensFacing
+        when {
+            outcome.spec.preferFrontCamera && lens == LensFacing.BACK -> switchLens(LensFacing.FRONT)
+            previous?.spec?.preferFrontCamera == true && !outcome.spec.preferFrontCamera && lens == LensFacing.FRONT ->
+                switchLens(LensFacing.BACK)
+        }
+        // On first load the persisted enhancement stands (the user may have chosen one in Pro); a real change of
+        // outcome picks the outcome's enhancement, after the rebind when the lens is changing.
+        if (previous != null) enhancementPlanPending = true
+        val lensChanging = _uiState.value.lensFacing != lens
+        if (!lensChanging) refreshOutcomePlan()
+    }
+
+    /** Re-derives the outcome's degradation for the bound lens and, when pending, applies its enhancement. */
+    private fun refreshOutcomePlan() {
+        val state = _uiState.value
+        if (state.availableEnhancements.isEmpty()) return // not bound yet: the bind result calls this again
+        val plan = OutcomePlanner.plan(state.outcome, state.availableEnhancements, capturePort::isPipelineAvailable)
+        _uiState.update { it.withOutcomePlan(plan) }
+        if (enhancementPlanPending) {
+            enhancementPlanPending = false
+            if (plan.enhancement != state.settings.captureEnhancement) onEnhancementSelected(plan.enhancement)
+        }
+    }
+
+    private fun recomputeWeights() {
+        effectiveWeights = OutcomePlanner.effectiveWeights(AdaptiveWeights.parse(userWeightsRaw), appliedOutcome ?: Outcome.DEFAULT)
+    }
+
+    /** User set the self-timer: 0 (off), 3 or 10 s (other values snap to the nearest). Persisted as `timer_seconds`. */
+    fun onTimerSelected(seconds: Int) {
+        val value = TimerSecondsCodec.decode(seconds)
+        _uiState.update { it.copy(timerSeconds = value) }
+        viewModelScope.launch { container.settingsRepository.setTimerSeconds(value) }
     }
 
     // --- Onboarding ----------------------------------------------------------------------------------------
@@ -549,25 +630,44 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
         zoomLiveData = camera.cameraInfo.zoomState.also { it.observeForever(zoomObserver) }
     }
 
-    // --- Wave 2 contract (state engineer implements; UI calls) -------------------------------------
+    // --- Review and learning (the review screen calls these on the camera's view model) -------------------
 
-    /** User picked an outcome on the strip. STATUS: stub. */
-    fun onOutcomeSelected(outcome: Outcome) { _uiState.update { it.copy(outcome = outcome) } }
+    /** Review: Keep (true) or Retake (false). Feeds the taste model when a cue was showing at capture. Call before clearing the store. */
+    fun onReviewDecision(kept: Boolean) = reviewFlow.onReviewDecision(kept)
 
-    /** User set the self-timer (0, 3 or 10 s). STATUS: stub. */
-    fun onTimerSelected(seconds: Int) { _uiState.update { it.copy(timerSeconds = seconds) } }
+    /** Review: "Not helpful" on the Try-next-time line. */
+    fun onNotHelpful() = reviewFlow.onNotHelpful()
 
-    /** Review: the advice was wrong. STATUS: stub. */
-    fun onNotHelpful() {}
+    /** Review: the user saved [crop] (the UI writes the file via `exportCrop`; this records the choice). */
+    fun onCropChosen(crop: CropSuggestion) = reviewFlow.onCropChosen(crop)
 
-    /** Review: user saved a crop. STATUS: stub. */
-    fun onCropChosen(crop: com.compositioncoach.composition.model.CropSuggestion) {}
+    /**
+     * Review "Shoot again" / gallery long-press "Use as guide": draws [rect] as the re-shoot ghost until the next
+     * capture or for [GHOST_DURATION_MS], whichever is first. Null clears it (a tap on the ghost).
+     */
+    fun onUseAsGhost(rect: NormalizedRect?) {
+        ghostJob?.cancel()
+        _uiState.update { it.withGhost(rect) }
+        if (rect == null) return
+        ghostJob = viewModelScope.launch {
+            delay(GHOST_DURATION_MS)
+            _uiState.update { if (it.ghostRect == rect) it.withGhost(null) else it }
+        }
+    }
 
-    /** Review: "Shoot again" / gallery long-press "Use as guide". STATUS: stub. */
-    fun onUseAsGhost(rect: com.compositioncoach.composition.model.NormalizedRect?) { _uiState.update { it.copy(ghostRect = rect) } }
+    /** Review "Shoot again": the ghost from the photo under review ([ghostRectFor]). */
+    fun onShootAgain() {
+        container.reviewStore.current.value?.let { onUseAsGhost(ghostRectFor(it)) }
+    }
 
-    /** Review: Keep / Retake outcome for the learning loop. STATUS: stub. */
-    fun onReviewDecision(kept: Boolean) {}
+    /** Settings > More > "Reset coaching preferences": neutral taste model and an empty journal. */
+    fun onResetCoachingPreferences() {
+        viewModelScope.launch { container.resetCoachingPreferences() }
+    }
+
+    private fun applyFeedback(feedback: Feedback) {
+        viewModelScope.launch { container.settingsRepository.applyFeedback(feedback) }
+    }
 
     override fun onCleared() {
         pausePipeline()
@@ -590,12 +690,14 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
     companion object {
         private const val TAG = "CameraViewModel"
         private const val UI_UPDATE_INTERVAL_MS = 100L
-        private const val POST_CAPTURE_FADE_MS = 1_000L
         private const val DIAGNOSTICS_TAG = "CaptureDiagnostics"
         /** An orientation reading older than this at shutter time is not trusted for auto-level. */
         private const val ORIENTATION_MAX_AGE_MS = 1_000L
         private const val ZOOM_ANIMATION_MS = 200L
         private const val ZOOM_ANIMATION_STEPS = 8
+
+        /** How long the re-shoot ghost stays up without a capture. */
+        const val GHOST_DURATION_MS = 20_000L
 
         fun factory(container: AppContainer): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
