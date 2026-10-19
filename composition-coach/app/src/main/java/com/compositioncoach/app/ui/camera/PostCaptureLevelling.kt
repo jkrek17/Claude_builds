@@ -5,7 +5,7 @@ import android.util.Log
 import com.compositioncoach.app.camera.CaptureDiagnostics
 import com.compositioncoach.app.di.AppContainer
 import com.compositioncoach.app.di.ReviewEntry
-import com.compositioncoach.app.di.staleOriginalOf
+import com.compositioncoach.app.di.stalePrivateCopiesOf
 import com.compositioncoach.composition.model.DeviceOrientation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -20,9 +20,9 @@ import kotlinx.coroutines.withContext
  * * [run] levels after the review is already showing the photo (decode + rotate + re-encode of a 12 MP JPEG
  *   is ~0.5-1 s), then updates the review entry with the applied angle, `revision + 1` (so the image reloads)
  *   and the original copy. A failure just leaves the unlevelled photo in place.
- * * The original copy is deleted as soon as its entry leaves `ReviewStore` (Keep, Retake, or a newer capture),
- *   or straight away if the review ended while levelling ran; any left over from a killed process are purged
- *   when this is created.
+ * * The original copy (and the "Portrait" preview) is deleted as soon as its entry leaves `ReviewStore` (Keep,
+ *   Retake, or a newer capture), or straight away if the review ended while levelling ran; any left over from a
+ *   killed process are purged when this is created.
  */
 internal class PostCaptureLevelling(
     private val container: AppContainer,
@@ -35,7 +35,7 @@ internal class PostCaptureLevelling(
             container.originalCopies.purge()
             var previous: ReviewEntry? = null
             container.reviewStore.current.collect { entry ->
-                staleOriginalOf(previous, entry)?.let(::deleteCopy)
+                stalePrivateCopiesOf(previous, entry).forEach(::deleteCopy)
                 previous = entry
             }
         }

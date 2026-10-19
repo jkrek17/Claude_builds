@@ -5,7 +5,7 @@ import com.compositioncoach.app.crash.CrashLog
 import com.compositioncoach.app.di.AppContainer
 
 /** Application entry point. Owns the single [AppContainer] used for manual DI across the app. */
-class CompositionCoachApp : Application() {
+open class CompositionCoachApp : Application() {
 
     lateinit var container: AppContainer
         private set
@@ -13,8 +13,11 @@ class CompositionCoachApp : Application() {
     override fun onCreate() {
         super.onCreate()
         installCrashLogger()
-        container = AppContainer(this)
+        container = createContainer()
     }
+
+    /** The app's dependency container; a test application overrides this to swap in fakes. */
+    protected open fun createContainer(): AppContainer = AppContainer(this)
 
     /**
      * Records every uncaught exception (logcat + a file shown on the next launch by

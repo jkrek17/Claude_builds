@@ -95,7 +95,7 @@ class AutoLevelProcessor(
         outExif.setAttribute(ExifInterface.TAG_PIXEL_Y_DIMENSION, cropH.toString())
         outExif.setAttribute(
             ExifInterface.TAG_SOFTWARE,
-            String.format(Locale.US, "Composition Coach (auto-level %.2f deg)", -rollDegrees),
+            String.format(Locale.US, "Eyebright (auto-level %.2f deg)", -rollDegrees),
         )
         outExif.saveAttributes()
         Log.i(TAG, "Levelled by ${-rollDegrees} deg (buffer ${bufferAngle} deg, orientation $orientation) to ${cropW}x$cropH")

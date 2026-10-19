@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.camera
 
+import androidx.compose.ui.res.stringResource
+import com.compositioncoach.app.R
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -59,7 +61,7 @@ fun CameraBottomZone(
     Box(modifier.fillMaxWidth()) {
         if (analysisUnavailable) {
             Text(
-                text = "Analysis unavailable",
+                text = stringResource(R.string.analysis_unavailable),
                 color = OnScrimMuted,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
             )

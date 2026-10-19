@@ -12,7 +12,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import com.compositioncoach.app.ComposeHostActivityRule
 import org.junit.Rule
+import org.junit.rules.RuleChain
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -35,8 +37,10 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class RotatedChromeRotationTest {
 
-    @get:Rule
     val rule = createComposeRule()
+
+    @get:Rule
+    val chain: RuleChain = RuleChain.outerRule(ComposeHostActivityRule()).around(rule)
 
     private val deviceRotation = mutableIntStateOf(0)
 

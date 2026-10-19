@@ -12,13 +12,16 @@ import androidx.camera.core.ImageCapture
 import androidx.exifinterface.media.ExifInterface
 import com.compositioncoach.app.outcome.Outcome
 import com.compositioncoach.vision.FrameStackingSource
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import com.compositioncoach.app.outcome.CapturePipeline as OutcomePipeline
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -31,8 +34,9 @@ import java.io.ByteArrayInputStream
  *  1. **Steady-shot gate** ([awaitSteady]): if the gyro says the phone is MOVING, wait up to
  *     [STEADY_WAIT_MS] for it to settle to STEADY or SLIGHT_MOTION, then shoot regardless. 450 ms is long
  *     enough to ride out the jolt of pressing the shutter (the most common cause of a soft phone photo)
- *     and short enough not to miss the moment.
- *  2. **Capture**: either lucky imaging (three in-memory frames back to back, keep the sharpest, write its
+ *     and short enough not to miss the moment. Night instead holds for its `holdSeconds` of steadiness
+ *     ([awaitSteadyHold]) with a progress ring.
+ *  2. **Capture** ([capture]), per the outcome's plan: Motion stack, focus stack, or either lucky imaging (three in-memory frames back to back, keep the sharpest, write its
  *     original JPEG bytes - no re-encode) or a single capture through CameraX's own file-saving path. Lucky
  *     imaging only runs when [ShotRequest.burst] says so; any burst failure falls back to a single capture.
  *  3. **Diagnostics**: ISO, shutter, aperture and focal length from the HAL's capture result
@@ -52,8 +56,11 @@ class CapturePipeline(
     private val stacked = StackedCaptures(repository, motionCapture, FocusStacker(repository, motionSensor), ::baseDiagnostics)
     private val shutterSound by lazy { ShutterSound(repository.context) }
 
-    /** 0..1 while a Motion hold is running (for the progress ring), null otherwise. */
-    val holdProgress: StateFlow<Float?> get() = motionCapture.progress
+    /** Night's steady hold ([awaitSteadyHold]) progress, null when none runs. */
+    private val steadyHoldProgress = MutableStateFlow<Float?>(null)
+
+    /** 0..1 while a Motion hold or a steady hold is running (for the progress ring), null otherwise. */
+    val holdProgress: Flow<Float?> = combine(motionCapture.progress, steadyHoldProgress) { motion, steady -> motion ?: steady }
 
     /** Everything a capture needs to know, snapshotted at shutter time. */
     class ShotRequest(
@@ -98,12 +105,30 @@ class CapturePipeline(
     }
 
     /**
-     * Steps 2 and 3. Throws only if even the single-capture path fails. Plays the shutter click first where the
-     * region requires it ([ShutterSoundPolicy]).
+     * Step 1 for an outcome that asks the photographer to hold (Night): waits until the phone has been steady
+     * (not MOVING) for [holdMs] in a row, publishing the progress on [holdProgress] for the ring; a MOVING
+     * reading starts the count again. Gives up and shoots after [maxWaitMs] (the vendor Night pipeline still
+     * merges frames; a missed hold costs sharpness, not the photo). Without a gyro the phone reads STEADY, so
+     * this is a plain [holdMs] countdown. Returns the steadiness at the end and the time waited.
      */
-    suspend fun capture(request: ShotRequest): ShotResult {
-        shutterSound.playIfMandatory()
-        return captureAny(request)
+    suspend fun awaitSteadyHold(holdMs: Long, maxWaitMs: Long = holdMs + STEADY_HOLD_EXTRA_MS): Pair<Steadiness, Long> {
+        val start = SystemClock.elapsedRealtime()
+        var last = start
+        var steadyMs = 0L
+        steadyHoldProgress.value = 0f
+        try {
+            while (true) {
+                delay(STEADY_HOLD_TICK_MS)
+                val now = SystemClock.elapsedRealtime()
+                steadyMs = if (motionSensor.steadiness.value == Steadiness.MOVING) 0L else steadyMs + (now - last)
+                last = now
+                steadyHoldProgress.value = (steadyMs.toFloat() / holdMs).coerceIn(0f, 1f)
+                if (steadyMs >= holdMs || now - start >= maxWaitMs) break
+            }
+        } finally {
+            steadyHoldProgress.value = null
+        }
+        return motionSensor.steadiness.value to (SystemClock.elapsedRealtime() - start)
     }
 
     private suspend fun captureAny(request: ShotRequest): ShotResult {
@@ -121,11 +146,12 @@ class CapturePipeline(
     }
 
     /**
-     * Wave 2 entry point: captures [outcome] with the pipeline its spec asks for, degraded to what this device
-     * and bind can do ([OutcomeCapturePlanner]). The steady gate ([awaitSteady]) stays the caller's job, as
-     * for [capture]; auto-level likewise runs afterwards on [ShotResult.uri].
+     * Steps 2 and 3: captures [outcome] with the pipeline its spec asks for, degraded to what this device and
+     * bind can do ([OutcomeCapturePlanner]). The steady gate ([awaitSteady] / [awaitSteadyHold]) stays the
+     * caller's job; auto-level likewise runs afterwards on [ShotResult.uri].
      *
-     * - SINGLE / BURST_SHARPEST: as [capture] (burst only with no extension active).
+     * - SINGLE / BURST_SHARPEST: one capture, or lucky imaging when [ShotRequest.burst] allows and no extension
+     *   is active.
      * - FOCUS_STACK: [FocusStacker] when the lens takes manual focus and no extension is active, else burst.
      * - MOTION_*: [MotionCapture] over [stacking] (pass `frameSource as? FrameStackingSource`); without it the
      *   capture falls back to a burst and says so in [CaptureDiagnostics.degradedNote].
@@ -292,6 +318,10 @@ class CapturePipeline(
     companion object {
         private const val TAG = "CapturePipeline"
         const val STEADY_WAIT_MS = 450L
+
+        /** How long past its hold a steady hold may run before shooting anyway. */
+        const val STEADY_HOLD_EXTRA_MS = 3_000L
+        private const val STEADY_HOLD_TICK_MS = 50L
         const val BURST_SIZE = 3
     }
 }

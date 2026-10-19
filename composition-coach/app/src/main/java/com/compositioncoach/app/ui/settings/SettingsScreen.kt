@@ -29,8 +29,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.R
 import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.outcome.ExperienceMode
+import com.compositioncoach.app.outcome.ReviewCardMode
 import com.compositioncoach.app.settings.CoachSettings
-import com.compositioncoach.app.settings.subjectMaskSubtitle
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.composition.model.GuidanceLevel
 
@@ -45,10 +45,8 @@ fun SettingsScreen(
     actions: ExperienceActions = ExperienceActions(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val ui by viewModel.uiPreferences.collectAsStateWithLifecycle()
     SettingsContent(
         settings = settings,
-        ui = ui,
         onBack = onBack,
         onOpenPrivacyPolicy = onOpenPrivacyPolicy,
         handlers = SettingsHandlers(
@@ -61,6 +59,7 @@ fun SettingsScreen(
             onSubjectMaskChange = viewModel::setSubjectMaskEnabled,
             onPoseDetectionChange = viewModel::setPoseDetectionEnabled,
             onDebugModeChange = viewModel::setDebugMode,
+            onReviewCardModeChange = viewModel::setReviewCardMode,
         ),
         actions = actions.copy(
             onExperienceChange = viewModel::setExperienceMode,
@@ -76,7 +75,7 @@ fun SettingsScreen(
                 onBurstSharpestChange = viewModel::setBurstSharpest,
                 onAutoLevelChange = viewModel::setAutoLevel,
                 onAutoShootChange = viewModel::setAutoShoot,
-                showEnhancement = ui.proControls,
+                showEnhancement = settings.proControls,
             )
         },
     )
@@ -93,14 +92,15 @@ data class SettingsHandlers(
     val onSubjectMaskChange: (Boolean) -> Unit = {},
     val onPoseDetectionChange: (Boolean) -> Unit = {},
     val onDebugModeChange: (Boolean) -> Unit = {},
+    val onReviewCardModeChange: (ReviewCardMode) -> Unit = {},
 )
 
 /**
  * Settings, reorganised for Wave 2 (`docs/WAVE2.md` 0b, `docs/PRODUCT.md` "Hidden under Pro"):
  *  1. **Experience** (Easy · Coach); Coach adds "Show score".
  *  2. **Your eye**, then the **Pro controls** switch; with Pro on, Guidance level and Grid appear.
- *  3. **More** (collapsed): capture rows (Enhancement only under Pro), Guide by vibration / voice, Composition
- *     guidance, Battery saver, then under Pro the detection toggles and Developer mode; Reset coaching preferences.
+ *  3. **More** (collapsed): capture rows (Enhancement only under Pro), Guide by vibration / voice, "Card only
+ *     when there's something to say" (`review_card_mode`), Composition guidance, Battery saver, then under Pro the detection toggles and Developer mode; Reset coaching preferences.
  *  4. **About**: privacy line, Privacy, Open-source licences, Send feedback, version.
  * The shooting-mode chips are gone: the outcome strip on the camera is the control, and it sets the scene.
  */
@@ -108,7 +108,6 @@ data class SettingsHandlers(
 @Composable
 fun SettingsContent(
     settings: CoachSettings,
-    ui: UiPreferences,
     onBack: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
     handlers: SettingsHandlers = SettingsHandlers(),
@@ -117,7 +116,7 @@ fun SettingsContent(
     capture: @Composable () -> Unit = {},
 ) {
     var moreExpanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
-    val pro = ui.proControls
+    val pro = settings.proControls
 
     Scaffold(
         topBar = {
@@ -132,8 +131,8 @@ fun SettingsContent(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
-            ExperienceSelector(selected = ui.experienceMode, onChange = actions.onExperienceChange)
-            if (ui.experienceMode == ExperienceMode.COACH) {
+            ExperienceSelector(selected = settings.experienceMode, onChange = actions.onExperienceChange)
+            if (settings.experienceMode == ExperienceMode.COACH) {
                 SwitchRow(label = stringResource(R.string.settings_show_score), checked = settings.showScore, onCheckedChange = handlers.onShowScoreChange)
             }
             NavigationRow(
@@ -161,14 +160,22 @@ fun SettingsContent(
                 SwitchRow(
                     label = stringResource(R.string.settings_guide_vibration),
                     subtitle = stringResource(R.string.settings_guide_vibration_subtitle),
-                    checked = ui.guideByVibration,
+                    checked = settings.hapticGuidance,
                     onCheckedChange = actions.onGuideByVibrationChange,
                 )
                 SwitchRow(
                     label = stringResource(R.string.settings_guide_voice),
                     subtitle = stringResource(R.string.settings_guide_voice_subtitle),
-                    checked = ui.guideByVoice,
+                    checked = settings.voiceGuidance,
                     onCheckedChange = actions.onGuideByVoiceChange,
+                )
+                SwitchRow(
+                    label = stringResource(R.string.settings_card_only_useful),
+                    subtitle = stringResource(R.string.settings_card_only_useful_subtitle),
+                    checked = settings.reviewCardMode == ReviewCardMode.ONLY_WHEN_USEFUL,
+                    onCheckedChange = { onlyUseful ->
+                        handlers.onReviewCardModeChange(if (onlyUseful) ReviewCardMode.ONLY_WHEN_USEFUL else ReviewCardMode.ALWAYS)
+                    },
                 )
                 SwitchRow(
                     label = stringResource(R.string.settings_composition_guidance),
@@ -198,7 +205,7 @@ private fun ProDetectionRows(settings: CoachSettings, handlers: SettingsHandlers
     SwitchRow(label = stringResource(R.string.settings_detect_objects), checked = settings.detectObjectsEnabled, onCheckedChange = handlers.onDetectObjectsChange)
     SwitchRow(
         label = stringResource(R.string.settings_subject_mask),
-        subtitle = settings.subjectMaskSubtitle(),
+        subtitle = stringResource(if (settings.batterySaver) R.string.settings_subject_mask_battery_saver else R.string.settings_subject_mask_subtitle),
         checked = settings.effectiveSubjectMaskEnabled,
         enabled = !settings.batterySaver,
         onCheckedChange = handlers.onSubjectMaskChange,
@@ -211,7 +218,7 @@ private fun ProDetectionRows(settings: CoachSettings, handlers: SettingsHandlers
 @Composable
 private fun SettingsEasyPreview() {
     CompositionCoachTheme {
-        SettingsContent(settings = CoachSettings(), ui = UiPreferences(), onBack = {}, onOpenPrivacyPolicy = {})
+        SettingsContent(settings = CoachSettings(), onBack = {}, onOpenPrivacyPolicy = {})
     }
 }
 
@@ -220,8 +227,13 @@ private fun SettingsEasyPreview() {
 private fun SettingsProPreview() {
     CompositionCoachTheme {
         SettingsContent(
-            settings = CoachSettings(guidanceLevel = GuidanceLevel.COACH, batterySaver = true),
-            ui = UiPreferences(experienceMode = ExperienceMode.COACH, proControls = true, guideByVibration = true),
+            settings = CoachSettings(
+                guidanceLevel = GuidanceLevel.COACH,
+                batterySaver = true,
+                experienceMode = ExperienceMode.COACH,
+                proControls = true,
+                hapticGuidance = true,
+            ),
             onBack = {},
             onOpenPrivacyPolicy = {},
             initiallyExpanded = true,

@@ -32,7 +32,7 @@ data class YourEyeData(
     }
 }
 
-/** Where [YourEyeData] comes from, and the one-tap reset. The state engineer implements this. */
+/** Where [YourEyeData] comes from, and the one-tap reset; the app's is [JournalYourEyeSource]. */
 interface YourEyeSource {
     val data: Flow<YourEyeData>
 
@@ -40,7 +40,7 @@ interface YourEyeSource {
     suspend fun resetCoachingPreferences()
 }
 
-/** A [YourEyeSource] over a fixed value: previews, tests, and the placeholder until the journal exists. */
+/** A [YourEyeSource] over a fixed value, for previews and tests. */
 class FakeYourEyeSource(initial: YourEyeData = YourEyeData.EMPTY) : YourEyeSource {
     private val state = MutableStateFlow(initial)
     override val data: Flow<YourEyeData> = state

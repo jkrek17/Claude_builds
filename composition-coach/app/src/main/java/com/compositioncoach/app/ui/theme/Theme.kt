@@ -15,7 +15,7 @@ private val CoachDarkColorScheme = darkColorScheme(
 )
 
 /**
- * Composition Coach is dark-only by design (Pixel/Apple-camera-style, camera-first UI) — it does not
+ * Eyebright is dark-only by design (Pixel/Apple-camera-style, camera-first UI) — it does not
  * follow the system light/dark setting, so there is a single fixed [darkColorScheme] rather than a
  * light/dark pair.
  */

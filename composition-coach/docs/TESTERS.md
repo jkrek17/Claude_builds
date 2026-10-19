@@ -19,16 +19,29 @@ To update, install the newer `.apk` the same way; it replaces the old one and ke
 
 ## How to use it
 
-- Point at a subject. One cue appears: a chevron on the edge to move toward, brackets for closer or
-  step back, a bubble level when you're tilted, with a one-line label.
-- Follow the cue. The ring around the shutter fills up and turns green when the framing is strong.
-- Shoot. A review card shows the score, two things that worked and two that could improve.
-- Swipe the strip above the shutter to tell it what you're shooting (Portrait, Landscape...).
-  Auto guesses.
+- **Pick what you want to shoot** on the strip above the shutter: Anything, A person, A group, A view, Night,
+  Light trails, Silky water, Clear the crowd, Food & things, Selfie. Swipe or tap. The app sets everything
+  else up for that photo. If your phone can't do part of it, a short note says so once.
+- **Point and follow the one cue.** A chevron on the edge you should move toward, brackets to step closer or
+  back, a bubble level when you're tilted, with a one-to-three-word label. The ring around the shutter fills
+  and turns green when the framing is good.
+- **Tap the shutter.** It waits a moment (up to 4 seconds) for good framing and a steady hand, then shoots.
+  Hold the shutter to shoot straight away.
+- **Some photos ask you to hold still.** Night, Light trails, Silky water and Clear the crowd show "Hold still"
+  and a ring that fills while you keep the phone steady. If you shake too much it says "Too shaky, try again";
+  your normal photo is still saved.
+- **After the shot you get a card.** A verdict (Keeper, Good or Try again), up to three things that worked, and
+  one thing to try next time. Sometimes it offers a better crop (saved as a copy, your original stays), a
+  "What if" to hold and compare, or a "Portrait" look that softens the background. Swipe down or press back to
+  keep the photo; Retake deletes it. If a tip was wrong, tap "Not helpful".
+- **Settings > Experience**: Easy (default) or Coach, which adds the score number and a short reason under
+  each cue. Settings > Your eye shows what the app has learned about your taste, and Start fresh forgets it.
 
 ## What we want to know
 
 - Did the advice make sense, and did following it make the shot look better?
+- Did you read the card after the shot? Was "Try next time" right, and did the next photo come out better?
+- Did the outcome you picked give you the photo you wanted (especially Night and the hold-still ones)?
 - Was anything confusing, too busy, or too quick to change?
 - Did it ever say something obviously wrong (level when tilted, "move right" when you should move
   left, a stranger treated as the subject)?

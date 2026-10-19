@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.camera
 
+import androidx.compose.ui.res.stringResource
+import com.compositioncoach.app.R
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -119,7 +121,7 @@ fun EnhancementPill(
                     text = { EnhancementMenuText(option, EnhancementCycle.menuNote(option, pausingCoaching)) },
                     trailingIcon = {
                         if (option == current) {
-                            Icon(Icons.Outlined.Check, contentDescription = "Selected", tint = OnScrim)
+                            Icon(Icons.Outlined.Check, contentDescription = stringResource(R.string.selected), tint = OnScrim)
                         } else {
                             Box(Modifier.size(24.dp))
                         }

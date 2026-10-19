@@ -50,6 +50,8 @@ internal data class CapturedShot(
     val followedSinceLastCapture: List<MetricCategory>,
     /** Auto-level will rewrite the file; still analysis waits for it. */
     val levelling: Boolean,
+    /** The normal first frame saved alongside a stack (Motion or focus), for the review's Compare; null otherwise. */
+    val companionUri: Uri? = null,
     val timestampMs: Long = System.currentTimeMillis(),
 )
 
@@ -102,6 +104,7 @@ internal class ReviewFlowCoordinator(
                 report = liveReport,
                 analysing = true,
                 outcome = shot.outcome,
+                originalPhotoUri = shot.companionUri,
             ),
         )
         analysisJob?.cancel()

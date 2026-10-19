@@ -113,7 +113,8 @@ fun GhostOverlay(rect: NormalizedRect?, deviceRotationDegrees: Int, onDismiss: (
 }
 
 /**
- * `CameraUiState.outcomeDegradedNote` ("Night isn't available on this phone") as a small chip for three seconds
+ * `CameraUiState.outcomeDegradedNote`, resolved from `strings.xml` ("Night isn't available on this phone, using
+ * the best we can"), as a small chip for three seconds
  * each time the outcome is picked, then gone: said once, never nagging.
  */
 @Composable

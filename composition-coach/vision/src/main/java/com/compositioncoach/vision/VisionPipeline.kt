@@ -13,23 +13,9 @@ import com.compositioncoach.composition.model.FrameAnalysis
 import com.compositioncoach.composition.model.ImageStatistics
 import com.compositioncoach.composition.model.SubjectMask
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetector
-import com.google.mlkit.vision.face.FaceDetectorOptions
-import com.google.mlkit.vision.objects.ObjectDetection
-import com.google.mlkit.vision.objects.ObjectDetector
-import com.google.mlkit.vision.objects.ObjectDetectorOptionsBase
-import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
-import com.google.mlkit.vision.pose.PoseDetection
-import com.google.mlkit.vision.pose.PoseDetector
-import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
-import com.google.mlkit.vision.segmentation.Segmentation
-import com.google.mlkit.vision.segmentation.Segmenter
-import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -77,32 +63,9 @@ import java.util.concurrent.Executors
  * [FrameAnalysis] rather than dropping the frame or crashing the camera pipeline.
  *
  * ## Detector cadence, object detection and segmentation
- * Every detector's per-frame cadence — which accepted frames it actually runs on — is centralized in
- * [DetectorSchedule] rather than scattered across this class; see its KDoc for the full baseline +
- * [PerformanceTier] ladder. In short:
- *  - **Faces** run every accepted frame, always.
- *  - **Pose** runs every 2nd accepted frame at [PerformanceTier.FULL] (every 3rd at
- *    [PerformanceTier.REDUCED], never at [PerformanceTier.MINIMAL]); the previous
- *    [com.compositioncoach.composition.model.DetectedBody] list is reused on off-cadence frames.
- *  - The **object detector** (`STREAM_MODE`, multiple objects, classification on) runs every 2nd
- *    accepted frame, offset from pose so the two never land on the same frame (off entirely at
- *    [PerformanceTier.MINIMAL]), concurrently with the face detector on the same [InputImage]. Raw
- *    results are filtered and mapped by [ObjectMapper] (frame-covering and face-overlapping boxes
- *    dropped, top 3 by area kept); the previous filtered list is reused for up to two off-cadence
- *    frames (ML Kit's tracking ids make that read as continuity, not a glitch) before falling back to
- *    empty. All three of the above are toggleable via [VisionFeatureToggles] (implemented by this
- *    class in addition to [FrameAnalysisSource]).
- *  - **Selfie segmentation** (`STREAM_MODE`, raw-size mask) runs on a cadence managed by
- *    [SegmentationCadence] *and* gated off entirely below [PerformanceTier.FULL]: every 3rd accepted
- *    frame by default, only when the *previous* frame had a face or body (it's a person segmenter —
- *    pointing it at a still life wastes a frame's worth of inference), and backed off to every 6th
- *    frame under sustained latency (the "thermal/perf ladder"; see [SegmentationCadence]'s KDoc). The
- *    previous mask is reused unchanged on off-cadence frames; [MaskDownsampler] converts a fresh raw
- *    mask to a 32x32 [SubjectMask] using the same [FrameCoordinateMapper] built for this frame's
- *    faces/objects.
- *  - **Face classification** (eyes open, smiling) runs only in group scenes: while
- *    [setGroupModeEnabled] is on, or once [FaceClassificationGate] has seen two or more faces for a second.
- *    ML Kit fixes classification at client construction, so a second face client is used for it.
+ * Faces run on every accepted frame; pose, objects and the selfie mask on the cadences of [DetectorSchedule] and
+ * [SegmentationCadence] (reusing the previous result in between), all toggleable through [VisionFeatureToggles].
+ * The clients themselves, and the full cadence table, are on [MlKitDetectors].
  *
  * ## Motion stacking
  * As a [FrameStackingSource], accepted frames can also be fed to a [FrameAccumulator] (see
@@ -120,9 +83,8 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
 
     @Volatile private var groupModeEnabled = false
 
-    /** The Motion stack in progress, or null; see [FrameStackingSource]. */
-    @Volatile private var stacking: StackingSession? = null
-    private val _stackingProgress = MutableStateFlow<Float?>(null)
+    /** The Motion stack in progress and its progress; see [FrameStackingSource] and [StackingFeed]. */
+    private val stackFeed = StackingFeed()
 
     /** Faces of the previous frame: re-reported while stacking, and their count drives [classificationGate]. */
     @Volatile private var lastFaces: List<DetectedFace> = emptyList()
@@ -145,19 +107,9 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
     /** The [PerformanceTier]-driven floor set via [setPerformanceTier]; combined with [settingsTargetIntervalMs]. */
     @Volatile private var tierTargetIntervalMs = PerformanceTier.FULL.targetIntervalMs
 
-    private val detectorLock = Any()
-    private var faceDetector: FaceDetector? = null
-    /** Same as [faceDetector] plus eyes-open/smiling classification; built on first use (group scenes). */
-    private var classifyingFaceDetector: FaceDetector? = null
-    private var poseDetector: PoseDetector? = null
-    private var objectDetector: ObjectDetector? = null
-    private var segmenter: Segmenter? = null
-
-    /** Scratch copy of the Y plane; only touched from [dispatcher]. */
-    private var lumaScratch = ByteArray(0)
-
-    /** Scratch copies of the three YUV planes while stacking; only touched from [dispatcher]. */
-    private val stackPlaneScratch = Array(3) { ByteArray(0) }
+    /** The ML Kit clients ([MlKitDetectors]) and the luma statistics reader (pipeline thread only). */
+    private val detectors = MlKitDetectors()
+    private val lumaStats = LumaStatsReader()
 
     /** Scratch copy of a raw segmentation mask's float confidences; only touched from [dispatcher]. */
     private var maskFloatScratch = FloatArray(0)
@@ -179,40 +131,6 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
     )
     override val frames: Flow<FrameAnalysis> = _frames
-
-    private val faceDetectorOptions: FaceDetectorOptions by lazy { faceOptions(FaceDetectorOptions.CLASSIFICATION_MODE_NONE) }
-
-    /** ML Kit fixes classification at client construction, so group scenes use a second client. */
-    private val classifyingFaceDetectorOptions: FaceDetectorOptions by lazy { faceOptions(FaceDetectorOptions.CLASSIFICATION_MODE_ALL) }
-
-    private fun faceOptions(classification: Int): FaceDetectorOptions = FaceDetectorOptions.Builder()
-        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-        .setClassificationMode(classification)
-        .enableTracking()
-        .setMinFaceSize(0.1f)
-        .build()
-
-    private val poseDetectorOptions: PoseDetectorOptions by lazy {
-        PoseDetectorOptions.Builder()
-            .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
-            .build()
-    }
-
-    private val objectDetectorOptions: ObjectDetectorOptions by lazy {
-        ObjectDetectorOptions.Builder()
-            .setDetectorMode(ObjectDetectorOptionsBase.STREAM_MODE)
-            .enableMultipleObjects()
-            .enableClassification()
-            .build()
-    }
-
-    private val segmenterOptions: SelfieSegmenterOptions by lazy {
-        SelfieSegmenterOptions.Builder()
-            .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
-            .enableRawSizeMask()
-            .build()
-    }
 
     override val imageAnalyzer = ImageAnalysis.Analyzer { imageProxy -> onFrame(imageProxy) }
 
@@ -257,7 +175,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                 mirror = front,
             )
 
-            val stats = computeStats(imageProxy, mapper).also { statsMs = it.second }.first
+            val stats = lumaStats.read(imageProxy, mapper).also { statsMs = it.second }.first
 
             var faces: List<DetectedFace> = emptyList()
             var bodies: List<DetectedBody> = lastBodies
@@ -271,9 +189,9 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
 
             // While a Motion stack is running the frame feeds the stack instead of the detectors (the last
             // detections are re-reported), so the stack gets as many frames as possible.
-            val stackingSession = stacking
+            val stackingSession = stackFeed.session
             if (stackingSession != null) {
-                runCatching { feedStack(stackingSession, imageProxy, front) }
+                runCatching { stackFeed.feed(stackingSession, imageProxy, front) }
                     .onFailure { Log.w(TAG, "Could not add a frame to the stack", it) }
                 faces = lastFaces
                 objects = lastObjects
@@ -299,14 +217,14 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                 coroutineScope {
                     val faceDeferred = async {
                         val start = System.nanoTime()
-                        val result = runCatching { getFaceDetector(classify).process(input).await() }.getOrDefault(emptyList())
+                        val result = runCatching { detectors.face(classify).process(input).await() }.getOrDefault(emptyList())
                         faceMs = (System.nanoTime() - start) / 1_000_000
                         result
                     }
                     val poseDeferred = if (doPose) {
                         async {
                             val start = System.nanoTime()
-                            val result = runCatching { getPoseDetector().process(input).await() }.getOrNull()
+                            val result = runCatching { detectors.pose().process(input).await() }.getOrNull()
                             poseMs = (System.nanoTime() - start) / 1_000_000
                             result
                         }
@@ -314,7 +232,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                     val objectDeferred = if (doObjects) {
                         async {
                             val start = System.nanoTime()
-                            val result = runCatching { getObjectDetector().process(input).await() }.getOrDefault(emptyList())
+                            val result = runCatching { detectors.objects().process(input).await() }.getOrDefault(emptyList())
                             objectMs = (System.nanoTime() - start) / 1_000_000
                             result
                         }
@@ -322,7 +240,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                     val segmentationDeferred = if (doSegmentation) {
                         async {
                             val start = System.nanoTime()
-                            val result = runCatching { getSegmenter().process(input).await() }.getOrNull()
+                            val result = runCatching { detectors.segmenter().process(input).await() }.getOrNull()
                             segmentationMs = (System.nanoTime() - start) / 1_000_000
                             result
                         }
@@ -422,49 +340,6 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         }
     }
 
-    private fun computeStats(imageProxy: ImageProxy, mapper: FrameCoordinateMapper): Pair<ImageStatistics?, Long> {
-        val start = System.nanoTime()
-        val stats = runCatching {
-            val plane = imageProxy.planes[0]
-            val buffer = plane.buffer.duplicate()
-            // Reuse one scratch array across frames (processing is confined to the single pipeline thread)
-            // so the ~300 KB Y plane copy does not churn the GC at 10 Hz.
-            val needed = buffer.remaining()
-            val bytes = lumaScratch.takeIf { it.size >= needed } ?: ByteArray(needed).also { lumaScratch = it }
-            buffer.get(bytes, 0, needed)
-            ImageStatisticsComputer.compute(
-                luma = bytes,
-                width = imageProxy.width,
-                height = imageProxy.height,
-                rowStride = plane.rowStride,
-                pixelStride = plane.pixelStride,
-                mapper = mapper,
-            )
-        }.getOrNull()
-        val ms = (System.nanoTime() - start) / 1_000_000
-        return stats to ms
-    }
-
-    private fun getFaceDetector(classify: Boolean): FaceDetector = synchronized(detectorLock) {
-        if (classify) {
-            classifyingFaceDetector ?: FaceDetection.getClient(classifyingFaceDetectorOptions).also { classifyingFaceDetector = it }
-        } else {
-            faceDetector ?: FaceDetection.getClient(faceDetectorOptions).also { faceDetector = it }
-        }
-    }
-
-    private fun getPoseDetector(): PoseDetector = synchronized(detectorLock) {
-        poseDetector ?: PoseDetection.getClient(poseDetectorOptions).also { poseDetector = it }
-    }
-
-    private fun getObjectDetector(): ObjectDetector = synchronized(detectorLock) {
-        objectDetector ?: ObjectDetection.getClient(objectDetectorOptions).also { objectDetector = it }
-    }
-
-    private fun getSegmenter(): Segmenter = synchronized(detectorLock) {
-        segmenter ?: Segmentation.getClient(segmenterOptions).also { segmenter = it }
-    }
-
     // --- FrameAnalysisSource -----------------------------------------------------------------
 
     override fun setFrontCamera(isFront: Boolean) {
@@ -491,7 +366,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
 
     private fun applyEffectiveInterval() {
         // A Motion stack lasts a few seconds and skips the detectors, so it may run faster than either floor.
-        val floor = if (stacking != null) STACKING_INTERVAL_MS else maxOf(settingsTargetIntervalMs, tierTargetIntervalMs)
+        val floor = if (stackFeed.session != null) STACKING_INTERVAL_MS else maxOf(settingsTargetIntervalMs, tierTargetIntervalMs)
         sampler.setTargetIntervalMs(floor)
     }
 
@@ -528,13 +403,11 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
 
     /**
      * Eagerly warms all four ML Kit clients so the first frame doesn't pay their construction cost.
-     * This is a *best-effort* warm-up, not a precondition for the pipeline to run: [getFaceDetector] /
-     * [getPoseDetector] / [getObjectDetector] / [getSegmenter] lazily retry construction on the next
-     * frame that needs them, and every per-frame call site already wraps `.process(...)` (which is
-     * where a lazily-constructed client's `getClient()` call would otherwise throw) in `runCatching`.
-     * A device where ML Kit's `MlKitContext` failed to initialize (e.g. its `ContentProvider` got
-     * merged out, or a bundled-model native library is missing for this ABI) must not crash the app on
-     * screen entry just because this warm-up ran first — see [warmUp] for why each client is isolated.
+     * This is a *best-effort* warm-up ([MlKitDetectors.warmUp]), not a precondition for the pipeline to run:
+     * the clients are retried lazily on the next frame that needs them, and every per-frame call site already
+     * wraps `.process(...)` (where a lazily-constructed client's `getClient()` would otherwise throw) in
+     * `runCatching`. A device where ML Kit's `MlKitContext` failed to initialize (its `ContentProvider` merged
+     * out, or a bundled-model native library missing for this ABI) must not crash the app on screen entry.
      *
      * Idempotent: a second call while already running (e.g. both `onScreenStarted()` and an
      * Activity-lifecycle `onScreenResumed()` calling this on the same underlying pipeline instance) is
@@ -563,50 +436,22 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         // bound: stop() unregisters it.
         runCatching { orientationSensor.start() }
             .onFailure { Log.e(TAG, "Orientation sensor failed to start; orientation metadata will be stale", it) }
-        synchronized(detectorLock) {
-            if (faceDetector == null) faceDetector = warmUp("face") { FaceDetection.getClient(faceDetectorOptions) }
-            if (poseDetector == null) poseDetector = warmUp("pose") { PoseDetection.getClient(poseDetectorOptions) }
-            if (objectDetector == null) objectDetector = warmUp("object") { ObjectDetection.getClient(objectDetectorOptions) }
-            if (segmenter == null) segmenter = warmUp("segmentation") { Segmentation.getClient(segmenterOptions) }
-        }
+        detectors.warmUp()
     }
-
-    /**
-     * Runs [construct], logging and swallowing any failure instead of propagating it. Each of the four
-     * detectors is warmed up independently (rather than one try/catch around all of [start]) so one
-     * detector failing (say, the object-detection model's native library missing on a given ABI) does
-     * not also skip constructing the other three — the app should keep whatever ML Kit features it can.
-     */
-    private fun <T> warmUp(label: String, construct: () -> T): T? =
-        runCatching(construct)
-            .onFailure { Log.e(TAG, "Failed to construct the $label ML Kit client; that feature will be unavailable", it) }
-            .getOrNull()
 
     /** Idempotent counterpart to [start]; a second call while already stopped is a no-op. */
     override fun stop() {
         if (!running) return
         running = false
         orientationSensor.stop()
-        synchronized(detectorLock) {
-            faceDetector?.close()
-            faceDetector = null
-            classifyingFaceDetector?.close()
-            classifyingFaceDetector = null
-            poseDetector?.close()
-            poseDetector = null
-            objectDetector?.close()
-            objectDetector = null
-            segmenter?.close()
-            segmenter = null
-        }
-        stacking = null
-        _stackingProgress.value = null
+        detectors.closeAll()
+        stackFeed.clear()
         applyEffectiveInterval()
     }
 
     // --- FrameStackingSource -----------------------------------------------------------------
 
-    override val stackingProgress: StateFlow<Float?> get() = _stackingProgress
+    override val stackingProgress: StateFlow<Float?> get() = stackFeed.progress
 
     override fun startAccumulating(
         mode: StackBlend,
@@ -616,39 +461,16 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         maxShiftFraction: Float,
     ): Boolean {
         if (!running) return false
-        stacking = StackingSession(mode, maxFrames.coerceAtLeast(1), aligner, focalToLongEdge, maxShiftFraction, orientationSensor.deviceRotationDegrees)
-        _stackingProgress.value = 0f
+        stackFeed.start(StackingSession(mode, maxFrames.coerceAtLeast(1), aligner, focalToLongEdge, maxShiftFraction, orientationSensor.deviceRotationDegrees))
         applyEffectiveInterval()
         return true
     }
 
     override suspend fun stopAccumulating(): AccumulatedImage? {
         // Detach on the pipeline thread so no frame is half-added; the (possibly slow) result runs elsewhere.
-        val session = withContext(dispatcher) { stacking.also { stacking = null } }
-        _stackingProgress.value = null
+        val session = withContext(dispatcher) { stackFeed.detach() }
         applyEffectiveInterval()
         return withContext(Dispatchers.Default) { session?.result() }
-    }
-
-    /** Converts the frame and adds it to [session]; runs on the pipeline thread with the frame still open. */
-    private fun feedStack(session: StackingSession, imageProxy: ImageProxy, front: Boolean) {
-        val crop = imageProxy.cropRect
-        val displayMapper = FrameCoordinateMapper(
-            imageProxy.width, imageProxy.height, imageProxy.imageInfo.rotationDegrees,
-            crop.left, crop.top, crop.right, crop.bottom, mirror = front,
-        )
-        val planes = imageProxy.planes
-        // Plane copies reuse per-plane scratch arrays (pipeline thread only): ~1.8 MB a frame at 1280x960.
-        fun copy(index: Int): YuvConverter.Plane {
-            val plane = planes[index]
-            val buffer = plane.buffer.duplicate().also { it.rewind() }
-            val needed = buffer.remaining()
-            val bytes = stackPlaneScratch[index].takeIf { it.size == needed } ?: ByteArray(needed).also { stackPlaneScratch[index] = it }
-            buffer.get(bytes, 0, needed)
-            return YuvConverter.Plane(bytes, plane.rowStride, plane.pixelStride)
-        }
-        session.offer(copy(0), copy(1), copy(2), displayMapper, front, imageProxy.imageInfo.timestamp)
-        _stackingProgress.value = session.progress
     }
 
     companion object {

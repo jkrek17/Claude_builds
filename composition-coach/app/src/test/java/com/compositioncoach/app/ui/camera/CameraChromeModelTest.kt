@@ -2,7 +2,6 @@ package com.compositioncoach.app.ui.camera
 
 import com.compositioncoach.app.outcome.ExperienceMode
 import com.compositioncoach.app.settings.CoachSettings
-import com.compositioncoach.app.ui.settings.UiPreferences
 import com.compositioncoach.composition.model.Direction
 import com.compositioncoach.composition.model.GroupStatus
 import com.compositioncoach.composition.model.SceneClassification
@@ -26,7 +25,7 @@ class CameraChromeModelTest {
 
     @Test
     fun `Easy shows no number even with show score on`() {
-        val model = CameraChromeModel.of(state, UiPreferences())
+        val model = CameraChromeModel.of(state)
         assertEquals(ExperienceMode.EASY, model.experience)
         assertFalse(model.showScore)
         assertFalse(model.coach)
@@ -34,10 +33,22 @@ class CameraChromeModelTest {
     }
 
     @Test
-    fun `Coach from either the state or the preference shows the number`() {
-        assertTrue(CameraChromeModel.of(state, UiPreferences(experienceMode = ExperienceMode.COACH)).showScore)
-        assertTrue(CameraChromeModel.of(state.copy(experienceMode = ExperienceMode.COACH), UiPreferences()).showScore)
-        assertFalse(CameraChromeModel.of(state.copy(settings = CoachSettings(showScore = false)), UiPreferences(experienceMode = ExperienceMode.COACH)).showScore)
+    fun `Coach shows the number through showScoreNumber, and Pro comes from the settings`() {
+        val coach = state.withSettings(CoachSettings(showScore = true, experienceMode = ExperienceMode.COACH))
+        assertTrue(coach.showScoreNumber)
+        assertTrue(CameraChromeModel.of(coach).showScore)
+        assertTrue(CameraChromeModel.of(coach).coach)
+        val noNumber = state.withSettings(CoachSettings(showScore = false, experienceMode = ExperienceMode.COACH))
+        assertFalse(CameraChromeModel.of(noNumber).showScore)
+        assertTrue(CameraChromeModel.of(state.withSettings(CoachSettings(proControls = true))).pro)
+    }
+
+    @Test
+    fun `shoot-ready is peakReady, so the Group outcome waits for the group even when the frame is ready`() {
+        val ready = state.copy(composition = moveRight.copy(isShootReady = true))
+        assertTrue(CameraChromeModel.of(ready).shootReady)
+        assertFalse(CameraChromeModel.of(ready.withOutcome(com.compositioncoach.app.outcome.Outcome.GROUP)).shootReady)
+        assertFalse(CameraChromeModel.of(ready.copy(composition = ready.composition.copy(awaitingSubject = true))).shootReady)
     }
 
     @Test

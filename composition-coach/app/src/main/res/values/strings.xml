@@ -17,6 +17,12 @@
     <string name="settings_battery_saver_subtitle">Slower analysis, subject mask off</string>
     <string name="settings_detect_objects">Detect objects</string>
     <string name="settings_subject_mask">Subject mask</string>
+    <string name="settings_subject_mask_subtitle">Better background and separation advice for people; uses more battery</string>
+    <string name="settings_subject_mask_battery_saver">Better background and separation advice for people; off while battery saver is on</string>
+    <string name="settings_more">More</string>
+    <string name="guidance_minimal">Minimal</string>
+    <string name="guidance_balanced">Balanced</string>
+    <string name="guidance_coach">Coach</string>
     <string name="settings_body_detection">Body detection</string>
     <string name="settings_developer_mode">Developer mode</string>
     <string name="settings_enhancement">Enhancement</string>
@@ -77,6 +83,22 @@
     <string name="outcome_selfie">Selfie</string>
 
     <!-- ===== Timer, hold, group ===== -->
+    <string name="chip_paused_auto">Coaching paused in Auto</string>
+    <string name="chip_paused_hdr">Coaching paused in HDR</string>
+    <string name="chip_paused_night">Coaching paused in Night</string>
+    <string name="chip_paused_portrait">Coaching paused in Portrait</string>
+    <string name="chip_hold_still">Hold still</string>
+    <string name="chip_hold_still_3s">Hold still for 3 seconds</string>
+    <string name="chip_hold_still_4s">Hold still for 4 seconds</string>
+    <string name="chip_hold_still_5s">Hold still for 5 seconds</string>
+    <string name="notice_too_shaky">Too shaky, try again</string>
+    <!-- Shown once when an outcome falls back on this phone (docs/PRODUCT.md "Graceful degradation"). -->
+    <string name="degraded_no_portrait_blur">Portrait blur isn\'t built into this phone\'s camera; you can add it after the shot</string>
+    <string name="degraded_no_night">Night isn\'t available on this phone, using the best we can</string>
+    <string name="degraded_no_hdr">HDR isn\'t available on this phone, using the best we can</string>
+    <string name="degraded_no_enhancement">This look isn\'t available on this phone, using the best we can</string>
+    <string name="degraded_no_focus_stack">This lens can\'t focus-stack, so this is one sharp photo</string>
+    <string name="degraded_no_motion">Motion needs live analysis, which isn\'t running; this takes a normal photo</string>
     <string name="timer_off">Timer off</string>
     <string name="timer_seconds">%1$d s</string>
     <string name="timer_group">when everyone\'s ready</string>
@@ -100,6 +122,8 @@
     <string name="settings_guide_vibration_subtitle">Short buzzes point the way: one for left, two for right</string>
     <string name="settings_guide_voice">Guide by voice</string>
     <string name="settings_guide_voice_subtitle">Speaks the cue. Quiet while music plays or Do Not Disturb is on</string>
+    <string name="settings_card_only_useful">Card only when there\'s something to say</string>
+    <string name="settings_card_only_useful_subtitle">Skip the card after a photo with no tip and no better crop</string>
     <string name="settings_your_eye_subtitle">What the coach has learned about your taste</string>
     <string name="settings_reset_coaching">Reset coaching preferences</string>
     <string name="settings_reset_coaching_subtitle">Forget what it has learned about your taste</string>
@@ -155,6 +179,21 @@
     <string name="your_eye_follow_least">Advice you skip most</string>
     <string name="your_eye_skip_note">That\'s fine. Eyebright will mention it less.</string>
     <string name="your_eye_follow_rate">%1$s · %2$d in 10 times</string>
+    <!-- Kinds of advice, in plain words ("Advice you take most: Level horizon · 8 in 10 times"). -->
+    <string name="advice_subject_placement">Where the subject sits</string>
+    <string name="advice_horizon">Level horizon</string>
+    <string name="advice_headroom">Headroom</string>
+    <string name="advice_cropping">Cut-off edges</string>
+    <string name="advice_looking_room">Looking room</string>
+    <string name="advice_edge_tension">Room at the edges</string>
+    <string name="advice_background">Clear background</string>
+    <string name="advice_separation">Plainer background</string>
+    <string name="advice_balance">Balance</string>
+    <string name="advice_symmetry">Centring</string>
+    <string name="advice_negative_space">Space around the subject</string>
+    <string name="advice_leading_lines">Leading lines</string>
+    <string name="advice_scene_specific">Scene tips</string>
+    <string name="advice_light">Light</string>
     <string name="your_eye_best">Your best three</string>
     <string name="your_eye_best_description">Photo scored %1$d</string>
     <string name="your_eye_empty">Keep a few photos and this fills in.</string>
@@ -173,4 +212,28 @@
     <string name="feedback_subject">%1$s feedback</string>
     <string name="feedback_no_card">No photo reviewed yet in this session.</string>
     <string name="back">Back</string>
+
+    <!-- ===== Camera and review chrome ===== -->
+    <string name="camera_unavailable">Camera unavailable</string>
+    <string name="camera_retry">Retry</string>
+    <string name="capture_failed">Couldn\'t save the photo</string>
+    <string name="capture_failed_detail">Couldn\'t save the photo: %1$s</string>
+    <string name="analysis_unavailable">Analysis unavailable</string>
+    <string name="flash_description">Flash: %1$s</string>
+    <string name="flash_off">off</string>
+    <string name="flash_auto">auto</string>
+    <string name="flash_on">on</string>
+    <string name="switch_camera">Switch camera</string>
+    <string name="quiet_check_description">Framing looks good, hold it</string>
+    <string name="selected">Selected</string>
+    <string name="compare">Compare</string>
+    <string name="compare_description">Compare with original</string>
+    <string name="compare_showing_original">Showing original</string>
+    <string name="compare_showing_edited">Showing edited</string>
+    <string name="compare_toggle">Toggle original</string>
+    <string name="diagnostics_show">Show capture details</string>
+    <string name="diagnostics_hide">Hide capture details</string>
+    <string name="diagnostics_description">Capture: %1$s</string>
+    <string name="diagnostics_shown">Details shown</string>
+    <string name="diagnostics_hidden">Details hidden</string>
 </resources>

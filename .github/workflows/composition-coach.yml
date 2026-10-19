@@ -43,8 +43,8 @@ jobs:
       - name: Unit tests (composition engine, vision, app)
         run: ./gradlew :composition:test :vision:testDebugUnitTest :app:testDebugUnitTest --no-daemon
 
-      - name: Lint (app), incl. verifyNoInternetPermission wired into check
-        run: ./gradlew :app:lintDebug --no-daemon
+      - name: Lint (app and vision) and the no-INTERNET-permission check
+        run: ./gradlew :app:lintDebug :vision:lintDebug :app:verifyNoInternetPermission --no-daemon
 
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug -PabiSplits=true --no-daemon

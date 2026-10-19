@@ -127,27 +127,6 @@ data class CoachSettings(
  */
 enum class ShutterSoundMode { AUTO, ALWAYS }
 
-/** Subtitle for the "Subject mask" row in Settings; explains the battery-saver override when it applies. */
-fun CoachSettings.subjectMaskSubtitle(): String =
-    if (batterySaver) {
-        "Better background and separation advice for people; off while battery saver is on"
-    } else {
-        "Better background and separation advice for people; uses more battery"
-    }
-
-/** One-line descriptions shown next to each [GuidanceLevel] choice in Settings. */
-fun GuidanceLevel.description(): String = when (this) {
-    GuidanceLevel.MINIMAL -> "Only the score and a shoot-ready cue. No instructions."
-    GuidanceLevel.BALANCED -> "One clear instruction at a time. Good for everyday shooting."
-    GuidanceLevel.COACH -> "Instructions plus the reasoning behind them, for learning."
-}
-
-fun GuidanceLevel.label(): String = when (this) {
-    GuidanceLevel.MINIMAL -> "Minimal"
-    GuidanceLevel.BALANCED -> "Balanced"
-    GuidanceLevel.COACH -> "Coach"
-}
-
 /**
  * Serializes [GuidanceLevel] to/from the plain string DataStore stores it as. Pulled out of
  * [SettingsRepository] (which needs a real DataStore/Context) so the round-trip and the "unknown or

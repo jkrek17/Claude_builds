@@ -101,7 +101,7 @@ object SelfieCues {
 /** What replaces the live cue chip, most important first: a hold, the group blocker, then Selfie's arm-out. */
 object LiveChipRules {
     fun overrideChip(state: CameraUiState): LiveChip? =
-        state.holdInstruction?.let { LiveChip(it) }
+        state.holdInstruction?.let { LiveChip(HoldCues.text(state.outcome, it)) }
             ?: GroupCues.chip(state.groupStatus)
             ?: SelfieCues.armOutChip().takeIf { SelfieCues.armOut(state.outcome, state.composition) }
 }

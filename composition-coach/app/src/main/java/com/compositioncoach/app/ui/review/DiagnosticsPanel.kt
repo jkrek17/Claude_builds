@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.review
 
+import androidx.compose.ui.res.stringResource
+import com.compositioncoach.app.R
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -49,6 +51,11 @@ fun DiagnosticsPanel(
 ) {
     val summary = DiagnosticsFormatter.summary(diagnostics) ?: return
     var expanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
+    val showLabel = stringResource(R.string.diagnostics_show)
+    val hideLabel = stringResource(R.string.diagnostics_hide)
+    val panelDescription = stringResource(R.string.diagnostics_description, summary)
+    val shownState = stringResource(R.string.diagnostics_shown)
+    val hiddenState = stringResource(R.string.diagnostics_hidden)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
@@ -62,11 +69,11 @@ fun DiagnosticsPanel(
                 .heightIn(min = 48.dp)
                 .clickable(
                     role = Role.Button,
-                    onClickLabel = if (expanded) "Hide capture details" else "Show capture details",
+                    onClickLabel = if (expanded) hideLabel else showLabel,
                 ) { expanded = !expanded }
                 .clearAndSetSemantics {
-                    contentDescription = "Capture: $summary"
-                    stateDescription = if (expanded) "Details shown" else "Details hidden"
+                    contentDescription = panelDescription
+                    stateDescription = if (expanded) shownState else hiddenState
                 }
                 .wrapContentHeight(Alignment.CenterVertically),
         )

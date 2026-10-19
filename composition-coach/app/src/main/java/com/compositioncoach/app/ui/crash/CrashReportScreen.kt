@@ -74,13 +74,13 @@ fun CrashReportScreen(report: String, onContinue: () -> Unit) {
 
 private fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-    clipboard.setPrimaryClip(ClipData.newPlainText("Composition Coach crash report", text))
+    clipboard.setPrimaryClip(ClipData.newPlainText("Eyebright crash report", text))
 }
 
 private fun share(context: Context, text: String) {
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_SUBJECT, "Composition Coach crash report")
+        putExtra(Intent.EXTRA_SUBJECT, "Eyebright crash report")
         putExtra(Intent.EXTRA_TEXT, text)
     }
     runCatching { context.startActivity(Intent.createChooser(intent, "Share crash report")) }

@@ -162,6 +162,7 @@ and paste it into Store settings **[MANUAL]**.
 |---|---|
 | `android.permission.CAMERA` | Core feature: live framing guidance and taking photos. |
 | `android.permission.WRITE_EXTERNAL_STORAGE` (maxSdkVersion 28) | Only on Android 9 and older, to save photos to the public Pictures folder. Android 10+ uses MediaStore and never asks. |
+| `android.permission.VIBRATE` (normal, no prompt) | Optional "Guide by vibration": distinct buzzes per direction. Off by default; gives no access to any data. |
 | `android.permission.ACCESS_NETWORK_STATE` (normal, no prompt) | Required by the bundled ML Kit library, which queries connectivity state. Grants no network access on its own. |
 
 `android.permission.INTERNET` is explicitly removed (`tools:node="remove"` in

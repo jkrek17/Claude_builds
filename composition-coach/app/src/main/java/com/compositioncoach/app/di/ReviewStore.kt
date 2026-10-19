@@ -23,9 +23,10 @@ data class ReviewEntry(
     /** True while auto-level is still running for this photo (the review screen shows "Levelling…"). */
     val processing: Boolean = false,
     /**
-     * A private `file:` copy of the photo as captured, before auto-level rewrote [photoUri] (in the app's cache,
-     * never the gallery; see `OriginalCopyStore`). Set only when auto-level actually ran; drives the review's
-     * Compare chip. Deleted when this entry leaves the store ([staleOriginalOf]).
+     * What the review's Compare chip shows: a private `file:` copy of the photo as captured, before auto-level
+     * rewrote [photoUri] (in the app's cache, never the gallery; see `OriginalCopyStore`; deleted when this entry
+     * leaves the store, [staleOriginalOf]), or, for a Motion or focus stack, the normal first frame saved
+     * alongside it (a gallery photo, `ShotResult.companionUri`, never deleted by the app).
      */
     val originalPhotoUri: Uri? = null,
     // --- Wave 2 after-action contract (filled asynchronously after capture; null/empty until then) ---
@@ -43,7 +44,10 @@ data class ReviewEntry(
     val analysing: Boolean = false,
     /** The outcome this capture was taken under. */
     val outcome: com.compositioncoach.app.outcome.Outcome = com.compositioncoach.app.outcome.Outcome.DEFAULT,
-    /** Bokeh/background-separated copy when the outcome produced one (preview on review, save as copy). */
+    /**
+     * The "Portrait" look's preview (background separated): a private `file:` copy in the app cache, deleted when
+     * the entry leaves the store ([stalePrivateCopiesOf]); "Save as copy" exports it to the gallery.
+     */
     val processedPreviewUri: Uri? = null,
 )
 
@@ -54,6 +58,16 @@ data class ReviewEntry(
 fun staleOriginalOf(previous: ReviewEntry?, current: ReviewEntry?): Uri? {
     val old = previous?.originalPhotoUri ?: return null
     return old.takeIf { it != current?.originalPhotoUri }
+}
+
+/**
+ * Every private cache copy ([ReviewEntry.originalPhotoUri] when it is a `file:` copy, and
+ * [ReviewEntry.processedPreviewUri]) that became unreachable going from [previous] to [current]. Gallery photos
+ * (`content:` Uris) are never listed: only the app's own cache files are ever deleted.
+ */
+fun stalePrivateCopiesOf(previous: ReviewEntry?, current: ReviewEntry?): List<Uri> {
+    val stalePreview = previous?.processedPreviewUri?.takeIf { it != current?.processedPreviewUri }
+    return listOfNotNull(staleOriginalOf(previous, current), stalePreview).filter { it.scheme == "file" }
 }
 
 /**

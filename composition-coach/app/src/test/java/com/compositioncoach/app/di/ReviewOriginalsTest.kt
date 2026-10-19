@@ -39,6 +39,17 @@ class ReviewOriginalsTest {
     }
 
     @Test
+    fun `leaving frees the portrait preview too, but never a gallery photo such as a stack's first frame`() {
+        val preview = Uri.parse("file:///cache/originals/cc_preview_1.jpg")
+        val companion = Uri.parse("content://media/external/images/media/41")
+        val portrait = levelled.copy(processedPreviewUri = preview)
+        assertEquals(listOf(original, preview), stalePrivateCopiesOf(portrait, null))
+        assertEquals(emptyList<Uri>(), stalePrivateCopiesOf(portrait, portrait.copy(analysing = false)))
+        val stack = ReviewEntry(photo, CompositionResult.empty(), originalPhotoUri = companion)
+        assertEquals(emptyList<Uri>(), stalePrivateCopiesOf(stack, null))
+    }
+
+    @Test
     fun `the review image cache key changes with every revision`() {
         val uri = photo.toString()
         assertEquals("$uri#0", reviewImageCacheKey(uri, 0))

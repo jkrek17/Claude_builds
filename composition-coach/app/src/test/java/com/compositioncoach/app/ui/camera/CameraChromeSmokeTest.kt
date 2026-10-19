@@ -18,12 +18,13 @@ import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.outcome.Outcome
 import com.compositioncoach.app.settings.CoachSettings
-import com.compositioncoach.app.ui.settings.UiPreferences
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.composition.model.SceneClassification
 import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.SmoothedComposition
+import com.compositioncoach.app.ComposeHostActivityRule
 import org.junit.Rule
+import org.junit.rules.RuleChain
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -40,12 +41,14 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class CameraChromeSmokeTest {
 
-    @get:Rule
     val rule = createComposeRule()
 
-    private fun state(rotation: Int) = CameraUiState(
+    @get:Rule
+    val chain: RuleChain = RuleChain.outerRule(ComposeHostActivityRule()).around(rule)
+
+    private fun state(rotation: Int, pro: Boolean) = CameraUiState(
         composition = SmoothedComposition.EMPTY.copy(displayScore = 70, scene = SceneClassification(SceneType.PORTRAIT, 0.9f)),
-        settings = CoachSettings(onboardingSeen = true),
+        settings = CoachSettings(onboardingSeen = true, proControls = pro),
         availableEnhancements = setOf(CaptureEnhancement.OFF, CaptureEnhancement.NIGHT),
         enhancement = CaptureEnhancement.NIGHT,
         analysisPausedByEnhancement = true,
@@ -65,9 +68,9 @@ class CameraChromeSmokeTest {
         ),
     )
 
-    private fun compose(rotation: Int, preferences: UiPreferences = UiPreferences(proControls = true)) {
-        val state = state(rotation)
-        val model = CameraChromeModel.of(state, preferences)
+    private fun compose(rotation: Int, pro: Boolean = true) {
+        val state = state(rotation, pro)
+        val model = CameraChromeModel.of(state)
         rule.setContent {
             CompositionCoachTheme {
                 Column(Modifier.size(360.dp, 760.dp)) {
@@ -143,7 +146,7 @@ class CameraChromeSmokeTest {
 
     @Test
     fun `without Pro controls the enhancement pill and zoom presets are not drawn at all`() {
-        compose(0, UiPreferences(proControls = false))
+        compose(0, pro = false)
         rule.onNodeWithContentDescription("Photo enhancement: Night").assertDoesNotExist()
         rule.onNodeWithContentDescription("Zoom 1×").assertDoesNotExist()
         rule.onNodeWithContentDescription("Coaching paused in Night").assertExists()

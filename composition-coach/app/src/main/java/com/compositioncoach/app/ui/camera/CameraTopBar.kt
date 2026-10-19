@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.camera
 
+import androidx.compose.ui.res.stringResource
+import com.compositioncoach.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -76,7 +78,7 @@ fun CameraTopBar(
                                 FlashMode.AUTO -> Icons.Outlined.FlashAuto
                                 FlashMode.ON -> Icons.Outlined.FlashOn
                             },
-                            contentDescription = "Flash: $flashMode",
+                            contentDescription = stringResource(R.string.flash_description, stringResource(flashLabelRes(flashMode))),
                             tint = OnScrim,
                         )
                     }
@@ -111,7 +113,7 @@ fun CameraTopBar(
         }
         RotatedChrome(deviceRotationDegrees = deviceRotationDegrees, modifier = Modifier.align(Alignment.CenterEnd)) {
             IconButton(onClick = onSettingsClick) {
-                Icon(imageVector = Icons.Outlined.Settings, contentDescription = "Settings", tint = OnScrim)
+                Icon(imageVector = Icons.Outlined.Settings, contentDescription = stringResource(R.string.settings_title), tint = OnScrim)
             }
         }
     }
@@ -215,4 +217,11 @@ private fun CameraTopBarEnhancementRotatedPreview() {
             animationsEnabled = false,
         )
     }
+}
+
+/** The spoken name of a flash mode, for the flash button's description. */
+private fun flashLabelRes(mode: FlashMode): Int = when (mode) {
+    FlashMode.OFF -> R.string.flash_off
+    FlashMode.AUTO -> R.string.flash_auto
+    FlashMode.ON -> R.string.flash_on
 }

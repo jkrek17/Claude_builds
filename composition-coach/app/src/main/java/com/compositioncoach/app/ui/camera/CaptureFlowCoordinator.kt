@@ -10,6 +10,7 @@ import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.camera.CapturePipeline
 import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.camera.MotionSensor
+import com.compositioncoach.app.camera.MotionStatus
 import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.di.CaptureOrchestrationPort
 import com.compositioncoach.app.outcome.CountdownController
@@ -31,6 +32,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.compositioncoach.app.outcome.CapturePipeline as OutcomePipeline
 
+/** One INFO line per capture, tag `CaptureDiagnostics`; see the README's capture pipeline. */
+internal fun CaptureDiagnostics.log() {
+    Log.i("CaptureDiagnostics", toLogLine())
+}
+
 /** What the shutter press saw, snapshotted by [CameraViewModel] at the moment the photo is taken. */
 internal class ShutterContext(
     val controller: CameraController?,
@@ -50,17 +56,21 @@ internal class ShutterContext(
  * `CameraUiState.timerCountdown` shows 3, 2, 1 (the UI ticks a haptic per change), then 0 while a Group waits
  * for everyone (up to 15 s), then null as the capture starts.
  *
- * **Capture.** `isCapturing` -> (`isWaitingForSteady` while the gyro gate waits, at most 450 ms) -> the shutter
- * sound when required -> [CaptureOrchestrationPort.capture] for the outcome -> the live-frame evaluation ->
+ * **Capture.** `isCapturing` -> the steady gate ([CaptureOrchestrationPort.awaitSteady]: `isWaitingForSteady`
+ * while the gyro gate waits, at most 450 ms; Night holds for 2 s of steadiness with the progress ring) -> the
+ * "always" shutter click -> [CaptureOrchestrationPort.capture] for the outcome -> the live-frame evaluation ->
  * [ReviewFlowCoordinator.onCaptured] (the review entry is in the store) -> [CameraEvent.NavigateToReview] ->
  * auto-level, if it applies. A hold outcome's instruction shows from the press until the file is saved.
+ *
+ * A Motion hold that ended [MotionStatus.TOO_SHAKY] saved only its first frame: no review, just the
+ * [CameraNotice.TOO_SHAKY] notice ("Too shaky, try again") and the thumbnail. A stack that kept a separate first
+ * frame hands it to the review as the Compare original.
  */
 internal class CaptureFlowCoordinator(
     private val scope: CoroutineScope,
     private val state: MutableStateFlow<CameraUiState>,
     private val coach: CompositionCoach,
     private val motionSensor: MotionSensor,
-    private val capturePipeline: CapturePipeline,
     private val port: CaptureOrchestrationPort,
     private val reviewFlow: ReviewFlowCoordinator,
     private val levelling: PostCaptureLevelling,
@@ -121,13 +131,13 @@ internal class CaptureFlowCoordinator(
         state.update { it.withCaptureStarted() }
         scope.launch {
             try {
+                val outcome = state.value.outcome
                 val gateNeeded = motionSensor.steadiness.value == Steadiness.MOVING
                 if (gateNeeded) state.update { it.withWaitingForSteady(true) }
-                val (steadiness, waitedMs) = capturePipeline.awaitSteady()
+                val (steadiness, waitedMs) = port.awaitSteady(outcome)
                 if (gateNeeded) state.update { it.withWaitingForSteady(false) }
 
                 val current = state.value
-                val outcome = current.outcome
                 val controller = ctx.controller
                 val session = controller?.session
                 val lensFacing = session?.lensFacing ?: current.lensFacing
@@ -146,6 +156,11 @@ internal class CaptureFlowCoordinator(
                 )
                 port.playShutterSound(current.settings.shutterSound)
                 val shot = port.capture(outcome, request)
+                val lensIsFront = lensFacing == LensFacing.FRONT
+                if (shot.motionStatus == MotionStatus.TOO_SHAKY) {
+                    onTooShaky(shot)
+                    return@launch
+                }
                 val intent = current.settings.sceneIntent
                 val live = withContext(Dispatchers.Default) {
                     ctx.frameAtShutter?.let { coach.evaluateOnce(it, GuidanceLevel.COACH, intent, ctx.weights) }
@@ -160,13 +175,14 @@ internal class CaptureFlowCoordinator(
                         diagnostics = shot.diagnostics,
                         liveResult = live,
                         liveFrame = ctx.frameAtShutter,
-                        isFrontCamera = lensFacing == LensFacing.FRONT,
+                        isFrontCamera = lensIsFront,
                         outcome = outcome,
                         intent = intent,
                         weights = ctx.weights,
                         cueAtCapture = cueAtCapture,
                         followedSinceLastCapture = followed,
                         levelling = levels,
+                        companionUri = shot.companionUri,
                     ),
                 )
                 state.update { it.withCaptureFinished().withLastPhotoUri(shot.uri) }
@@ -177,11 +193,22 @@ internal class CaptureFlowCoordinator(
                 throw c
             } catch (t: Throwable) {
                 Log.e(TAG, "Capture failed", t)
-                state.update { it.withCaptureError("Couldn't save photo: ${t.message ?: "unknown error"}") }
+                state.update { it.withCaptureError(t.message.orEmpty()) }
             } finally {
                 onCaptureSettled()
             }
         }
+    }
+
+    /**
+     * A Motion hold the phone shook through: the first frame is saved (the experiment never costs the shot) but
+     * there is no stack to review, so the camera stays up with the notice and the thumbnail shows the frame.
+     */
+    private fun onTooShaky(shot: CapturePipeline.ShotResult) {
+        state.update { it.withCaptureFinished().withLastPhotoUri(shot.uri) }
+        clearPostCaptureFadeAfterDelay()
+        emit(CameraEvent.Notice(CameraNotice.TOO_SHAKY))
+        logDiagnostics(shot.diagnostics)
     }
 
     /** Ends the score-badge/banner post-capture fade ~1 s after it started, see [CameraUiState.postCaptureFadeActive]. */

@@ -2,13 +2,12 @@
 
 *The photo you meant to take.* Formerly Composition Coach.
 
-A native Android camera app that acts as a real-time photography composition coach.
-It analyzes the live camera preview **on the device**, shows a 0–100 composition score,
-and tells you how to physically reframe the shot before you press the shutter:
-
-> **82** &nbsp; Move slightly right →
->
-> **94 — SHOOT** &nbsp; Great framing
+A native Android camera for people who love photos but never learned photography: it takes the photo you
+meant to take, then teaches you afterwards, in your own pictures, and learns what you like
+([docs/PRODUCT.md](docs/PRODUCT.md)). It analyses the live preview **on the device** and shows one cue at a
+time (a chevron on the edge to move toward, brackets for closer, a level), fires at the best moment, and
+explains the shot on an after-action card. You pick the photograph you want (a person, a view, night, silky
+water...), not a mode.
 
 No cloud calls, no camera frames leave the phone.
 
@@ -17,6 +16,7 @@ This project lives in the `composition-coach/` folder of the
 the repo root) in Android Studio.
 
 - [Try it on your phone (no Android Studio needed)](#try-it-on-your-phone)
+- [What's in the prototype](#whats-in-the-prototype)
 - [Build from source](#build-from-source)
 - [How it works](#how-it-works)
 - [Project structure](#project-structure)
@@ -67,15 +67,77 @@ segmentation models are bundled.
 
 | Do this | Expect |
 |---|---|
-| Frame a person with lots of empty space above their head | "Lower camera slightly" and the score rises as you do |
-| Put their face right at the frame edge | "Move slightly left/right" with an arrow |
-| Tilt the phone a few degrees | "Rotate slightly clockwise / counter-clockwise" and a level indicator |
-| Have them look toward the near edge | "Leave more room in front of subject" |
-| Stand in front of a pole or tree trunk | "Move slightly left/right to clear the background" |
-| Get everything right | Green **SHOOT** state, a haptic tick |
-| Tap the shutter | A normal JPEG saved to `Pictures/CompositionCoach`, then a review screen with score, strengths and what could improve |
+| Frame a person with lots of empty space above their head | A chevron at the top edge, "Lower", and the ring round the shutter fills as you do |
+| Put their face right at the frame edge | A chevron on the side to move toward, "Slightly left/right" |
+| Tilt the phone a few degrees | A bubble level, "Level" |
+| Tap the shutter | It waits (up to 4 s) for good framing and a steady hand, then shoots; hold the shutter to shoot at once |
+| Look at the card after the shot | Keeper / Good / Try again, what worked, one thing to try next time, maybe a better crop |
+| Swipe the strip above the shutter to "Silky water" and point at moving water | "Hold still for 3 seconds", a progress ring, then a smoothed photo plus the normal one |
+| Pick "Night" | "Hold still", a 2-second ring, then the shot |
+| Settings > Experience > Coach | The score number and a one-line reason under each cue |
 
-Turn on **Developer mode** in Settings to see face/body boxes, every metric, timings and FPS.
+Photos are saved to `Pictures/CompositionCoach` (the album keeps its original name). Turn on **Pro controls**
+in Settings, then **More > Developer mode**, to see face/body boxes, every metric, timings and FPS.
+
+## What's in the prototype
+
+Status on a phone: **not yet verified** means the code is built and its logic is covered by the JVM tests, but no
+automated device test exists and nobody has checked it on a phone since it was integrated. The Wave 1 camera
+(preview, overlay alignment, live detection, capture, review, shooting modes) was checked by hand on a Pixel
+(Android 15) before the Wave 2 integration; nothing has an automated on-device test.
+
+**Outcomes** (the strip above the shutter; `docs/PRODUCT.md` "Outcomes, not modes")
+
+| Outcome | What happens underneath | On a phone |
+|---|---|---|
+| Anything | auto scene, best available enhancement (vendor AUTO), sharpest of three, auto-level | not yet verified |
+| A person | face coaching; vendor Bokeh when offered, else a background-blur "Portrait" look offered on review | not yet verified |
+| A group | everyone in frame with eyes open before it fires; edge cuts block; timer hands over to readiness | not yet verified |
+| A view | horizon coaching; HDR when offered, else a 3-distance focus stack when the lens can focus manually | not yet verified |
+| Night | vendor Night when offered; 2 s steady hold with a progress ring | not yet verified |
+| Light trails / Silky water / Clear the crowd | gyro-aligned Motion stack (lighten / average / median) of the live stream for 4 / 3 / 5 s, plus the normal first frame; "Too shaky, try again" | not yet verified |
+| Food & things | object subject, light and background coaching | not yet verified |
+| Selfie | front camera, mirror-aware cues, "Arm out a little", 3 s countdown | not yet verified |
+
+Every outcome degrades to the best capture the phone can do and says so once ("Night isn't available on this
+phone, using the best we can").
+
+**Features**
+
+| Feature | On a phone |
+|---|---|
+| Live coaching: one cue (chevron, brackets, level), readiness ring, Easy (default) and Coach | Wave 1 cues checked by hand; Easy/Coach not yet verified |
+| Shoot at the peak (tap waits for ready + steady, hold to shoot now), steady-shot gate, volume-down shutter | not yet verified |
+| Capture quality: vendor extensions, sharpest of three, HIGH_QUALITY ISP options, JPEG 100, auto-level with Compare | not yet verified |
+| After-action card: verdict, what worked, try next time, "Not helpful", Details, swipe to keep | review screen checked by hand (Wave 1); card not yet verified |
+| Better crop? (save as a copy), What if (hold), Portrait look (hold, save as a copy), Compare | not yet verified |
+| Re-shoot ghost (Shoot again / Use as guide) | not yet verified |
+| Self-timer 3 / 10 s, Group hand-over to readiness | not yet verified |
+| Guide by vibration / Guide by voice | not yet verified |
+| Taste model (keep / retake / crops / followed cues) and the "Your eye" screen, one-tap reset | not yet verified |
+| Pro controls: exposure slider, zoom presets, enhancement pill, grid, guidance level, detection toggles, developer overlays | Wave 1 controls checked by hand; Pro switch not yet verified |
+| Shutter sound only where required, open-source licences, Send feedback, crash report screen | not yet verified |
+| Privacy: no INTERNET permission (build-enforced), no backup or transfer of settings and journal | build check on every push |
+
+**Check these first on a phone, in this order** (`adb logcat -s CameraController CaptureDiagnostics StackedCaptures`
+shows most of it):
+
+1. First launch, camera allowed: Easy shows the outcome strip, one cue and no number; logcat shows **one**
+   `Bound BACK enhancement=...` line, and only one more after returning from the review.
+2. "Anything", tap the shutter: it fires within 4 s when framed and steady; the saved photo is full resolution
+   (`fullRes=true`) and opens upright in the gallery in all four holds.
+3. The card fills in after the shot (verdict, what worked, try next time, crops); Keep, Retake and swipe-down work.
+4. Pick "Night": one rebind with the Night extension (or the "Night isn't available..." note), the 2 s ring,
+   then the capture.
+5. "Silky water" on running water: a rebind to the 1280x960 analysis stream, a 3 s ring, a `_silk` photo plus
+   the normal one, Compare shows the normal one; shake it and get "Too shaky, try again" with no card.
+6. "A view" on a lens with manual focus: `Focus stack: capture ... ms` in logcat, a `_stack` photo.
+7. "A person" or "Selfie" with someone in frame: the Portrait chip, "Save as copy" writes a `_portrait` photo.
+8. "Save crop" writes a `_crop` photo and only then says "Saved as a copy"; "Your eye" updates after a few keeps.
+9. Settings: Coach shows the score; Pro shows zoom presets and the enhancement pill; a pill pick sticks until
+   the next outcome change.
+10. Guide by vibration gives distinct buzzes per direction; Guide by voice speaks the cue; the shutter sound
+    plays once where required (or with `shutter_sound = ALWAYS`) and never twice.
 
 ---
 
@@ -255,9 +317,9 @@ image. The full policy is in [docs/PRIVACY_POLICY.md](docs/PRIVACY_POLICY.md), a
 ## Testing
 
 ```bash
-./gradlew :composition:test          # scoring, analyzers, smoother, optimizer, engine (synthetic geometry)
-./gradlew :vision:testDebugUnitTest  # coordinate mapping, statistics, adaptive sampling
-./gradlew :app:testDebugUnitTest     # overlay mapping, guidance formatting, settings defaults
+./gradlew :composition:test          # scoring, analyzers, smoother, optimizer, after-action report, crops, taste model
+./gradlew :vision:testDebugUnitTest  # coordinate mapping, statistics, sampling, frame stacking, gyro alignment
+./gradlew :app:testDebugUnitTest     # UI logic, settings, capture maths, review flow, Robolectric smoke tests
 ```
 
 Reports land in `<module>/build/reports/tests/`.
@@ -268,18 +330,16 @@ Reports land in `<module>/build/reports/tests/`.
 
 Verified automatically on every push (see `.github/workflows/composition-coach.yml` at the repo root):
 
-- 222 JVM unit tests across the three modules (74 engine incl. a 400-frame fuzz and golden real-world
-  scenarios, 50 vision, 98 app), all passing.
+- About 700 JVM tests across the three modules (136 engine incl. a 400-frame fuzz and golden real-world
+  scenarios, 122 vision, 442 app incl. Robolectric launch and end-to-end smoke tests), all passing.
 - Android Lint clean on `:app` and `:vision` with `abortOnError`.
 - Debug and R8-shrunk release APKs per ABI, release AAB, `apksigner verify`, and a build check that the
   merged manifest carries no INTERNET permission.
 
-Verified on a physical phone (Pixel, Android 15): preview and overlay alignment, face and object
-detection, capture to the gallery, review screen, shooting modes, Play Protect install flow.
-
-Still to confirm on device after the latest changes: the sign of the level indicator when the phone is
-tilted (derived from first principles, see `OrientationSensor`), segmentation latency on mid-range
-phones (watch `segmentation` in the developer overlay), and threshold tuning after more real sessions.
+Verified by hand on a physical phone (Pixel, Android 15) before the Wave 2 integration: preview and overlay
+alignment, face and object detection, capture to the gallery, review screen, shooting modes, Play Protect
+install flow. Everything Wave 2 added (outcomes, holds and stacks, the after-action card, crops, the taste
+model, heads-up guidance) still needs a phone; see [What's in the prototype](#whats-in-the-prototype).
 
 Play Store steps only the account owner can do are listed in [docs/RELEASE.md](docs/RELEASE.md):
 create the upload key and the four CI secrets, publish the privacy policy at a public URL, fill in the
@@ -305,7 +365,7 @@ Not yet implemented / next steps:
 - **Occasional high-level critique** from a larger vision model, off the real-time loop, with an
   explicit opt-in because it would leave the device.
 - **Depth** from multi-camera / ToF where available for separation.
-- **Per-user tuning** of weights and an in-app "why" explainer in Coach mode.
+- ~~Per-user tuning of weights~~ — done: the on-device taste model and "Your eye" (Wave 2).
 - **Landscape orientation** UI (the MVP is portrait-locked).
 - ~~Release signing and R8 to shrink the APK further~~ — done: `assembleRelease`/`bundleRelease` are
   R8-shrunk (`isMinifyEnabled`/`isShrinkResources`) and sign with a real upload key when the four

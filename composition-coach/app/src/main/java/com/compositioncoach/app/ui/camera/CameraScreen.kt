@@ -25,22 +25,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.compositioncoach.app.R
 import com.compositioncoach.app.camera.CameraController
-import com.compositioncoach.app.ui.settings.UiPreferences
+import com.compositioncoach.app.camera.cycleFlashMode
+import com.compositioncoach.app.camera.tapToFocus
 import com.compositioncoach.app.ui.theme.Background
 import kotlinx.coroutines.launch
 
@@ -49,8 +50,9 @@ private const val POST_CAPTURE_FADE_ALPHA = 0.3f
 /**
  * The camera experience, in the four zones `docs/APP_UX.md` lays out: a translucent top strip (flash, timer,
  * settings), the 4:3 preview with the coaching layer over it, the outcome strip, and the bottom bar with the
- * gallery thumbnail, the shutter (carrying the readiness arc) and the lens switch. [uiPreferences] picks Easy
- * or Coach and whether Pro controls (exposure slider, zoom presets, enhancement pill, grid, debug) are drawn.
+ * gallery thumbnail, the shutter (carrying the readiness arc) and the lens switch. The settings in
+ * [CameraUiState.settings] pick Easy or Coach and whether Pro controls (exposure slider, zoom presets,
+ * enhancement pill, grid, debug) are drawn, and whether a tap arms shoot-at-the-peak (`auto_shoot`).
  *
  * The [PreviewView] and *every* overlay that does normalized-to-pixel geometry share one
  * `Modifier.aspectRatio(3f/4f)` box anchored below the status bar; keeping them in that one box, with
@@ -68,8 +70,6 @@ fun CameraScreen(
     lastPhotoUri: Uri?,
     onOpenSettings: () -> Unit,
     onNavigateToReview: () -> Unit,
-    autoShootOnTap: Boolean = false,
-    uiPreferences: UiPreferences = UiPreferences(),
     galleryMenu: GalleryMenuActions = GalleryMenuActions(),
 ) {
     val context = LocalContext.current
@@ -115,6 +115,8 @@ fun CameraScreen(
     DisposableEffect(lifecycleOwner, uiState.lensFacing, uiState.preferFastCapture, retryTrigger) {
         val job = scope.launch {
             cameraController.setPreferFastCapture(uiState.preferFastCapture)
+            // The outcome's enhancement and analysis resolution ride on this bind (no second bind for them).
+            viewModel.configureController(cameraController)
             val result = cameraController.bind(lifecycleOwner, previewView, uiState.lensFacing, viewModel.frameAnalyzer)
             exposureStepEv = exposureStepEvOf(result)
             viewModel.onCameraBindResult(result)
@@ -136,18 +138,23 @@ fun CameraScreen(
         cameraController.setCaptureRotationDegrees(uiState.deviceRotationDegrees)
     }
 
+    val resources = context.resources
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
                 CameraEvent.NavigateToReview -> onNavigateToReview()
                 // The one medium tick in the app, fired once on entering shoot-ready by the view model.
                 CameraEvent.ShootReadyHapticTick -> haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                is CameraEvent.Notice -> scope.launch { snackbarHostState.showSnackbar(resources.getString(event.notice.resId)) }
             }
         }
     }
 
-    LaunchedEffect(uiState.captureError) {
-        uiState.captureError?.let { snackbarHostState.showSnackbar(it) }
+    val captureFailed = uiState.captureError?.let { detail ->
+        if (detail.isBlank()) stringResource(R.string.capture_failed) else stringResource(R.string.capture_failed_detail, detail)
+    }
+    LaunchedEffect(captureFailed) {
+        captureFailed?.let { snackbarHostState.showSnackbar(it) }
     }
 
     val capture = rememberCaptureAction(viewModel, cameraController)
@@ -164,10 +171,10 @@ fun CameraScreen(
         animationSpec = tween(motionDuration(300, animationsEnabled)),
         label = "postCaptureFade",
     )
-    val chrome = CameraChromeModel.of(uiState, uiPreferences)
+    val chrome = CameraChromeModel.of(uiState)
 
     // Heads-up guidance (Settings > More): the cue as vibration and/or voice, for shooting without looking.
-    HeadsUpGuidanceEffect(chrome.headsUp, vibration = uiPreferences.guideByVibration, voice = uiPreferences.guideByVoice)
+    HeadsUpGuidanceEffect(chrome.headsUp, vibration = uiState.settings.hapticGuidance, voice = uiState.settings.voiceGuidance)
     // Selfie defaults to a 3-second countdown through the ordinary timer path.
     SelfieTimerDefault(uiState.outcome, uiState.timerSeconds, viewModel::onTimerSelected)
     // Shoot at the peak: hold the shutter (or tap, with "Auto shoot when ready" on) and the photo is taken
@@ -175,7 +182,7 @@ fun CameraScreen(
     val shootAtPeak = rememberShootAtPeakState(
         readyToFire = SteadyHint.peakReached(chrome.shootReady, uiState.steadiness),
         enabled = !uiState.isCapturing,
-        latchOnTap = autoShootOnTap,
+        latchOnTap = uiState.settings.autoShoot,
         onCapture = onShutterClick,
         onArmed = rememberDoubleTick(),
         onFire = { capture(HapticFeedbackType.LongPress) },

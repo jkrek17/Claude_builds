@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.settings
 
+import com.compositioncoach.app.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.compositioncoach.app.settings.label
 import com.compositioncoach.app.ui.theme.OnSurface
 import com.compositioncoach.composition.model.GuidanceLevel
 
@@ -109,7 +110,7 @@ fun GuidanceLevelSelector(selected: GuidanceLevel, onChange: (GuidanceLevel) -> 
                 selected = selected == level,
                 onClick = { onChange(level) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                label = { Text(level.label()) },
+                label = { Text(stringResource(guidanceLabelRes(level))) },
             )
         }
     }
@@ -119,7 +120,7 @@ fun GuidanceLevelSelector(selected: GuidanceLevel, onChange: (GuidanceLevel) -> 
 @Composable
 fun MoreHeader(expanded: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
     SettingsRow(
-        label = "More",
+        label = stringResource(R.string.settings_more),
         modifier = modifier.clickable(role = Role.Button, onClick = onToggle),
     ) {
         Icon(
@@ -136,4 +137,11 @@ fun MoreContent(expanded: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(visible = expanded) {
         Column(Modifier.fillMaxWidth()) { content() }
     }
+}
+
+/** The guidance level's name in Settings, from `strings.xml`. */
+private fun guidanceLabelRes(level: GuidanceLevel): Int = when (level) {
+    GuidanceLevel.MINIMAL -> R.string.guidance_minimal
+    GuidanceLevel.BALANCED -> R.string.guidance_balanced
+    GuidanceLevel.COACH -> R.string.guidance_coach
 }

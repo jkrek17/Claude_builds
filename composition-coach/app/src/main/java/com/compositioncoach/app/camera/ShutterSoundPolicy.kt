@@ -85,6 +85,11 @@ class ShutterSound(private val context: Context) {
 
     fun playIfMandatory() {
         if (!ShutterSoundPolicy.isMandatory(context)) return
+        play()
+    }
+
+    /** Plays the click unconditionally (the user's "always" choice); never throws. */
+    fun play() {
         runCatching { sound?.play(MediaActionSound.SHUTTER_CLICK) }
     }
 }

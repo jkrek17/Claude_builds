@@ -1,35 +1,42 @@
 package com.compositioncoach.app.di
 
-import android.media.MediaActionSound
-import android.util.Log
-import androidx.camera.core.CameraInfo
+import android.content.Context
+import com.compositioncoach.app.camera.CameraController
 import com.compositioncoach.app.camera.CapturePipeline
+import com.compositioncoach.app.camera.PipelineSupport
+import com.compositioncoach.app.camera.ShutterSound
+import com.compositioncoach.app.camera.ShutterSoundPolicy
+import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.outcome.Outcome
 import com.compositioncoach.app.settings.ShutterSoundMode
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import com.compositioncoach.app.outcome.CapturePipeline as OutcomePipeline
+import com.compositioncoach.vision.FrameAnalysisSource
+import com.compositioncoach.vision.FrameStackingSource
+import com.compositioncoach.vision.VisionFeatureToggles
+import kotlinx.coroutines.flow.Flow
 
 /**
- * What the shutter flow needs from the capture side for Wave 2 outcomes. Defined here so the state layer
- * compiles before the capture engineer's classes land; [DefaultCaptureOrchestrationPort] does what today's
- * code can, and the integrator swaps in the real one in [AppContainer.captureOrchestrationPort].
- *
- * INTEGRATOR binds:
- *  * [capture] -> `CapturePipeline.capture(outcome, request)` (Motion stacks, focus stack, Night hold); it must
- *    also publish its hold progress on [holdProgress].
- *  * [holdProgress] -> the Motion/Night hold's 0..1 progress flow (null when no hold is running).
- *  * [isPipelineAvailable] -> whether `MotionCapture` / `FocusStacker` can run on the bound lens.
- *  * [setGroupModeEnabled] -> `VisionFeatureToggles.setGroupModeEnabled` (face classification for eyes-open).
- *  * [playShutterSound] -> `ShutterSoundPolicy` (keep the [ShutterSoundMode.ALWAYS] override).
+ * What the shutter flow ([com.compositioncoach.app.ui.camera.CaptureFlowCoordinator]) and the outcome planning
+ * in [com.compositioncoach.app.ui.camera.CameraViewModel] need from the capture side. Bound in
+ * [AppContainer.captureOrchestrationPort] to [PipelineCaptureOrchestrationPort]; tests substitute fakes.
  */
 interface CaptureOrchestrationPort {
-    /** 0..1 while a hold capture is accumulating, null otherwise. */
-    val holdProgress: StateFlow<Float?>
+    /** 0..1 while a hold (Motion stack or Night's steady hold) is running, null otherwise. */
+    val holdProgress: Flow<Float?>
 
-    /** Whether [pipeline] can run on this phone; false makes the outcome "degraded" (it takes a normal photo). */
-    fun isPipelineAvailable(pipeline: OutcomePipeline): Boolean
+    /**
+     * What the bound session can do beyond a plain capture, for `OutcomeCapturePlanner.plan`: Motion stacking
+     * needs live analysis frames (a [FrameStackingSource] that the bound extension does not pause), the focus
+     * stack needs a lens with manual focus.
+     */
+    fun pipelineSupport(controller: CameraController?, analysisPaused: Boolean): PipelineSupport
+
+    /**
+     * The steady gate before the shutter. Most outcomes wait at most `CapturePipeline.STEADY_WAIT_MS` for the
+     * phone to stop moving; an outcome with a hold that is not a Motion stack (Night) waits for
+     * `holdSeconds` of steadiness, publishing [holdProgress] for the ring. Returns the steadiness at the end and
+     * how long it waited.
+     */
+    suspend fun awaitSteady(outcome: Outcome): Pair<Steadiness, Long>
 
     /** Takes the photo for [outcome]. Throws only when even a single capture fails. */
     suspend fun capture(outcome: Outcome, request: CapturePipeline.ShotRequest): CapturePipeline.ShotResult
@@ -37,54 +44,56 @@ interface CaptureOrchestrationPort {
     /** Group outcome on/off: enables eyes-open classification in the face detector. */
     fun setGroupModeEnabled(enabled: Boolean)
 
-    /** Called once per capture, just before the shutter fires. Plays the sound when [mode] or the region requires it. */
+    /**
+     * Called once per capture, just before [capture]. The capture pipeline itself plays the click where the
+     * region requires it, so this only adds the click when the user asked for it everywhere
+     * ([ShutterSoundMode.ALWAYS]) and the region did not already make the pipeline play it: never twice.
+     */
     fun playShutterSound(mode: ShutterSoundMode)
 }
 
-/** Pure shutter-sound rule: always when the user asked, otherwise only where the device reports it mandatory. */
+/** Pure shutter-sound rule for the port: the pipeline already clicks where the sound is mandatory. */
 object ShutterSoundRule {
-    fun shouldPlay(mode: ShutterSoundMode, mandatoryInRegion: Boolean): Boolean =
-        mode == ShutterSoundMode.ALWAYS || mandatoryInRegion
+    /** Whether the port should add a click on top of the pipeline's mandatory one. */
+    fun portShouldPlay(mode: ShutterSoundMode, mandatoryInRegion: Boolean): Boolean =
+        mode == ShutterSoundMode.ALWAYS && !mandatoryInRegion
 }
 
 /**
- * Today's behaviour behind the Wave 2 port: every outcome takes the existing single / sharpest-of-burst
- * capture, there is never a hold, group mode is a no-op, and the shutter sound follows CameraX's
- * `CameraInfo.mustPlayShutterSound()` (the region/device requirement) through `MediaActionSound`.
+ * The real capture side: [CapturePipeline] for the steady gate, holds and every outcome pipeline, the vision
+ * pipeline ([frameSource]) for Motion stacking and group mode.
  */
-class DefaultCaptureOrchestrationPort(
+class PipelineCaptureOrchestrationPort(
+    private val context: Context,
     private val pipeline: CapturePipeline,
+    private val frameSource: () -> FrameAnalysisSource?,
 ) : CaptureOrchestrationPort {
 
-    private val progress = MutableStateFlow<Float?>(null)
-    override val holdProgress: StateFlow<Float?> = progress.asStateFlow()
+    private val extraClick by lazy { ShutterSound(context) }
 
-    private val sound: MediaActionSound? by lazy {
-        runCatching { MediaActionSound().also { it.load(MediaActionSound.SHUTTER_CLICK) } }
-            .onFailure { Log.w(TAG, "MediaActionSound unavailable", it) }
-            .getOrNull()
-    }
+    override val holdProgress: Flow<Float?> get() = pipeline.holdProgress
 
-    override fun isPipelineAvailable(pipeline: OutcomePipeline): Boolean = when (pipeline) {
-        OutcomePipeline.SINGLE, OutcomePipeline.BURST_SHARPEST -> true
-        // A missing focus stack falls back to one capture, which is still a fine landscape: not worth a note.
-        OutcomePipeline.FOCUS_STACK -> true
-        OutcomePipeline.MOTION_AVERAGE, OutcomePipeline.MOTION_LIGHTEN, OutcomePipeline.MOTION_MEDIAN -> false
-    }
+    override fun pipelineSupport(controller: CameraController?, analysisPaused: Boolean): PipelineSupport = PipelineSupport(
+        motionStacking = frameSource() is FrameStackingSource && !analysisPaused,
+        focusStacking = controller?.lensControl?.supportsFocusStack == true,
+    )
+
+    override suspend fun awaitSteady(outcome: Outcome): Pair<Steadiness, Long> =
+        if (outcome.needsHold && !outcome.isMotion) {
+            pipeline.awaitSteadyHold(outcome.spec.holdSeconds * 1_000L)
+        } else {
+            pipeline.awaitSteady()
+        }
 
     override suspend fun capture(outcome: Outcome, request: CapturePipeline.ShotRequest): CapturePipeline.ShotResult =
-        pipeline.capture(request)
+        pipeline.capture(outcome, request, frameSource() as? FrameStackingSource)
 
-    override fun setGroupModeEnabled(enabled: Boolean) = Unit
-
-    override fun playShutterSound(mode: ShutterSoundMode) {
-        val mandatory = runCatching { CameraInfo.mustPlayShutterSound() }.getOrDefault(false)
-        if (ShutterSoundRule.shouldPlay(mode, mandatory)) {
-            runCatching { sound?.play(MediaActionSound.SHUTTER_CLICK) }
-        }
+    override fun setGroupModeEnabled(enabled: Boolean) {
+        (frameSource() as? VisionFeatureToggles)?.setGroupModeEnabled(enabled)
     }
 
-    private companion object {
-        const val TAG = "CaptureOrchestration"
+    override fun playShutterSound(mode: ShutterSoundMode) {
+        if (mode != ShutterSoundMode.ALWAYS) return
+        if (ShutterSoundRule.portShouldPlay(mode, ShutterSoundPolicy.isMandatory(context))) extraClick.play()
     }
 }

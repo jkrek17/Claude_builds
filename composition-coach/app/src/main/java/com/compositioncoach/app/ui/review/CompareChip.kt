@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.review
 
+import androidx.compose.ui.res.stringResource
+import com.compositioncoach.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -40,6 +42,10 @@ fun CompareChip(
     modifier: Modifier = Modifier,
 ) {
     val current by rememberUpdatedState(onShowOriginalChange)
+    val description = stringResource(R.string.compare_description)
+    val showingOriginalState = stringResource(R.string.compare_showing_original)
+    val showingEditedState = stringResource(R.string.compare_showing_edited)
+    val toggleLabel = stringResource(R.string.compare_toggle)
     val showing by rememberUpdatedState(showingOriginal)
     Box(
         modifier = modifier
@@ -53,9 +59,9 @@ fun CompareChip(
             }
             .clearAndSetSemantics {
                 role = Role.Button
-                contentDescription = "Compare with original"
-                stateDescription = if (showingOriginal) "Showing original" else "Showing edited"
-                onClick(label = "Toggle original") {
+                contentDescription = description
+                stateDescription = if (showingOriginal) showingOriginalState else showingEditedState
+                onClick(label = toggleLabel) {
                     current(!showing)
                     true
                 }
@@ -63,7 +69,7 @@ fun CompareChip(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "Compare",
+            text = stringResource(R.string.compare),
             color = if (showingOriginal) Background else OnScrim,
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier

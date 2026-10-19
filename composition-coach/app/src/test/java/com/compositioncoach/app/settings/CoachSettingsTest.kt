@@ -88,18 +88,6 @@ class CoachSettingsTest {
     }
 
     @Test
-    fun `subjectMaskSubtitle explains the battery saver override only when it applies`() {
-        assertEquals(
-            "Better background and separation advice for people; uses more battery",
-            CoachSettings(batterySaver = false).subjectMaskSubtitle(),
-        )
-        assertEquals(
-            "Better background and separation advice for people; off while battery saver is on",
-            CoachSettings(batterySaver = true).subjectMaskSubtitle(),
-        )
-    }
-
-    @Test
     fun `onboardingSeen round-trips through a copy`() {
         val seen = CoachSettings().copy(onboardingSeen = true)
         assertEquals(true, seen.onboardingSeen)

@@ -2,12 +2,12 @@ package com.compositioncoach.app.ui.camera
 
 import android.net.Uri
 import com.compositioncoach.app.camera.CaptureEnhancement
+import com.compositioncoach.app.camera.CapturePlan
 import com.compositioncoach.app.camera.CaptureSessionInfo
 import com.compositioncoach.app.camera.ZoomPresets
 import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.outcome.ExperienceMode
 import com.compositioncoach.app.outcome.Outcome
-import com.compositioncoach.app.outcome.OutcomePlan
 import com.compositioncoach.app.outcome.OutcomePlanner
 import com.compositioncoach.composition.model.NormalizedRect
 import com.compositioncoach.app.camera.FlashMode
@@ -110,7 +110,7 @@ data class CameraUiState(
     val zoomRatio: Float = 1f,
     val zoomPresets: List<Float> = listOf(1f),
 
-    // --- Wave 2 contract: outcomes, holds, timer, group, ghost (state engineer implements; UI consumes) ---
+    // --- Outcomes, holds, timer, group, ghost---
     /** The photograph the user asked for; drives scene intent, pipeline and the hold instruction. */
     val outcome: Outcome = Outcome.DEFAULT,
     /** Easy (default) or Coach experience. */
@@ -126,9 +126,10 @@ data class CameraUiState(
     val timerCountdown: Int? = null,
     /** Outline of the previous shot's subject for the re-shoot ghost (null = none). */
     val ghostRect: com.compositioncoach.composition.model.NormalizedRect? = null,
-    /** Whether the current outcome's preferred pipeline/enhancement is available on this phone. */
+    /** Whether the current outcome had to fall back on this phone (`OutcomeCapturePlanner`'s plan for the bound lens). */
     val outcomeDegraded: Boolean = false,
-    val outcomeDegradedNote: String? = null,
+    /** The once-per-pick note saying so, as a translatable [DegradedNote] (null when nothing to say). */
+    val outcomeDegradedNote: DegradedNote? = null,
     /**
      * True when the selected enhancement runs in a vendor extensions session that cannot also carry
      * ImageAnalysis, so live coaching is paused while it is selected (the camera still previews and captures).
@@ -207,9 +208,9 @@ private val CameraUiState.holdPending: Boolean get() = isCapturing || holdProgre
 fun CameraUiState.withOutcome(outcome: Outcome): CameraUiState =
     copy(outcome = outcome, holdInstruction = OutcomePlanner.holdInstruction(outcome, holdPending))
 
-/** Whether the selected outcome had to fall back on this phone, and the one-line note saying so. */
-fun CameraUiState.withOutcomePlan(plan: OutcomePlan): CameraUiState =
-    copy(outcomeDegraded = plan.degraded, outcomeDegradedNote = plan.note)
+/** Whether the selected outcome had to fall back on this phone ([plan] for the bound lens), and the note saying so. */
+fun CameraUiState.withOutcomePlan(plan: CapturePlan): CameraUiState =
+    copy(outcomeDegraded = plan.degraded, outcomeDegradedNote = DegradedNote.of(plan))
 
 /** The capture port's hold progress (0..1, null when no hold runs). */
 fun CameraUiState.withHoldProgress(progress: Float?): CameraUiState {

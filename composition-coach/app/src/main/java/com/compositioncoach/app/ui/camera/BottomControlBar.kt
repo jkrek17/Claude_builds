@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.camera
 
+import androidx.compose.ui.res.stringResource
+import com.compositioncoach.app.R
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -108,7 +110,7 @@ fun BottomControlBar(
             Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
                 RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
                     IconButton(onClick = onSwitchLensClick, enabled = !isCapturing) {
-                        Icon(imageVector = Icons.Outlined.Cameraswitch, contentDescription = "Switch camera", tint = OnScrim)
+                        Icon(imageVector = Icons.Outlined.Cameraswitch, contentDescription = stringResource(R.string.switch_camera), tint = OnScrim)
                     }
                 }
             }
@@ -155,7 +157,7 @@ private fun QuietStateCheck(visible: Boolean, animationsEnabled: Boolean, modifi
     ) {
         Icon(
             imageVector = Icons.Outlined.Check,
-            contentDescription = "Framing looks good, hold it",
+            contentDescription = stringResource(R.string.quiet_check_description),
             tint = Accent.Ready,
             modifier = Modifier.size(20.dp),
         )

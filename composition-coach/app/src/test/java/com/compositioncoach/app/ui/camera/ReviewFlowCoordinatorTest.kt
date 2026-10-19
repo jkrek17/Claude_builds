@@ -136,6 +136,17 @@ class ReviewFlowCoordinatorTest {
     }
 
     @Test
+    fun `a stack's separate first frame becomes the review's Compare original`() = runTest {
+        val h = Harness(this, FakePort(frame), tmp.root, coach)
+        val firstFrame = Uri.parse("content://media/external/images/media/7")
+        h.flow.onCaptured(shot().copy(companionUri = firstFrame))
+        assertEquals(firstFrame, h.store.current.value!!.originalPhotoUri)
+        h.flow.onCaptured(shot())
+        assertNull(h.store.current.value!!.originalPhotoUri)
+        advanceUntilIdle()
+    }
+
+    @Test
     fun `without a still analyser the live frame still gives a complete card`() = runTest {
         val port = FakePort(still = null)
         val h = Harness(this, port, tmp.root, coach)

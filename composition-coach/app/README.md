@@ -1,9 +1,10 @@
-# Composition Coach — `:app`
+# Eyebright — `:app`
 
-The camera-facing Compose app. This module owns the UI, CameraX binding, capture/storage, settings
-persistence and navigation. It talks to `:composition` (`CompositionCoach`) and `:vision`
-(`VisionPipelineFactory`) only through their public contracts — nothing under `composition/` or
-`vision/` was touched.
+The camera-facing Compose app (package `com.compositioncoach.app`; the product is Eyebright, see
+`docs/BRAND.md`). This module owns the UI, CameraX binding, capture and storage, settings, the photo journal
+and navigation. It talks to `:composition` (`CompositionCoach`, `AfterActionReport`, `CropSuggester`,
+`AdaptiveWeights`) and `:vision` (`VisionPipelineFactory`, `StillImageAnalyzer`, `FrameStackingSource`) only
+through their public contracts. What the product does is `docs/PRODUCT.md`; this file is how the app does it.
 
 ## Screen map
 
@@ -18,26 +19,28 @@ CameraPermissionGate
         └── "licences"  LicencesScreen   (Settings → About → Open-source licences)
 ```
 
-Wave 2 (`docs/PRODUCT.md`, `docs/WAVE2.md`) reshaped the UI around **Easy / Coach** and **outcomes, not
-modes**. Presentation preferences that are not yet in `CoachSettings` (`experience_mode`, `pro_controls`,
-`guide_by_vibration`, `guide_by_voice`) live in `ui/settings/UiPreferences.kt` (own DataStore file
-`ui_preferences`, same key names) until the state engineer moves them; `UiPreferences.effectiveExperience`
-lets `CameraUiState.experienceMode` switch Coach on as well.
+Every screen pushed over the camera shares the camera destination's `CameraViewModel` (its back-stack entry is
+always there), so review decisions, the Enhancement row and both "reset coaching" buttons go through one object.
+Every preference, including Easy/Coach and Pro, is a `CoachSettings` key in `SettingsRepository` (table below);
+the camera reads them from `CameraUiState.settings`, Settings writes them through `SettingsViewModel`.
 
-* **camera** — `CameraScreen` + `CameraViewModel`. 4:3 preview box holding the `PreviewView` and every
-  overlay that maps normalized geometry (`GhostOverlay`, `ThirdsGridOverlay` (Pro), `CoachingLayer`,
+* **camera** — `CameraScreen` + `CameraViewModel`. 4:3 preview box holding the `PreviewView` and every overlay
+  that maps normalized geometry (`GhostOverlay`, `ThirdsGridOverlay` (Pro), `CoachingLayer`,
   `DebugGeometryOverlay` (Pro + developer mode), `FocusRingOverlay`, `ExposureSlider` (Pro), `CameraTopBar`,
   `TimerCountdownOverlay`, `DegradedNoteChip`, `OnboardingCard`, `DebugOverlay`). What is drawn is derived in
-  `CameraChromeModel.of(state, uiPreferences)`:
-  * **Easy** (default): no score number, one cue chip, no secondary icons, no reasons. **Coach**: the score chip
-    (when Show score is on), the secondary icon row and a one-line reason under the chip
-    (`GuidanceFormatter.reasonLine`).
-  * **Pro controls** reveal the exposure slider, zoom presets, enhancement pill, grid and debug overlays; off,
-    they are not composed at all.
-  * The cue chip is replaced (`LiveChipRules.overrideChip`) by, in order: `holdInstruction` ("Hold still for
-    4 seconds"), the group's first blocker (`GroupCues.chip`), Selfie's "Arm out a little" (face > 45 % of the
-    height, `SelfieCues`). While `holdProgress != null` the coaching layer dims to `HOLD_DIMMED_ALPHA` and the
-    shutter's inner ring fills with the progress.
+  `CameraChromeModel.of(state)`:
+  * **Easy** (`experience_mode` = EASY, default): no score number, one cue chip, no secondary icons, no reasons.
+    **Coach**: the score chip (`CameraUiState.showScoreNumber`: Coach and Show score), the secondary icon row and
+    a one-line reason under the chip (`GuidanceFormatter.reasonLine`).
+  * **Pro controls** (`pro_controls`) reveal the exposure slider, zoom presets, enhancement pill, grid and debug
+    overlays; off, they are not composed at all.
+  * Shoot-ready (the green ring, "SHOOT", the shoot-at-the-peak trigger, the haptic tick) is
+    `CameraUiState.peakReady`: the group's readiness in a group scene (and never ready in Group before a group is
+    in frame), else the engine's `isShootReady`; never while the engine is still awaiting a subject.
+  * The cue chip is replaced (`LiveChipRules.overrideChip`) by, in order: the hold chip (`HoldCues`: "Hold still"
+    for Night, "Hold still for 4 seconds" for Light trails...), the group's first blocker (`GroupCues.chip`),
+    Selfie's "Arm out a little" (face > 45 % of the height, `SelfieCues`). While `holdProgress != null` the
+    coaching layer dims to `HOLD_DIMMED_ALPHA` and the shutter's inner ring fills with the progress.
   * `CameraTopBar`: flash, the self-timer clock (`TimerButton`, Off / 3 s / 10 s via `onTimerSelected`; in Group
     the label reads "when everyone's ready"), the enhancement pill (Pro), settings. `timerCountdown` shows as big
     numerals centred over the preview. Selfie arms a 3 s countdown by default (`SelfieTimerDefault`).
@@ -45,35 +48,60 @@ lets `CameraUiState.experienceMode` switch Coach on as well.
     guide", `ShutterButton` with `GroupDots` around the arc when `groupStatus != null`, lens switch),
     `OutcomeStrip` (all `Outcome.entries` in plain words, tap or swipe, haptic tick, `onOutcomeSelected`), zoom
     presets (Pro), the SHOOT / Hold still chip.
-  * `GhostOverlay`: `ghostRect` as a 1dp dashed 40 % white rectangle through `OverlayMapper.toPxRect`; tap hides
-    it (`onUseAsGhost(null)`).
-  * `outcomeDegradedNote` shows once, for 3 s, each time the outcome is picked.
+  * `GhostOverlay`: `ghostRect` (`ghostRectFor`: the still's subject mask bounds, else the subject box) as a 1dp
+    dashed 40 % white rectangle; tap hides it. Gone after 20 s or the next capture (`ReshootGhost`).
+  * `outcomeDegradedNote` (a `DegradedNote`, text from `strings.xml`) shows once, for 3 s, each time the outcome is
+    picked. A Motion hold that shook too much shows the snackbar "Too shaky, try again" (`CameraNotice`).
   * Heads-up guidance (`HeadsUpGuidance.kt` pure table and planner, `HeadsUpOutputs.kt` `HapticGuide` /
-    `VoiceGuide`): Settings > More > Guide by vibration / Guide by voice.
+    `VoiceGuide`): Settings > More > Guide by vibration (`haptic_guidance`) / Guide by voice (`voice_guidance`).
+    The app declares `VIBRATE` (a normal permission, no prompt) so the guide plays real waveforms; without a
+    vibrator it falls back to view haptics.
 * **review** — `ReviewScreen` (photo area `ReviewPhotoArea`, `SwipeToKeep`) + `AfterActionCard`: score ring and
   verdict (`report.verdict`, or from the live score while `report == null`), What worked (≤ 3 green), Try next
-  time (one amber line with "+N", "Not helpful" → `onNotHelpful`, "Shoot again" → `onUseAsGhost(subject
-  bounds)`), Better crop? (`CropCardsRow`: up to 3 cards clipping the same photo, tap previews the window dashed
-  on the full photo, "Save crop" → `onCropChosen`), What if (hold: `whatIf` crop with "72 → 83"), Portrait
-  (hold: `processedPreviewUri`; "Save as copy" writes a new gallery photo), Details (outcome, diagnostics,
-  every measure). Analysing: sections breathe. Keep is the default: back, the arrow and a downward swipe all
-  Keep; Keep / Retake call `onReviewDecision(kept)`. `ReviewCardMode` is honoured by `AfterActionLogic.showCard`
-  (ALWAYS until a `review_card_mode` setting exists).
-* **settings** — `SettingsScreen` + `SettingsViewModel` (`SettingsRepository` + `UiPreferencesStore`): Experience
-  (Easy · Coach; Coach adds Show score), Your eye, Pro controls (reveals Guidance level and Grid); More: capture
-  rows (Enhancement only under Pro), Guide by vibration, Guide by voice, Composition guidance, Battery saver,
-  Pro-only detection toggles and Developer mode, Reset coaching preferences; About: privacy line, Privacy,
-  Open-source licences, Send feedback (share sheet with the last card as text, `FeedbackText`), version. The
-  shooting-mode chips are gone: the outcome strip is the control.
-* **your_eye** — `YourEyeScreen` over `YourEyeData` from a `YourEyeSource` (`YourEyeViewModel`): keepers this
-  month, three tendencies, advice followed most / skipped most, best three, Start fresh (confirmed). Until the
-  journal exists, `AppNavGraph` uses an empty `FakeYourEyeSource`.
-* **privacy** — `PrivacyScreen`, the policy text, no network.
+  time (one amber line with "+N", "Not helpful" → `onNotHelpful`, "Shoot again" → the ghost), Better crop?
+  (`CropCardsRow`: up to 3 cards clipping the same photo, tap previews the window dashed on the full photo, "Save
+  crop" → `CameraViewModel.onCropChosen`: `exportCrop`, then the `CROP_CHOSEN` learning event), What if (hold:
+  `whatIf` crop with "72 → 83"), Portrait (hold: the background-separated preview; "Save as copy" →
+  `onSavePortraitCopy`: `exportProcessed(…, "_portrait")`), Compare (hold: `originalPhotoUri`, the pre-level copy
+  or a stack's first frame), Details (outcome, diagnostics, every measure). "Saved as a copy" only shows once the
+  file is written. Keep is the default: back, the arrow and a downward swipe all Keep; Keep / Retake call
+  `onReviewDecision(kept)`. `review_card_mode` (Settings > More > "Card only when there's something to say") is
+  honoured by `AfterActionLogic.showCard`.
+* **settings** — `SettingsScreen` + `SettingsViewModel` (`SettingsRepository` only): Experience (Easy · Coach;
+  Coach adds Show score), Your eye, Pro controls (reveals Guidance level and Grid); More: capture rows
+  (Enhancement only under Pro), Guide by vibration, Guide by voice, Card only when there's something to say,
+  Composition guidance, Battery saver, Pro-only detection toggles and Developer mode, Reset coaching preferences;
+  About: privacy line, Privacy, Open-source licences, Send feedback (share sheet with the last card as text,
+  `FeedbackText`), version. The outcome strip on the camera is the shooting-mode control.
+* **your_eye** — `YourEyeScreen` over `YourEyeData` from `JournalYourEyeSource` (`YourEyeMapper` over
+  `di/YourEyeRepository`'s `YourEyeSnapshot`: the photo journal plus the taste model): keepers this month, three
+  tendencies, advice followed most / skipped most (advice shown at least 3 times, named by `AdviceLabels`), best
+  three, Start fresh (confirmed). Start fresh and Settings' Reset coaching preferences both call
+  `CameraViewModel.onResetCoachingPreferences` (neutral weights, empty journal).
+* **privacy** — `PrivacyScreen`, the policy text (`PrivacyPolicyText`), no network.
 * **licences** — `LicencesScreen`, a static list (CameraX, ML Kit, Compose/AndroidX, Coil, Kotlin), Apache 2.0.
 
 Every user-facing string of these screens is in `res/values/strings.xml`, including the live chip table
 (`ChipKey` / `ResourceChipStrings`, installed by `AppNavGraph`; `ChipStrings.English` is the JVM tests' fake and
-`ChipStringsResourceTest` keeps the two identical).
+`ChipStringsResourceTest` keeps the two identical), the hold chips, the "Coaching paused in …" chip, the degraded
+notes and the advice names. The engine's own sentences (what worked, try next time) come from `:composition` in
+English.
+
+## Ports between the state layer and the capture side
+
+Two interfaces in `di/` keep the view model testable without CameraX or ML Kit; `AppContainer` binds the real
+implementations, and tests use fakes.
+
+| Port | Bound to | What it does |
+|---|---|---|
+| `StillAnalysisPort.analyze` | `CaptureStillAnalysisPort` | `CaptureRepository.decodeForAnalysis` (EXIF-aware, ~1024 px) → `StillImageAnalyzer.analyze(bitmap, isFront, alreadyMirrored = true)` |
+| `StillAnalysisPort.separateBackground` | same | `decodeFull` → `BackgroundSeparator.isApplicable/apply` → a private preview in `cacheDir/originals` (never automatic in the gallery; "Save as copy" exports it) |
+| `CaptureOrchestrationPort.capture` | `PipelineCaptureOrchestrationPort` | `CapturePipeline.capture(outcome, request, frameSource as? FrameStackingSource)` |
+| `.awaitSteady(outcome)` | same | the 450 ms steady gate, or Night's 2 s steady hold (`CapturePipeline.awaitSteadyHold`) |
+| `.holdProgress` | same | `CapturePipeline.holdProgress`: the Motion stack's or the steady hold's 0..1 |
+| `.pipelineSupport` | same | Motion when the frame source is a `FrameStackingSource` and analysis is not paused; focus stack when `lensControl.supportsFocusStack` |
+| `.setGroupModeEnabled` | same | `VisionFeatureToggles.setGroupModeEnabled` (eyes-open classification) |
+| `.playShutterSound` | same | only the `shutter_sound = ALWAYS` click where the region does not already force one: the pipeline itself plays the mandatory click inside `capture`, so it never sounds twice |
 
 ## Coaching layer (`CoachingLayer`, `docs/COACHING_UI.md`)
 
@@ -111,7 +139,7 @@ no composable re-derives either.
   table, verbatim from the spec, with a three-word trim of the recommendation's title as the fallback for
   any category the table doesn't name.
 * **Score chip** — `ScoreChip`, one 32sp tabular numeral in a compact chip at the physical top, tinted by
-  tier and nothing else (no pulse, no bump). Hidden by Settings > Show score. Announces "Composition
+  tier and nothing else (no pulse, no bump). Coach only, and only with Settings > Show score on. Announces "Composition
   score 82".
 * **Secondary advice** — `SecondaryAdviceRow`, up to two 28dp icon chips, never sentences. Tapping one at
   Coach level replaces the cue chip with that recommendation's one-line explanation for 3s. Icons
@@ -151,13 +179,15 @@ CameraUiState (StateFlow)  ── pure `withX(...)` reducer functions, see Camer
 CameraScreen (collectAsStateWithLifecycle) ── CoachingLayer / shutter arc / overlays redraw
 ```
 
-* **Shooting mode (`SceneIntent`)** tells the engine what the photographer says they're shooting;
-  `CameraViewModel` reads it off `CoachSettings.sceneIntent` and forwards it to both
-  `CompositionCoach.process(...)` (live preview) and `.evaluateOnce(...)` (capture-time review
-  evaluation). Changing it in Settings calls `coach.reset()` on the next settings emission — same
-  reasoning as the lens-switch reset — so smoothed score/recommendations from the old mode don't
-  linger under the new one. The reset is skipped on the very first settings emission (app/process
-  start) so restoring a persisted non-Auto mode doesn't reset a coach that never ran anything yet.
+* **Outcome → scene intent.** The engine is told what the photographer is shooting through
+  `CoachSettings.sceneIntent`, which is always derived from the selected `outcome` (`OutcomeSpec.sceneIntent`).
+  `CameraViewModel` forwards it to both `CompositionCoach.process(...)` (live) and `.evaluateOnce(...)` (at
+  capture). A change resets the smoother (`coach.reset()`), except on the very first settings emission.
+* **The view model's collaborators**, each in its own file: `LiveFrameProcessor` (per-frame scoring, the 10 Hz
+  sample, shoot-ready tick, followed-cue feedback), `OutcomeBinding` (outcome side effects and capture plan,
+  below), `CaptureFlowCoordinator` (timer and shutter), `ReviewFlowCoordinator` (the card's background work and
+  learning signals), `ReviewCopies` (crop and portrait copies), `PostCaptureLevelling`, `ZoomEaser`,
+  `ReshootGhost`, `PipelineLifecycle`, `CoachingWeights` (the taste model plus the outcome's focus).
 * **`awaitingSubject` UI state**: when `SmoothedComposition.awaitingSubject` is true (declared intent
   needs a subject — e.g. PORTRAIT — that isn't in frame yet), `displayScore` is the last meaningful
   score the engine held, not a live one, so the UI must not present it as current:
@@ -177,10 +207,10 @@ CameraScreen (collectAsStateWithLifecycle) ── CoachingLayer / shutter arc / 
 * Per-frame scoring runs on `Dispatchers.Default` (`flowOn`); the sampled `onEach` that pushes into
   `MutableStateFlow` runs on the ViewModel's own dispatcher (`Main`, via `viewModelScope`).
 * On shutter: the capture pipeline (see "Capture pipeline" below) saves the JPEG, then
-  `CompositionCoach.evaluateOnce(frameAtShutter, GuidanceLevel.COACH)` computes the one-off review result on
-  `Dispatchers.Default`, both are parked in `AppContainer.reviewStore` (a tiny in-memory `StateFlow<ReviewEntry?>`, not a nav
-  argument — richer objects don't round-trip through navigation-compose args), and the screen
-  navigates to `"review"`.
+  `CompositionCoach.evaluateOnce(frameAtShutter, GuidanceLevel.COACH, intent, weights)` computes the live-frame
+  review result on `Dispatchers.Default`, the entry is parked in `AppContainer.reviewStore` (a tiny in-memory
+  `StateFlow<ReviewEntry?>`, not a nav argument) and the screen navigates to `"review"`, where
+  `ReviewFlowCoordinator` fills in the still analysis, report, crops and portrait preview as they arrive.
 * Overlays never draw anything Compose renders as part of the *photo* — the `PreviewView` and the
   overlay `Canvas`/composables are separate layers; `ImageCapture` reads frames from the camera
   pipeline directly, so nothing drawn by Compose can leak into the saved JPEG.
@@ -388,28 +418,16 @@ every chrome icon and the banner's text read upright; that a saved photo opens u
 the score+banner stack hugs the right edge without crossing the frame centre; and whether 250 ms is the
 right tween for the chrome counter-rotation.
 
-## Camera/Activity lifecycle (`CameraViewModel`)
+## Camera/Activity lifecycle (`CameraViewModel`, `PipelineLifecycle`)
 
-`CameraViewModel` exposes two equivalent-but-distinct pairs of lifecycle hooks, both idempotent and
-both funnelling into the same private `resumePipeline()`/`pausePipeline()`:
-
-* `onScreenStarted()` / `onScreenStopped()` — the pre-existing hooks, wired to
-  `DisposableEffect(viewModel) { ... onDispose { ... } }` in `CameraScreen`, firing on Compose
-  entry/exit.
-* `onScreenResumed()` / `onScreenPaused()` — **new**; wire these to
-  `LifecycleEventEffect(Lifecycle.Event.ON_RESUME)` / `LifecycleEventEffect(Lifecycle.Event.ON_PAUSE)` on
-  the camera screen. Compose entry/exit and the Activity going to/from the background are different
-  events — backgrounding the app (home button, app switch, a permission dialog from another app) does
-  *not* leave composition, so before this hook existed the vision pipeline's orientation sensor stayed
-  registered and its ML Kit detectors stayed allocated for as long as the app sat in the background.
-
-Both pairs are safe to wire simultaneously (as `CameraScreen` now does): `resumePipeline()`/
-`pausePipeline()` track their own active/inactive flag, so whichever hook fires first actually starts/stops
-`frameSource`+`ThermalPolicy` and resets the coach smoother; the other is then a no-op until the pipeline
-is paused again. `VisionPipeline.start()` after a `stop()` fully re-arms itself — every piece of
-cross-frame cached state (last bodies/objects/subject-mask, `DetectorSchedule`'s frame counter,
-`SegmentationCadence`'s degradation ladder) resets, not just the ML Kit detector instances — so resuming
-from the background never shows a stale detection left over from before backgrounding.
+`CameraScreen` wires two pairs of hooks: `onScreenStarted()` / `onScreenStopped()` from a
+`DisposableEffect(viewModel)` (composition entry/exit) and `onScreenResumed()` / `onScreenPaused()` from
+`LifecycleEventEffect(ON_RESUME/ON_PAUSE)` (the Activity going to/from the background, which does *not* leave
+composition). Both funnel into `PipelineLifecycle.resume()` / `pause()`, which track their own flag, so whichever
+fires first starts or stops the vision pipeline, `ThermalPolicy` and the gyro (and resets the smoother on resume,
+cancels a running self-timer on pause); the other is a no-op. `VisionPipeline.start()` after a `stop()` fully
+re-arms itself (cached detections, `DetectorSchedule`, `SegmentationCadence`), so resuming never shows a stale
+detection.
 
 ## Thermal/battery-saver performance tiers (`ThermalPolicy`, `PerformanceTier`)
 
@@ -445,8 +463,8 @@ orchestrated by `CameraViewModel.onShutterClick`.
   default, is offered only when its session keeps analysis (`CaptureQuality.offeredEnhancements`), so the
   default never opens the app with coaching off; when AUTO is not offered the default resolves to OFF and
   lucky imaging takes over. `CaptureSessionInfo.enhancementsPausingCoaching` lists the modes that would pause
-  it, so a chip can say so before it is picked. The VM owns the rebind on a change (settings emission ->
-  `CameraController.rebind()`); a change during a capture is deferred until it finishes.
+  it, so a chip can say so before it is picked. The view model owns the rebind on a change (`OutcomeBinding`,
+  see "Outcome pipelines"); a change during a capture is deferred until it finishes.
 * **Camera2 request options** (no extension active, not conserving power, each only if advertised):
   NOISE_REDUCTION, EDGE, COLOR_CORRECTION_ABERRATION, HOT_PIXEL and DISTORTION_CORRECTION at HIGH_QUALITY,
   OIS on. `TONEMAP_MODE` is deliberately left alone (HIGH_QUALITY would replace the vendor's tuned tone
@@ -465,7 +483,10 @@ orchestrated by `CameraViewModel.onShutterClick`.
 2. **Steady-shot gate** (always on; no setting): `MotionSensor` classifies gyro RMS angular speed over a
    150 ms window (STEADY < 0.08 rad/s, MOVING > 0.35, hysteresis 0.12 / 0.26). If MOVING, wait up to 450 ms
    for STEADY/SLIGHT_MOTION (`CameraUiState.isWaitingForSteady` is true meanwhile), then shoot regardless.
-3. **Capture**, one of:
+   **Night** instead holds for its 2 s of continuous steadiness (`CapturePipeline.awaitSteadyHold`: a MOVING
+   reading restarts the count, the shutter ring fills with the progress, "Hold still" is the chip) and shoots
+   anyway after 5 s; without a gyro it is a plain 2 s countdown.
+3. **Capture**, per the outcome's plan (see "Outcome pipelines" below), one of:
    * **Lucky imaging** (`burst_sharpest`, effective only with no extension active, flash OFF, not
      conserving power; `CameraUiState.burstSharpestActive`): three in-memory `takePicture` requests queued
      back to back; each JPEG's centre half is decoded at 1:2 and scored by `SharpnessScorer` (variance of
@@ -480,7 +501,7 @@ orchestrated by `CameraViewModel.onShutterClick`.
    burst scores and pick, configured size and full-resolution verdict, shutter-to-saved latency.
 5. **Review**: the `ReviewEntry` is put in `ReviewStore` and the screen navigates, so the photo appears as
    soon as it is saved.
-6. **Auto-level** (`auto_level`, default **off**): if the shutter-time roll was reliable and 0.7-8 degrees, the saved JPEG is
+6. **Auto-level** (`auto_level`, default **on**, "fix what can be fixed silently"): if the shutter-time roll was reliable and 0.7-8 degrees, the saved JPEG is
    decoded, rotated by -roll about its centre, cropped to the largest same-aspect rectangle
    (`AutoLevelGeometry`), re-encoded at 100 and written over the same Uri on `Dispatchers.Default`/IO, EXIF
    orientation and capture tags preserved. The entry is then replaced with `autoLevelAppliedDegrees` set,
@@ -490,8 +511,8 @@ orchestrated by `CameraViewModel.onShutterClick`.
    `processing`, and offers Compare while `originalPhotoUri` is set. The copy is deleted when the entry leaves
    `ReviewStore` (Keep, Retake, a newer capture; `staleOriginalOf`), at once if the review ended while
    levelling ran, and purged on the next start after a process death (`PostCaptureLevelling`). Applies to
-   extension captures too, since it is a purely geometric step. Off by default because it crops the edges of
-   a frame the coach just helped compose and resamples every pixel (the field report was about sharpness).
+   extension captures too, since it is a purely geometric step. It crops the edges a little and resamples every
+   pixel, which is why Compare is always there and the setting can be turned off.
 7. **Log**: one INFO line per capture, tag `CaptureDiagnostics` (`adb logcat -s CaptureDiagnostics`), after
    step 6 when it runs:
 
@@ -528,17 +549,25 @@ decision is `OutcomeCapturePlanner.plan(outcome, availableEnhancements, Pipeline
 | FOCUS_STACK | `FocusStacker` (no extension, `LensControl.supportsFocusStack`; binds OFF rather than AUTO when the lens can stack) | SINGLE under HDR; BURST_SHARPEST without manual focus (noted) |
 | MOTION_AVERAGE / _LIGHTEN / _MEDIAN | `MotionCapture` over the live stream | BURST_SHARPEST without live frames (noted) |
 
-The enhancement is chosen at **bind** time, so the state layer applies the plan before the shutter:
-`controller.setEnhancementOverride(plan.enhancement)` and, for Motion outcomes,
-`controller.setAnalysisResolutionHint(CameraController.MOTION_ANALYSIS_RESOLUTION)` (null otherwise), then
-`rebind()` when either returned true. `CaptureSessionInfo.requestedEnhancement` keeps reporting the persisted
-`capture_enhancement`; `outcomeEnhancement` reports the override.
+The enhancement is chosen at **bind** time, so `OutcomeBinding` (in the view model) plans when the outcome changes
+and on every bind result: `controller.setEnhancementOverride(override)` and
+`controller.setAnalysisResolutionHint(MOTION_ANALYSIS_RESOLUTION for Motion outcomes, else null)`, then a rebind
+when the next bind would request a different enhancement than the current one or the analysis size changed.
+The screen calls `CameraViewModel.configureController` on its fresh controller before each bind, so returning
+from the review never binds twice. Precedence: a real outcome change makes the plan's enhancement the override
+(and persists it as `capture_enhancement`); the user's own pick on the pill or in Settings becomes the override
+until the next outcome change; on first launch there is none and the persisted preference stands.
+`CaptureSessionInfo.requestedEnhancement` keeps reporting the persisted `capture_enhancement`;
+`outcomeEnhancement` reports the override. The plan's degradation becomes `outcomeDegraded` and
+`outcomeDegradedNote` (`DegradedNote.of(plan)`, the translatable twin of `CapturePlan.degradedNote`, which stays in
+the diagnostics log).
 
 * **Motion** (`MotionCapture`): starts stacking (gyro-aligned, see `:vision`'s README), takes a normal still
   through CameraX in parallel (the first frame, so the experiment never costs the shot), holds for
   `holdSeconds` while `CapturePipeline.holdProgress` (0..1, the larger of time and frame progress) drives the
   ring, and ends early as `MotionStatus.TOO_SHAKY` once `MotionSensor` has said MOVING for more than 25 % of
-  the hold. The stack is turned upright (lossless quarter turns) and saved with
+  the hold. Too shaky: the first frame is kept in the gallery, there is no review, and the camera says "Too shaky,
+  try again". Otherwise the review shows the stack, with the first frame as its Compare original. The stack is turned upright (lossless quarter turns) and saved with
   `CaptureRepository.exportProcessed` (`_silk`, `_trails`, `_clear`); `ShotResult.uri` is the stack and
   `companionUri` the still. Too shaky / too few frames: `uri` is the still, `motionStatus` says why and
   `degradedNote` carries "Too shaky, try again". Resolution is the analysis stream's (1280x960 with the hint).
@@ -551,10 +580,11 @@ The enhancement is chosen at **bind** time, so the state layer applies the plan 
   the stored buffer. Saved in stored orientation with the first frame's EXIF orientation and capture facts
   (`_stack`). Target <= 2.5 s for the three captures; the merge and encode add ~1-2 s on a 12 MP sensor
   (estimate) and are logged (`Focus stack: capture N ms, total M ms`).
-* **Shutter sound**: every capture path calls `ShutterSound.playIfMandatory()` first, which plays
+* **Shutter sound**: the outcome capture calls `ShutterSound.playIfMandatory()` first, which plays
   `MediaActionSound.SHUTTER_CLICK` only when `ShutterSoundPolicy.isMandatory` (API 33+
   `MediaActionSound.mustPlayShutterSound()`; else the legacy `Camera.CameraInfo.canDisableShutterSound`,
   the `ro.camera.sound.forced` property via `getprop`, and a JP/KR network or SIM country). Cached per process.
+  `shutter_sound = ALWAYS` adds the click everywhere else, through the capture port (never twice).
 * **Diagnostics** gain `pipeline`, `framesStacked`, `degradedNote` (appended to the log line only when set:
   `... latencyMs=780 pipeline=MOTION_AVERAGE stacked=31`).
 
@@ -566,7 +596,9 @@ The enhancement is chosen at **bind** time, so the state layer applies the plan 
   capture facts copied with orientation NORMAL and the new size, `<original>_crop.jpg` in the same album.
   `exportProcessed(bitmap, nameSuffix)`: `CC_<timestamp><suffix>.jpg`, JPEG 100, orientation NORMAL.
 * `BackgroundSeparator.apply(bitmap, mask, strength)` (fallback for phones without the vendor Bokeh
-  extension; offered only when `isApplicable(mask)`: coverage 8-70 %): feathered 32x32 mask upscaled
+  extension, for Portrait and Selfie captures; offered only when `isApplicable(mask)`: coverage 8-70 %): the
+  result is a private preview (`OriginalCopyStore.savePreview`, deleted when the review ends); "Save as copy"
+  writes it with `exportProcessed(bitmap, "_portrait")`. Feathered 32x32 mask upscaled
   bilinearly, background darkened x0.75 and box-blurred twice (radius 1 % of the long edge) at half
   resolution, recomposited at full resolution; subject pixels are copied unchanged. Pure core `applyArgb`.
 
@@ -577,10 +609,9 @@ The enhancement is chosen at **bind** time, so the state layer applies the plan 
   screen can show a gallery-shortcut thumbnail button. On a fresh process start, the same field is
   populated from `CaptureRepository.latestPhotoUri()` — a MediaStore query for the newest image under
   `Pictures/CompositionCoach` — so the button has something to show without waiting for the next capture.
-* `CameraViewModel.loadThumbnail(uri, sizePx)` forwards to `CaptureRepository.loadThumbnail`, a suspend
-  function (`Dispatchers.IO`) using `ContentResolver.loadThumbnail` on API 29+ (cheap, provider-side
-  downsampling) or a bounds-then-`inSampleSize` decode below that; returns `null` on any failure rather
-  than throwing, since a thumbnail is a nice-to-have, not something worth surfacing an error for.
+* The 44 dp thumbnail loads through Coil, sized to the view. `CaptureRepository.loadThumbnail` (provider-side
+  `ContentResolver.loadThumbnail` on API 29+, a bounds-then-`inSampleSize` decode below) is there for a
+  pre-scaled thumbnail if Coil's ever shows up in a profile.
 
 ## Image-quality controls (`EnhancementPill`, shoot at the peak, zoom, exposure, diagnostics)
 
@@ -644,11 +675,11 @@ one to three words, and every piece of arithmetic lives in a pure object with a 
   compensation (raw steps: the EV size per step is not in the diagnostics), auto-level angle, shutter latency.
   Rows the capture did not report are left out.
 * **Compare** (`CompareChip`). Shown over the review photo while `ReviewEntry.originalPhotoUri` is set (auto-level
-  ran); holding it shows the pre-level copy (TalkBack: click toggles).
+  ran, or a stack kept its first frame); holding it shows that photo (TalkBack: click toggles).
 * **Settings > More** opens with `CaptureSettingsRows`, all persisted: **Enhancement** (segmented over Off +
   what the bound lens offers, from the camera back-stack entry's view model; writes through
-  `onEnhancementSelected`), **Sharpest of burst** (`burst_sharpest`), **Auto-level horizon** (`auto_level`),
-  **Auto shoot when ready** (`auto_shoot`, read by `AppNavGraph` into `CameraScreen(autoShootOnTap = …)`).
+  `onEnhancementSelected`, which makes it the override until the next outcome change), **Sharpest of burst** (`burst_sharpest`), **Auto-level horizon** (`auto_level`),
+  **Auto shoot when ready** (`auto_shoot`, read by `CameraScreen` from `CameraUiState.settings`).
   The Enhancement row shows the *persisted* choice (`EnhancementRowModel`): an explicit HDR/Night the current
   lens lacks stays selected, greyed, with "Not available on this camera" (the pill meanwhile shows what is
   running); the AUTO default on a lens without AUTO shows Off, which is what runs; a lens with nothing beyond
@@ -703,7 +734,7 @@ read/write round trip is unit-tested on the JVM through the pure `Preferences.to
 
 ## Detection settings (`VisionFeatureToggles`)
 
-Settings → a new "Detection" group, applied by `CameraViewModel` via `(frameSource as?
+Settings > More (Pro only), applied by `CameraViewModel` (`FrameAnalysisSource.applySettings`) via `(frameSource as?
 VisionFeatureToggles)` (a safe cast — the interface is `:vision`'s, not part of the `FrameAnalysisSource`
 contract `:app` otherwise depends on) every time settings change, same as the existing
 `pose_detection_enabled` wiring:
@@ -728,7 +759,7 @@ app data.
 
 ## Debug mode guide
 
-Enable **Settings → Debug mode**. Two extra layers appear on the camera screen:
+Enable **Settings → Pro controls**, then **More → Developer mode**. Two extra layers appear on the camera screen:
 
 * `DebugGeometryOverlay` — draws, in this order (mask first so it sits *behind* everything else):
   1. the subject mask (`FrameAnalysis.subjectMask`, when present) as a faint green heat layer, one cell
@@ -817,14 +848,10 @@ deliberately exempt — they're meant to look like instrumentation, not the prod
 
 ## Gallery thumbnail (`BottomControlBar`)
 
-`AppNavGraph` also wires the thumbnail *optimistically*, as a fallback for `CameraUiState.lastPhotoUri`
-(which is only set by a capture made in the current process): it
-collects `AppContainer.reviewStore.current` and remembers the last **non-null** `photoUri` it ever saw
-(`rememberSaveable`, so it survives process death), since `reviewStore.clear()` (called on Keep/Retake)
-would otherwise blank it the moment the user returns to the camera screen. That value is passed down as
-`CameraScreen(lastPhotoUri = ...)`. Caveats of this approach, to fix once the real hook lands: it doesn't
-know about a photo taken in a previous process (cold start shows the placeholder icon until the next
-capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rather than a pre-scaled one.
+The thumbnail shows `CameraUiState.lastPhotoUri` (set by every capture, restored from
+`CaptureRepository.latestPhotoUri()` on a fresh process start), falling back to the last photo the review store
+held (`AppNavGraph`). Its long-press menu offers "Your eye" and "Use as guide" (the last reviewed photo's subject
+outline as the ghost).
 
 ## Release build
 
@@ -844,72 +871,47 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
   [docs/PRIVACY_POLICY.md](../docs/PRIVACY_POLICY.md) / [docs/PLAY_LISTING.md](../docs/PLAY_LISTING.md)
   for the Play Store policy/listing material this module's `PrivacyScreen` and About section reflect.
 
-## Known limitations / what the integrator should know
+## Tests
 
-* **The vision and composition stubs are gone.** `VisionPipelineFactory.create()` now returns a real
-  `VisionPipeline` and `CompositionCoach.create()` a real `CompositionEngine`/`CompositionSmoother` —
-  including object detection and the subject mask (see the Detection settings section above). `:app` was
-  already written against the real public contracts, so no `:app` code changed as a *consequence* of the
-  stubs going away; `analysisUnavailable`/`SmoothedComposition.EMPTY` are now only reached if
-  `VisionPipeline` construction genuinely throws on a given device, not the default path.
-* **`SceneIntent` is honoured by the engine now.** `:app`'s side of this was already exercised via
-  `@Preview`s and the `GuidanceFormatter`/`CameraUiState` unit tests against a hand-built
-  `SmoothedComposition` even before the engine set `awaitingSubject` for real; nothing there needed to
-  change once it started doing so.
-* **Legacy storage permission (API 26-28):** `CameraScreen` requests `WRITE_EXTERNAL_STORAGE` lazily,
-  right before the first capture, only on API ≤ 28. API 29+ never needs it (scoped storage via
-  `MediaStore` + `RELATIVE_PATH`).
-* **No instrumentation tests** were added (not required); all tests run on the JVM — plain JUnit4
-  (`OverlayMapperTest`, `RotationTruthTableTest`, `GuidanceFormatterTest`, `ReadinessArcTest`,
-  `CueEdgeTest`, `HorizonRollTest`, `ModeStripLogicTest`, `CameraUiStateTest`, `CoachSettingsTest`,
-  `ZoomChipFormatterTest`, `ReviewFormatterTest`, `ShootAtPeakControllerTest`, `DiagnosticsFormatterTest`,
-  `ImageQualityControlsLogicTest`, `CaptureUiWiringLogicTest` (paused text, steady-hint hold, lit zoom chip,
-  exposure reset), `EnhancementRowModelTest`, `OriginalCopyStoreTest`, and for the capture pipeline
-  `SharpnessScorerTest`, `AutoLevelGeometryTest`, `SteadinessClassifierTest`, `ZoomPresetsTest`,
-  `CaptureQualityTest`, `CaptureDiagnosticsTest`, `CaptureSettingsTest`) plus Robolectric ones
-  (`AppLaunchTest`, `RotatedChromeRotationTest`, `CoachingLayerSmokeTest`, `CameraChromeSmokeTest`,
-  `ReviewOriginalsTest`).
-  `CoachingLayerSmokeTest` composes the real coaching layer with a hand-built `SmoothedComposition`
-  carrying a physical-RIGHT headline at rotation 0 and 90, and checks the cue chip actually travels to
-  the right edge and then to the bottom one — it drives `CoachingLayer` rather than `CameraScreen`
-  because the screen's composition comes from a live CameraX/ML Kit pipeline that cannot be faked under
-  Robolectric (`AppLaunchTest` covers that the whole Activity survives launch). The `detect_objects`/`subject_mask`/`onboarding_seen`
-  settings are covered the same way the existing keys are — `CoachSettingsTest` exercises the pure
-  `CoachSettings`/`effectiveSubjectMaskEnabled` logic on the JVM; `SettingsRepository` itself needs a real
-  DataStore-backed `Context` (no Robolectric in this module), so its read/write plumbing is exercised by
-  the app running, not a JVM test — consistent with how the pre-existing keys were covered.
-* **Front camera capture** sets `ImageCapture.Metadata.isReversedHorizontal = true` (single capture) or
-  writes a display-space mirrored EXIF orientation (lucky imaging) so the saved JPEG matches what the
-  mirrored preview showed; this does not affect analysis, which is already mirrored
-  by the vision layer's normalized-coordinate contract.
-* **Device rotation** (see the dedicated section above): a capture taken in the brief window before the
-  first `FrameAnalysis` arrives (fresh process start, phone already held sideways) uses the default
-  `deviceRotationDegrees = 0` until the first frame updates `CameraUiState`, so its EXIF could reflect
-  natural portrait for that one shot rather than the phone's actual held orientation — a narrow, one-shot
-  window rather than a systemic issue, since every subsequent frame corrects it immediately.
-* **Image-quality wiring** (capture pipeline and camera UI, see both sections above) is complete: paused
-  chip, pill and Settings row on persisted `capture_enhancement`, steady hint from `isWaitingForSteady`, zoom
-  chips on `selectedZoomPreset`, exposure through the view model only, review keyed on `revision`, Compare on
-  `originalPhotoUri`, every capture key persisted. Still open: `CaptureDiagnostics` has no EV-per-step, so the
-  review shows exposure compensation in raw steps.
-* Pinch-to-zoom is still not exposed as a settings toggle — it's a direct gesture on the preview — but it
-  now drives the `ZoomChip` readout described above.
-* **Capture pipeline, needs a device to confirm** (each is visible in the `CaptureDiagnostics` log line or
-  the `CameraController` bind log): which extensions the lens offers and whether they carry analysis
-  (`Extensions available=... withAnalysis=...`); that the capture stream is the full 4:3 size
-  (`fullRes=true`); that the HAL honoured the quality options (`nr=`/`edge=`/`ois=`); burst latency
-  (`latencyMs`, target < 1.2 s) and that scores differ meaningfully between frames (`burst=`); steady-shot
-  thresholds against real hand shake (`steadiness=`/`waitedMs=`); auto-level direction on a deliberately
-  tilted shot in each hold and on the front camera (`autoLevel=` plus looking at the horizon); that the
-  levelled file replaces the review image (keyed on `ReviewEntry.revision`) and Compare shows the original; and
-  whether HIGH_QUALITY noise reduction in the shared repeating request costs preview frame rate on a given
-  HAL (the debug overlay's fps).
-* **Needs a physical device to confirm:** `CAPTURE_MODE_MAXIMIZE_QUALITY`'s actual shutter-to-saved-JPEG
-  latency (the KDoc's "typically well under a second" is the documented CameraX trade-off, not measured
-  here); `ThermalPolicy`'s live behaviour against `PowerManager.addThermalStatusListener` (Robolectric has
-  no thermal hardware to simulate, so only the pure `ThermalPolicy.computeTier` mapping is unit-tested);
-  the exposure-compensation range/step actually reported by `cameraInfo.exposureState` on a real sensor;
-  and whether `ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY` picks a capture resolution large enough that
-  `CAPTURE_MODE_MAXIMIZE_QUALITY`'s processing time becomes noticeable on lower-end hardware (if so, the
-  fallback ladder is already in place via `preferFastCapture`/`PerformanceTier`, just untuned against a
-  real device's numbers).
+All tests run on the JVM (`./gradlew :app:testDebugUnitTest`): plain JUnit for the pure logic (`OverlayMapperTest`,
+`RotationTruthTableTest`, `GuidanceFormatterTest`, `ReadinessArcTest`, `CueEdgeTest`, `HorizonRollTest`,
+`CameraUiStateTest`, `CameraUiStateWave2Test`, `CameraChromeModelTest`, `CoachSettingsTest`, `CaptureSettingsTest`,
+`WaveTwoSettingsTest`, `ShootAtPeakControllerTest`, `DiagnosticsFormatterTest`, `ImageQualityControlsLogicTest`,
+`CaptureUiWiringLogicTest`, `EnhancementRowModelTest`, `OriginalCopyStoreTest`, `OutcomePlannerTest`,
+`OutcomeCaptureTest`, `FeedbackTrackerTest`, `PhotoJournalTest`, `YourEyeCalculatorTest`, the capture maths
+`SharpnessScorerTest`, `AutoLevelGeometryTest`, `SteadinessClassifierTest`, `ZoomPresetsTest`, `CaptureQualityTest`,
+`CaptureDiagnosticsTest`, `FocusMergeTest`, `BackgroundSeparatorTest`, ...) and Robolectric where Android types or
+Compose are involved:
+
+* `AppLaunchTest`: the real `MainActivity` survives launch with and without the camera permission, with the real
+  (failing under Robolectric) CameraX and ML Kit.
+* `EndToEndSmokeTest`: the real activity, navigation, `SettingsRepository`, `CameraViewModel`, composition engine
+  and chrome, with only the vision pipeline (a fake frame source streaming a face) and the CameraX bind (a fake
+  bind result) replaced. Seeded to Easy: the outcome strip and shutter compose and no score number does; switched
+  to Coach + Pro while running: the score chip and zoom presets appear.
+* `CameraChromeSmokeTest`, `CoachingLayerSmokeTest`, `RotatedChromeRotationTest`: the chrome and coaching layer
+  composed from hand-built states (rotation, paused coaching, Pro on/off).
+* `ReviewFlowCoordinatorTest`, `ReviewOriginalsTest`, `OutcomeBindingRulesTest` (bind targets, degraded notes,
+  hold chips), `YourEyeMapperTest`, `ChipStringsResourceTest` (the English chip table equals `strings.xml`).
+
+## Known limitations
+
+* **Everything camera- and ML-specific is unverified until it runs on a phone**: CameraX binding and extensions,
+  the capture pipelines (burst, Motion stack, focus stack, Night hold), ML Kit detection (live and on the still),
+  heads-up vibration and voice, the shutter-sound policy, `ThermalPolicy`. The JVM tests cover the decisions and
+  the maths around them, not the hardware. The device checklist is in the top-level README.
+* **Legacy storage permission (API 26-28):** `CameraScreen` requests `WRITE_EXTERNAL_STORAGE` lazily, right before
+  the first capture, only on API ≤ 28. API 29+ never needs it (scoped storage via `MediaStore` + `RELATIVE_PATH`).
+* **Front camera capture** sets `ImageCapture.Metadata.isReversedHorizontal = true` (single capture) or writes a
+  display-space mirrored EXIF orientation (lucky imaging) so the saved JPEG matches the mirrored preview; the
+  still analysis therefore decodes an already mirrored selfie (`alreadyMirrored = true`).
+* **Device rotation:** a capture in the brief window before the first `FrameAnalysis` (fresh start, phone already
+  sideways) uses the gravity fallback's rotation, which may still be 0 for that one shot.
+* **Exposure** in the review's diagnostics is in raw compensation steps (`CaptureDiagnostics` has no EV-per-step).
+* **Retake on a stack** deletes the stacked photo; its first frame stays in the gallery as an ordinary photo.
+* **Portrait copies** from the review carry no EXIF capture facts (the preview is re-encoded from pixels).
+* **Settings from pre-integration builds:** test builds that stored Easy/Coach, Pro or the heads-up guides in the
+  short-lived `ui_preferences` DataStore start from the defaults again (Easy, Pro off, guides off).
+* **Needs a device to tune:** `CAPTURE_MODE_MAXIMIZE_QUALITY` latency, the steady-shot thresholds against real
+  hand shake, the exposure range/step a real sensor reports, and whether the highest capture resolution makes
+  processing noticeably slow on low-end phones (the `preferFastCapture` / `PerformanceTier` ladder is in place).

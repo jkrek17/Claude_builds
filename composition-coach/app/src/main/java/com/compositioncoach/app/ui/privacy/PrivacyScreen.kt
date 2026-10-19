@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.privacy
 
+import androidx.compose.ui.res.stringResource
+import com.compositioncoach.app.R
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -35,7 +37,7 @@ fun PrivacyScreen(onBack: () -> Unit) {
                 title = { Text(PrivacyPolicyText.TITLE) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )

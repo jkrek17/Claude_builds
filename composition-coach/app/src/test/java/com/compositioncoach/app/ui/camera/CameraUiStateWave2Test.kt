@@ -3,7 +3,8 @@ package com.compositioncoach.app.ui.camera
 import com.compositioncoach.app.di.ShutterSoundRule
 import com.compositioncoach.app.outcome.ExperienceMode
 import com.compositioncoach.app.outcome.Outcome
-import com.compositioncoach.app.outcome.OutcomePlan
+import com.compositioncoach.app.camera.CapturePlan
+import com.compositioncoach.app.outcome.CapturePipeline
 import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.settings.ShutterSoundMode
@@ -79,9 +80,19 @@ class CameraUiStateWave2Test {
 
     @Test
     fun `degradation, timer countdown and ghost`() {
-        val degraded = CameraUiState().withOutcomePlan(OutcomePlan(CaptureEnhancement.OFF, true, "Night mode isn't available on this phone"))
+        val plan = CapturePlan(
+            enhancement = CaptureEnhancement.AUTO,
+            pipeline = CapturePipeline.SINGLE,
+            requested = CapturePipeline.SINGLE,
+            missingEnhancement = CaptureEnhancement.NIGHT,
+            degradedNote = "Night isn't available on this phone, using the best we can",
+        )
+        val degraded = CameraUiState().withOutcomePlan(plan)
         assertTrue(degraded.outcomeDegraded)
-        assertEquals("Night mode isn't available on this phone", degraded.outcomeDegradedNote)
+        assertEquals(DegradedNote.NO_NIGHT, degraded.outcomeDegradedNote)
+        val fine = degraded.withOutcomePlan(plan.copy(missingEnhancement = null, degradedNote = null))
+        assertFalse(fine.outcomeDegraded)
+        assertNull(fine.outcomeDegradedNote)
         assertEquals(2, CameraUiState().withTimerCountdown(2).timerCountdown)
         val ghost = NormalizedRect(0.3f, 0.2f, 0.7f, 0.9f)
         val withGhost = CameraUiState().withGhost(ghost)
@@ -91,9 +102,11 @@ class CameraUiStateWave2Test {
     }
 
     @Test
-    fun `shutter sound plays when asked or required`() {
-        assertTrue(ShutterSoundRule.shouldPlay(ShutterSoundMode.ALWAYS, mandatoryInRegion = false))
-        assertTrue(ShutterSoundRule.shouldPlay(ShutterSoundMode.AUTO, mandatoryInRegion = true))
-        assertFalse(ShutterSoundRule.shouldPlay(ShutterSoundMode.AUTO, mandatoryInRegion = false))
+    fun `the port adds a click only for ALWAYS where the pipeline did not already play the mandatory one`() {
+        assertTrue(ShutterSoundRule.portShouldPlay(ShutterSoundMode.ALWAYS, mandatoryInRegion = false))
+        // The capture pipeline already plays it where it is mandatory: never twice.
+        assertFalse(ShutterSoundRule.portShouldPlay(ShutterSoundMode.ALWAYS, mandatoryInRegion = true))
+        assertFalse(ShutterSoundRule.portShouldPlay(ShutterSoundMode.AUTO, mandatoryInRegion = true))
+        assertFalse(ShutterSoundRule.portShouldPlay(ShutterSoundMode.AUTO, mandatoryInRegion = false))
     }
 }

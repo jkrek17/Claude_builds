@@ -21,7 +21,9 @@ import com.compositioncoach.composition.model.SceneType
 import com.compositioncoach.composition.model.Severity
 import com.compositioncoach.composition.model.SmoothedComposition
 import org.junit.Assert.assertTrue
+import com.compositioncoach.app.ComposeHostActivityRule
 import org.junit.Rule
+import org.junit.rules.RuleChain
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -44,8 +46,10 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34])
 class CoachingLayerSmokeTest {
 
-    @get:Rule
     val rule = createComposeRule()
+
+    @get:Rule
+    val chain: RuleChain = RuleChain.outerRule(ComposeHostActivityRule()).around(rule)
 
     private val moveRight = Recommendation(
         id = "subject.right",

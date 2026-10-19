@@ -23,7 +23,11 @@ import java.io.File
  * of each dependency's lifetime explicit: [frameSource] and [coach] live for the process, the camera binding
  * itself lives and dies with the camera screen (owned by the ViewModel, not here).
  */
-class AppContainer(private val appContext: Context) {
+class AppContainer(
+    private val appContext: Context,
+    /** Builds the live vision pipeline; tests substitute a fake frame source (see `EndToEndSmokeTest`). */
+    private val frameSourceFactory: (Context) -> FrameAnalysisSource = VisionPipelineFactory::create,
+) {
 
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(appContext) }
     val captureRepository: CaptureRepository by lazy { CaptureRepository(appContext) }
@@ -50,13 +54,15 @@ class AppContainer(private val appContext: Context) {
     /** "Better crop?" suggestions for the after-action card. Pure Kotlin. */
     val cropSuggester: CropSuggester by lazy { CropSuggester() }
 
-    // --- Wave 2 ports: the integrator binds the capture engineer's classes here, nowhere else ----------------
+    // --- Ports between the state layer and the capture side -------------------------------------------------
 
-    /** Still-photo analysis and background separation; see [StillAnalysisPort] for what to bind. */
-    val stillAnalysisPort: StillAnalysisPort by lazy { StillAnalysisPort.Unavailable }
+    /** Still-photo analysis and the "Portrait" preview: decode, `StillImageAnalyzer`, `BackgroundSeparator`. */
+    val stillAnalysisPort: StillAnalysisPort by lazy { CaptureStillAnalysisPort(captureRepository, originalCopies) }
 
-    /** Outcome captures, hold progress, group mode and the shutter sound; see [CaptureOrchestrationPort]. */
-    val captureOrchestrationPort: CaptureOrchestrationPort by lazy { DefaultCaptureOrchestrationPort(capturePipeline) }
+    /** Outcome captures, holds, group mode and the "always" shutter click, over [capturePipeline]. */
+    val captureOrchestrationPort: CaptureOrchestrationPort by lazy {
+        PipelineCaptureOrchestrationPort(appContext, capturePipeline, ::frameSourceOrNull)
+    }
 
     // --- Learning -------------------------------------------------------------------------------------------
 
@@ -73,16 +79,16 @@ class AppContainer(private val appContext: Context) {
     }
 
     /**
-     * The vision pipeline the app was handed at build time is a stub whose `create()` throws
-     * [NotImplementedError]. That failure is captured here (not rethrown) so the rest of the app can keep
-     * showing the camera preview with analysis simply absent — see [frameSourceOrNull].
+     * The vision pipeline. If it fails to construct on a device (ML Kit unavailable, a missing native library),
+     * the failure is captured here (not rethrown) so the rest of the app can keep showing the camera preview
+     * with analysis simply absent — see [frameSourceOrNull].
      */
     private val frameSourceResult: Result<FrameAnalysisSource> by lazy {
-        runCatching { VisionPipelineFactory.create(appContext) }
+        runCatching { frameSourceFactory(appContext) }
             .onFailure { Log.e(TAG, "Vision pipeline unavailable; running without live composition analysis", it) }
     }
 
-    /** Null when the vision pipeline failed to construct (e.g. the stub in this build). */
+    /** Null when the vision pipeline failed to construct. */
     fun frameSourceOrNull(): FrameAnalysisSource? = frameSourceResult.getOrNull()
 
     /**

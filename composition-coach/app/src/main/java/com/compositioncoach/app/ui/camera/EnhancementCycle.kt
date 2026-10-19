@@ -41,8 +41,14 @@ object EnhancementCycle {
     /** TalkBack's reading of the pill. */
     fun description(enhancement: CaptureEnhancement): String = "Photo enhancement: ${enhancement.label}"
 
-    /** The one-line chip shown while an enhancement has paused live analysis (e.g. Night). */
-    fun pausedText(enhancement: CaptureEnhancement): String = "Coaching paused in ${enhancement.label}"
+    /** The one-line chip shown while an enhancement has paused live analysis (e.g. Night), from the chip table. */
+    fun pausedText(enhancement: CaptureEnhancement): String = when (enhancement) {
+        CaptureEnhancement.AUTO -> GuidanceFormatter.strings[ChipKey.PAUSED_AUTO]
+        CaptureEnhancement.HDR -> GuidanceFormatter.strings[ChipKey.PAUSED_HDR]
+        CaptureEnhancement.NIGHT -> GuidanceFormatter.strings[ChipKey.PAUSED_NIGHT]
+        CaptureEnhancement.BOKEH -> GuidanceFormatter.strings[ChipKey.PAUSED_PORTRAIT]
+        CaptureEnhancement.OFF -> "Coaching paused"
+    }
 
     /**
      * The coaching layer's paused chip for the camera state: [pausedText] of the enhancement actually running,

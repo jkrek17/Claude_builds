@@ -7,19 +7,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.outcome.ExperienceMode
 import com.compositioncoach.app.outcome.Outcome
-import com.compositioncoach.app.ui.settings.UiPreferences
 import com.compositioncoach.composition.model.SceneClassification
 
 /** The coaching layer's alpha while a Motion/Night hold runs: the progress ring is the thing to watch. */
 const val HOLD_DIMMED_ALPHA = 0.35f
 
 /**
- * What the camera chrome derives from [CameraUiState] and the [UiPreferences] each frame, in one place so the
- * screen and its tests agree. Pure (`CameraChromeModelTest`).
+ * What the camera chrome derives from [CameraUiState] each frame, in one place so the screen and its tests
+ * agree. Pure (`CameraChromeModelTest`). The experience, Pro and score preferences come from
+ * [CameraUiState.settings] (`experience_mode`, `pro_controls`, `show_score`, all in `SettingsRepository`).
  *
  * Easy (default) shows no number, one chip, no secondary icons and no reasons; Coach adds all three
  * (`docs/PRODUCT.md`, "Two experiences"). [pro] reveals the exposure slider, zoom presets, enhancement pill,
@@ -27,7 +28,8 @@ const val HOLD_DIMMED_ALPHA = 0.35f
  *
  * @param pausedText the coaching layer's "Coaching paused in Night" chip, see [EnhancementCycle.pausedTextFor].
  * @param overrideChip what replaces the cue chip: a hold instruction, group blocker or "Arm out a little".
- * @param shootReady in a group scene this is the group's readiness, not the single-frame `isShootReady`.
+ * @param shootReady [CameraUiState.peakReady] (group-aware) unless the engine is still awaiting a subject.
+ * @param showScore [CameraUiState.showScoreNumber]: Coach mode and the stored Show score preference.
  */
 data class CameraChromeModel(
     val hasScene: Boolean,
@@ -45,13 +47,12 @@ data class CameraChromeModel(
     val coach: Boolean get() = experience == ExperienceMode.COACH
 
     companion object {
-        fun of(state: CameraUiState, preferences: UiPreferences = UiPreferences()): CameraChromeModel {
+        fun of(state: CameraUiState): CameraChromeModel {
             val composition = state.composition
             val hasScene = composition.scene != SceneClassification.UNKNOWN
-            val experience = UiPreferences.effectiveExperience(state.experienceMode, preferences.experienceMode)
+            val experience = state.experienceMode
             val headline = GuidanceFormatter.headline(composition.activeRecommendations, state.settings.guidanceLevel)
-            val singleFrameReady = GuidanceFormatter.effectiveShootReady(composition.isShootReady, composition.awaitingSubject)
-            val shootReady = state.groupStatus?.let { it.ready && !composition.awaitingSubject } ?: singleFrameReady
+            val shootReady = GuidanceFormatter.effectiveShootReady(state.peakReady, composition.awaitingSubject)
             val overrideChip = LiveChipRules.overrideChip(state)
             val pausedText = EnhancementCycle.pausedTextFor(state.enhancement, state.analysisPausedByEnhancement)
             val spokenHeadline = headline.takeIf { pausedText == null && overrideChip == null && !shootReady && !composition.awaitingSubject }
@@ -67,8 +68,8 @@ data class CameraChromeModel(
                 pausedText = pausedText,
                 arcAlpha = SteadyHint.arcAlpha(composition.awaitingSubject, state.steadiness),
                 experience = experience,
-                pro = preferences.proControls,
-                showScore = experience == ExperienceMode.COACH && state.settings.showScore,
+                pro = state.settings.proControls,
+                showScore = state.showScoreNumber,
                 overrideChip = overrideChip,
                 coachingAlpha = if (state.holdProgress != null) HOLD_DIMMED_ALPHA else 1f,
                 headsUp = HeadsUpCue(
@@ -153,7 +154,7 @@ fun BoxScope.CameraPreviewChrome(
     )
 
     DegradedNoteChip(
-        note = state.outcomeDegradedNote,
+        note = state.outcomeDegradedNote?.let { stringResource(it.resId) },
         outcomeKey = state.outcome,
         animationsEnabled = animationsEnabled,
         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),

@@ -1,5 +1,7 @@
 package com.compositioncoach.app.ui.camera
 
+import androidx.compose.ui.res.stringResource
+import com.compositioncoach.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,7 +33,7 @@ fun CameraErrorOverlay(message: String, onRetry: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = "Camera unavailable",
+            text = stringResource(R.string.camera_unavailable),
             color = OnScrim,
             style = MaterialTheme.typography.titleLarge,
             textAlign = TextAlign.Center,
@@ -44,6 +46,6 @@ fun CameraErrorOverlay(message: String, onRetry: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(20.dp))
-        Button(onClick = onRetry) { Text("Retry") }
+        Button(onClick = onRetry) { Text(stringResource(R.string.camera_retry)) }
     }
 }

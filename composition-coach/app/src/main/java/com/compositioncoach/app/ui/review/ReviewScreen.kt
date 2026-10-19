@@ -44,6 +44,7 @@ import com.compositioncoach.app.R
 import com.compositioncoach.app.camera.CaptureRepository
 import com.compositioncoach.app.di.ReviewEntry
 import com.compositioncoach.app.outcome.ReviewCardMode
+import com.compositioncoach.app.ui.camera.ghostRectFor
 import com.compositioncoach.app.ui.camera.rememberAnimationsEnabled
 import com.compositioncoach.app.ui.theme.Background
 import com.compositioncoach.app.ui.theme.OnScrim
@@ -57,13 +58,16 @@ private val SWIPE_TO_KEEP = 120.dp
 
 /**
  * Where the review screen's decisions go. Keep, Retake and Shoot again all leave the screen; the rest stay.
- * [onShootAgain] keeps the photo and returns to the camera with the subject outline as a ghost.
+ * [onShootAgain] keeps the photo and returns to the camera with the subject outline as a ghost. [onSaveCrop] and
+ * [onSavePortrait] write a new gallery photo (`CameraViewModel.onCropChosen` / `onSavePortraitCopy`) and report
+ * whether it was saved, so the card only says "Saved as a copy" when it is true.
  */
 data class ReviewActions(
     val onKeep: () -> Unit,
     val onRetakeComplete: () -> Unit,
     val onNotHelpful: () -> Unit = {},
-    val onCropChosen: (CropSuggestion) -> Unit = {},
+    val onSaveCrop: (CropSuggestion, onDone: (Boolean) -> Unit) -> Unit = { _, _ -> },
+    val onSavePortrait: (onDone: (Boolean) -> Unit) -> Unit = {},
     val onShootAgain: (NormalizedRect?) -> Unit = {},
 )
 
@@ -73,8 +77,7 @@ data class ReviewActions(
  * downward swipe on the photo all mean Keep, so a photo is never lost by backing out.
  *
  * [cardMode] is `ReviewCardMode`: ALWAYS shows the card on every shot; ONLY_WHEN_USEFUL only once there is a
- * Try-next-time or a crop ([AfterActionLogic.showCard]). Retake deletes through [captureRepository] first;
- * "Save as copy" of the processed portrait writes a new gallery photo through it, never touching the original.
+ * Try-next-time or a crop ([AfterActionLogic.showCard]). Retake deletes through [captureRepository] first.
  */
 @Composable
 fun ReviewScreen(
@@ -115,19 +118,13 @@ fun ReviewScreen(
                     callbacks = CardCallbacks(
                         onViewChange = { view = it },
                         onSaveCrop = { crop ->
-                            actions.onCropChosen(crop)
-                            view = view.copy(selectedCrop = null, savedCopy = true)
+                            actions.onSaveCrop(crop) { saved -> if (saved) view = view.copy(selectedCrop = null, savedCopy = true) }
                         },
                         onSaveProcessedCopy = {
-                            entry.processedPreviewUri?.let { processed ->
-                                scope.launch {
-                                    runCatching { captureRepository.saveJpeg(captureRepository.readBytes(processed), 0, false) }
-                                        .onSuccess { view = view.copy(savedCopy = true) }
-                                }
-                            }
+                            actions.onSavePortrait { saved -> if (saved) view = view.copy(savedCopy = true) }
                         },
                         onNotHelpful = actions.onNotHelpful,
-                        onShootAgain = { actions.onShootAgain(AfterActionLogic.resultOf(entry).primarySubject?.bounds) },
+                        onShootAgain = { actions.onShootAgain(ghostRectFor(entry)) },
                     ),
                     modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
                 )

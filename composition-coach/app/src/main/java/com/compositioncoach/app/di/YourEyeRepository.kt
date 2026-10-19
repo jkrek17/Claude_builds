@@ -22,8 +22,8 @@ data class BestShot(val photoUri: String, val score: Int, val verdict: String, v
 }
 
 /**
- * Everything the "Your eye" screen shows. INTEGRATOR: the UI engineer defines `ui/youreye/YourEyeData`; this
- * type has the same fields so mapping one onto the other is a field-for-field copy (or a typealias).
+ * Everything the "Your eye" screen shows, as the journal computes it; `ui/youreye/YourEyeMapper` turns it into the
+ * screen's `YourEyeData` (plain-word advice labels, follow rates only for advice shown often enough).
  *
  * @param tendencies up to three plain sentences from the taste model (`AdaptiveWeights.summaryTendencies()`).
  * @param keepersLast30Days photos from the last 30 days with a Keeper verdict that were not retaken.
