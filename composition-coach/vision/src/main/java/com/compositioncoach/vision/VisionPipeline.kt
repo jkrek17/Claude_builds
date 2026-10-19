@@ -218,7 +218,9 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
             // rotation so every detector, the mapper, and frameWidth/Height below all agree on
             // physical-up rather than display-up. See UprightRotation's KDoc for the derivation.
             val displayUprightRotation = imageProxy.imageInfo.rotationDegrees
+            // Platform-listener-backed (OrientationEventListener); read synchronously, 0 if not yet known.
             val deviceRotation = orientationSensor.deviceRotationDegrees
+            val rotationSource = orientationSensor.lastRotationSource
             val front = isFrontCamera
             // The correction's sign depends on which way the camera faces (the front camera's optical
             // axis is reversed, so physically rotating the phone sweeps the scene the other way inside
@@ -357,6 +359,9 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                         // Not a wall-time: accepted frames since the reported subjectMask was last
                         // refreshed (0 = refreshed this frame). See SegmentationCadence's KDoc.
                         "mask_age" to segmentationCadence.maskAgeFrames.toLong(),
+                        // Not a wall-time either: who produced deviceRotationDegrees. 0 = platform
+                        // OrientationEventListener (normal), 1 = gravity-quantizer fallback.
+                        "rotation_src" to rotationSource.toLong(),
                     ),
                 ),
             )
@@ -375,6 +380,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                         analysisLatencyMs = totalMs,
                         deviceRotationDegrees = orientationSensor.deviceRotationDegrees,
                         analysisRotationDegrees = imageProxy.imageInfo.rotationDegrees,
+                        detectorTimings = mapOf("rotation_src" to orientationSensor.lastRotationSource.toLong()),
                     ),
                 )
             }
@@ -651,14 +657,17 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         hadSubjectLastFrame = false
         detectorSchedule.reset()
         segmentationCadence.reset()
+        // Register the rotation listener / orientation sensor first (before the slow detector warm-up) so
+        // the first frames after start() already carry the current device rotation; this is lifecycle
+        // bound: stop() unregisters it.
+        runCatching { orientationSensor.start() }
+            .onFailure { Log.e(TAG, "Orientation sensor failed to start; orientation metadata will be stale", it) }
         synchronized(detectorLock) {
             if (faceDetector == null) faceDetector = warmUp("face") { FaceDetection.getClient(faceDetectorOptions) }
             if (poseDetector == null) poseDetector = warmUp("pose") { PoseDetection.getClient(poseDetectorOptions) }
             if (objectDetector == null) objectDetector = warmUp("object") { ObjectDetection.getClient(objectDetectorOptions) }
             if (segmenter == null) segmenter = warmUp("segmentation") { Segmentation.getClient(segmenterOptions) }
         }
-        runCatching { orientationSensor.start() }
-            .onFailure { Log.e(TAG, "Orientation sensor failed to start; orientation metadata will be stale", it) }
     }
 
     /**
