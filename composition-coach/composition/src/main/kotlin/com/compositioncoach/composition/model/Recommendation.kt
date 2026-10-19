@@ -17,6 +17,8 @@ enum class MetricCategory {
     NEGATIVE_SPACE,
     LEADING_LINES,
     SCENE_SPECIFIC,
+    /** Light on the subject (backlit, too dark, harsh side light, blown highlights). Appended last: existing ordinals are unchanged. */
+    LIGHT,
 }
 
 enum class Severity { NONE, LOW, MEDIUM, HIGH }

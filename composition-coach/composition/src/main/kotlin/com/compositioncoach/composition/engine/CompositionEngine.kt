@@ -9,6 +9,7 @@ import com.compositioncoach.composition.analyzer.EdgeTensionAnalyzer
 import com.compositioncoach.composition.analyzer.HeadroomAnalyzer
 import com.compositioncoach.composition.analyzer.HorizonAnalyzer
 import com.compositioncoach.composition.analyzer.LeadingLinesAnalyzer
+import com.compositioncoach.composition.analyzer.LightAnalyzer
 import com.compositioncoach.composition.analyzer.LookingRoomAnalyzer
 import com.compositioncoach.composition.analyzer.NegativeSpaceAnalyzer
 import com.compositioncoach.composition.analyzer.SceneSpecificAnalyzer
@@ -191,6 +192,7 @@ class CompositionEngine(
             NegativeSpaceAnalyzer(),
             LeadingLinesAnalyzer(),
             SceneSpecificAnalyzer(),
+            LightAnalyzer(),
         )
     }
 }

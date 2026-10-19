@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.VerticalAlignTop
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.outlined.WidthNormal
 import androidx.compose.material3.Icon
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -79,6 +80,7 @@ fun categoryIcon(category: MetricCategory): ImageVector = when (category) {
     MetricCategory.NEGATIVE_SPACE -> Icons.Outlined.WidthNormal
     MetricCategory.LEADING_LINES -> Icons.Outlined.Timeline
     MetricCategory.SCENE_SPECIFIC -> Icons.Outlined.Landscape
+    MetricCategory.LIGHT -> Icons.Outlined.WbSunny
 }
 
 /**
