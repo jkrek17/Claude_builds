@@ -2,19 +2,15 @@ package com.compositioncoach.app.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -30,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.settings.label
 import com.compositioncoach.app.ui.theme.OnSurface
 import com.compositioncoach.composition.model.GuidanceLevel
-import com.compositioncoach.composition.model.SceneIntent
 
 /** Every settings row is this tall, with a 48dp minimum touch target inside it (`docs/APP_UX.md`). */
 val SETTINGS_ROW_HEIGHT = 56.dp
@@ -102,31 +97,6 @@ fun SettingsSectionLabel(text: String, modifier: Modifier = Modifier) {
         color = OnSurface,
         modifier = modifier.padding(start = SETTINGS_GUTTER, end = SETTINGS_GUTTER, top = 12.dp, bottom = 6.dp),
     )
-}
-
-/**
- * Shooting mode, as chips — the same DataStore value the camera's mode strip writes, kept here for
- * discoverability. Six modes don't fit a segmented row on a phone, so they scroll horizontally as chips.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SceneIntentSelector(selected: SceneIntent, onChange: (SceneIntent) -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = SETTINGS_GUTTER),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        SceneIntent.entries.forEach { intent ->
-            FilterChip(
-                selected = selected == intent,
-                onClick = { onChange(intent) },
-                label = { Text(intent.label) },
-                modifier = Modifier.heightIn(min = 48.dp),
-            )
-        }
-    }
 }
 
 /** Guidance level, as the three-way segmented control the spec asks for. */

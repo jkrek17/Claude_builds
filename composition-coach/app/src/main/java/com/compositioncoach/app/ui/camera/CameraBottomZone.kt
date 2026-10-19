@@ -18,7 +18,8 @@ import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.app.ui.theme.Motion
 import com.compositioncoach.app.ui.theme.OnScrimMuted
-import com.compositioncoach.composition.model.SceneIntent
+import com.compositioncoach.app.outcome.Outcome
+import com.compositioncoach.composition.model.GroupStatus
 
 /**
  * Everything below the preview: the zoom readout and the "Analysis unavailable" chip at the top of the
@@ -28,8 +29,8 @@ import com.compositioncoach.composition.model.SceneIntent
  */
 @Composable
 fun CameraBottomZone(
-    sceneIntent: SceneIntent,
-    onSceneIntentSelected: (SceneIntent) -> Unit,
+    outcome: Outcome,
+    onOutcomeSelected: (Outcome) -> Unit,
     isCapturing: Boolean,
     isShootReady: Boolean,
     score: Int,
@@ -51,6 +52,9 @@ fun CameraBottomZone(
     onZoomPresetSelected: (Float) -> Unit = {},
     shootAtPeak: ShootAtPeakState? = null,
     selectedZoomPreset: Float? = null,
+    holdProgress: Float? = null,
+    groupStatus: GroupStatus? = null,
+    galleryMenu: GalleryMenuActions = GalleryMenuActions(),
 ) {
     Box(modifier.fillMaxWidth()) {
         if (analysisUnavailable) {
@@ -81,7 +85,7 @@ fun CameraBottomZone(
             ) {
                 CueChip(
                     text = if (holdStill) SteadyHint.TEXT else GuidanceFormatter.SHOOT_TEXT,
-                    description = if (holdStill) SteadyHint.DESCRIPTION else "Framing is ready, shoot now",
+                    description = if (holdStill) SteadyHint.DESCRIPTION else GuidanceFormatter.strings[ChipKey.DESC_SHOOT],
                     emphasized = !holdStill,
                     animationsEnabled = animationsEnabled,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -97,9 +101,9 @@ fun CameraBottomZone(
                 selectedPreset = selectedZoomPreset,
             )
 
-            ModeStrip(
-                selected = sceneIntent,
-                onSelect = onSceneIntentSelected,
+            OutcomeStrip(
+                selected = outcome,
+                onSelect = onOutcomeSelected,
                 animationsEnabled = animationsEnabled,
             )
 
@@ -117,6 +121,9 @@ fun CameraBottomZone(
                 animationsEnabled = animationsEnabled,
                 arcAlpha = arcAlpha,
                 shootAtPeak = shootAtPeak,
+                holdProgress = holdProgress,
+                groupStatus = groupStatus,
+                galleryMenu = galleryMenu,
             )
         }
     }
@@ -127,8 +134,8 @@ fun CameraBottomZone(
 private fun CameraBottomZonePreview() {
     CompositionCoachTheme {
         CameraBottomZone(
-            sceneIntent = SceneIntent.PORTRAIT,
-            onSceneIntentSelected = {},
+            outcome = Outcome.PORTRAIT,
+            onOutcomeSelected = {},
             isCapturing = false,
             isShootReady = false,
             score = 64,
@@ -153,8 +160,8 @@ private fun CameraBottomZonePreview() {
 private fun CameraBottomZoneReadyPreview() {
     CompositionCoachTheme {
         CameraBottomZone(
-            sceneIntent = SceneIntent.AUTO,
-            onSceneIntentSelected = {},
+            outcome = Outcome.ANYTHING,
+            onOutcomeSelected = {},
             isCapturing = false,
             isShootReady = true,
             score = 93,
@@ -178,8 +185,8 @@ private fun CameraBottomZoneReadyPreview() {
 private fun CameraBottomZoneRotatedPreview() {
     CompositionCoachTheme {
         CameraBottomZone(
-            sceneIntent = SceneIntent.LANDSCAPE,
-            onSceneIntentSelected = {},
+            outcome = Outcome.LANDSCAPE,
+            onOutcomeSelected = {},
             isCapturing = false,
             isShootReady = false,
             score = 81,
@@ -204,8 +211,8 @@ private fun CameraBottomZoneRotatedPreview() {
 private fun CameraBottomZoneHoldStillPreview() {
     CompositionCoachTheme {
         CameraBottomZone(
-            sceneIntent = SceneIntent.AUTO,
-            onSceneIntentSelected = {},
+            outcome = Outcome.ANYTHING,
+            onOutcomeSelected = {},
             isCapturing = false,
             isShootReady = true,
             score = 92,

@@ -5,10 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -16,16 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material.icons.outlined.Check
-import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,19 +27,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import coil.compose.rememberAsyncImagePainter
 import com.compositioncoach.app.ui.theme.Accent
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.app.ui.theme.Motion
 import com.compositioncoach.app.ui.theme.OnScrim
-import com.compositioncoach.app.ui.theme.Scrim
+import com.compositioncoach.composition.model.GroupStatus
 import kotlinx.coroutines.delay
 
 /** How long the quiet-state check mark stays beside the shutter. */
@@ -56,8 +45,10 @@ private const val QUIET_CHECK_MS = 1_000L
 const val AUTO_ARMED_LABEL = "Auto"
 
 /**
- * Bottom transparent control row, Pixel-style: a gallery thumbnail (opens the last photo), the shutter
- * with its readiness arc, and the lens switch. Flash and settings live in [CameraTopBar]; the mode strip
+ * Bottom transparent control row, Pixel-style: a gallery thumbnail (opens the last photo; long-press for
+ * "Your eye" / "Use as guide"), the shutter with its readiness arc (its inner ring shows a Motion/Night
+ * [holdProgress], and [GroupDots] sit around it in group scenes), and the lens switch. Flash and
+ * settings live in [CameraTopBar]; the outcome strip
  * sits directly above this row.
  *
  * [deviceRotationDegrees] rotates the thumbnail, shutter and lens-switch icon in place (each wrapped in
@@ -80,6 +71,9 @@ fun BottomControlBar(
     arcAlpha: Float = if (awaitingSubject) GuidanceFormatter.AWAITING_SUBJECT_ARC_ALPHA else 1f,
     shootAtPeak: ShootAtPeakState? = null,
     modifier: Modifier = Modifier,
+    holdProgress: Float? = null,
+    groupStatus: GroupStatus? = null,
+    galleryMenu: GalleryMenuActions = GalleryMenuActions(),
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -88,10 +82,11 @@ fun BottomControlBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
-                GalleryThumbnail(photoUri = lastPhotoUri, onClick = onOpenGallery)
+                GalleryThumbnail(photoUri = lastPhotoUri, onClick = onOpenGallery, menu = galleryMenu)
             }
 
             RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
+                Box(contentAlignment = Alignment.Center) {
                 ShutterButton(
                     isCapturing = isCapturing,
                     isShootReady = isShootReady,
@@ -100,11 +95,14 @@ fun BottomControlBar(
                     animationsEnabled = animationsEnabled,
                     onClick = onShutterClick,
                     arcAlpha = arcAlpha,
-                    autoCountdown = shootAtPeak?.countdown,
+                    // A Motion/Night hold fills the same inner ring the armed countdown drains.
+                    autoCountdown = holdProgress?.coerceIn(0f, 1f) ?: shootAtPeak?.countdown,
                     onPress = shootAtPeak?.let { peak -> { peak.press() } },
                     onRelease = shootAtPeak?.let { peak -> { cancelled -> peak.release(cancelled) } },
                     onAccessibilityLongClick = shootAtPeak?.let { peak -> { peak.armForAccessibility() } },
                 )
+                groupStatus?.let { GroupDots(it) }
+                }
             }
 
             Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
@@ -185,36 +183,6 @@ private fun AutoArmedLabel(
     }
 }
 
-/**
- * A 44dp rounded-square thumbnail of [photoUri], the last photo captured — tapping opens it. Shows a plain
- * gallery-icon placeholder when there is no photo yet.
- */
-@Composable
-private fun GalleryThumbnail(photoUri: Uri?, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .size(44.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(Scrim)
-            .border(1.dp, OnScrim.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = "Open last photo" },
-        contentAlignment = Alignment.Center,
-    ) {
-        if (photoUri != null) {
-            Image(
-                painter = rememberAsyncImagePainter(photoUri),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)),
-            )
-        } else {
-            Icon(imageVector = Icons.Outlined.PhotoLibrary, contentDescription = null, tint = OnScrim.copy(alpha = 0.6f))
-        }
-    }
-}
-
 @Preview(name = "Bottom bar", showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 private fun BottomControlBarPreview() {
@@ -267,25 +235,6 @@ private fun BottomControlBarQuietPreview() {
     }
 }
 
-@Preview(name = "Bottom bar, auto armed", showBackground = true, backgroundColor = 0xFF000000)
-@Composable
-private fun BottomControlBarArmedPreview() {
-    val peak = remember { ShootAtPeakState(ShootAtPeakController(), clock = { 0L }).also { it.armForAccessibility() } }
-    CompositionCoachTheme {
-        BottomControlBar(
-            isCapturing = false,
-            isShootReady = false,
-            score = 84,
-            lastPhotoUri = null,
-            onShutterClick = {},
-            onSwitchLensClick = {},
-            onOpenGallery = {},
-            animationsEnabled = false,
-            shootAtPeak = peak,
-        )
-    }
-}
-
 @Preview(name = "Bottom bar, auto armed, rotation 90", showBackground = true, backgroundColor = 0xFF000000)
 @Composable
 private fun BottomControlBarArmedRotatedPreview() {
@@ -302,6 +251,25 @@ private fun BottomControlBarArmedRotatedPreview() {
             deviceRotationDegrees = 90,
             animationsEnabled = false,
             shootAtPeak = peak,
+        )
+    }
+}
+
+@Preview(name = "Bottom bar, hold progress and group dots", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun BottomControlBarHoldPreview() {
+    CompositionCoachTheme {
+        BottomControlBar(
+            isCapturing = false,
+            isShootReady = false,
+            score = 80,
+            lastPhotoUri = null,
+            onShutterClick = {},
+            onSwitchLensClick = {},
+            onOpenGallery = {},
+            animationsEnabled = false,
+            holdProgress = 0.4f,
+            groupStatus = GroupStatus(ready = false, facesTotal = 3, facesReady = 2),
         )
     }
 }

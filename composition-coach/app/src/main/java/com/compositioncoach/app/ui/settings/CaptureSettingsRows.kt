@@ -68,8 +68,12 @@ fun CaptureSettingsRows(
     onBurstSharpestChange: (Boolean) -> Unit,
     onAutoLevelChange: (Boolean) -> Unit,
     onAutoShootChange: (Boolean) -> Unit,
+    showEnhancement: Boolean = true,
 ) {
-    EnhancementSetting(EnhancementRowModel.of(settings.captureEnhancement, availableEnhancements), onEnhancementChange)
+    // The enhancement selector is a Pro control (`docs/PRODUCT.md`, "Hidden under Pro").
+    if (showEnhancement) {
+        EnhancementSetting(EnhancementRowModel.of(settings.captureEnhancement, availableEnhancements), onEnhancementChange)
+    }
     SwitchRow(
         label = stringResource(R.string.settings_burst_sharpest),
         subtitle = stringResource(R.string.settings_burst_sharpest_subtitle),

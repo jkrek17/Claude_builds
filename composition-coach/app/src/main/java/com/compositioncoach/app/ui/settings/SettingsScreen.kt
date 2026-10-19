@@ -1,11 +1,8 @@
 package com.compositioncoach.app.ui.settings
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -16,10 +13,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,17 +26,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.compositioncoach.app.BuildConfig
 import com.compositioncoach.app.R
 import com.compositioncoach.app.camera.CaptureEnhancement
+import com.compositioncoach.app.outcome.ExperienceMode
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.settings.subjectMaskSubtitle
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
-import com.compositioncoach.app.ui.theme.OnSurface
 import com.compositioncoach.composition.model.GuidanceLevel
-import com.compositioncoach.composition.model.SceneIntent
 
-/** Live-backed settings; see [SettingsContent] for the layout `docs/APP_UX.md` specifies. */
+/** Live-backed settings; see [SettingsContent] for the layout. */
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -49,22 +42,32 @@ fun SettingsScreen(
     onOpenPrivacyPolicy: () -> Unit,
     availableEnhancements: Set<CaptureEnhancement> = emptySet(),
     onEnhancementChange: (CaptureEnhancement) -> Unit = {},
+    actions: ExperienceActions = ExperienceActions(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val ui by viewModel.uiPreferences.collectAsStateWithLifecycle()
     SettingsContent(
         settings = settings,
+        ui = ui,
         onBack = onBack,
         onOpenPrivacyPolicy = onOpenPrivacyPolicy,
-        onSceneIntentChange = viewModel::setSceneIntent,
-        onGuidanceLevelChange = viewModel::setGuidanceLevel,
-        onShowScoreChange = viewModel::setShowScore,
-        onShowThirdsGridChange = viewModel::setShowThirdsGrid,
-        onGuidanceEnabledChange = viewModel::setGuidanceEnabled,
-        onBatterySaverChange = viewModel::setBatterySaver,
-        onDetectObjectsChange = viewModel::setDetectObjectsEnabled,
-        onSubjectMaskChange = viewModel::setSubjectMaskEnabled,
-        onPoseDetectionChange = viewModel::setPoseDetectionEnabled,
-        onDebugModeChange = viewModel::setDebugMode,
+        handlers = SettingsHandlers(
+            onGuidanceLevelChange = viewModel::setGuidanceLevel,
+            onShowScoreChange = viewModel::setShowScore,
+            onShowThirdsGridChange = viewModel::setShowThirdsGrid,
+            onGuidanceEnabledChange = viewModel::setGuidanceEnabled,
+            onBatterySaverChange = viewModel::setBatterySaver,
+            onDetectObjectsChange = viewModel::setDetectObjectsEnabled,
+            onSubjectMaskChange = viewModel::setSubjectMaskEnabled,
+            onPoseDetectionChange = viewModel::setPoseDetectionEnabled,
+            onDebugModeChange = viewModel::setDebugMode,
+        ),
+        actions = actions.copy(
+            onExperienceChange = viewModel::setExperienceMode,
+            onProControlsChange = viewModel::setProControls,
+            onGuideByVibrationChange = viewModel::setGuideByVibration,
+            onGuideByVoiceChange = viewModel::setGuideByVoice,
+        ),
         capture = {
             CaptureSettingsRows(
                 settings = settings,
@@ -73,195 +76,158 @@ fun SettingsScreen(
                 onBurstSharpestChange = viewModel::setBurstSharpest,
                 onAutoLevelChange = viewModel::setAutoLevel,
                 onAutoShootChange = viewModel::setAutoShoot,
+                showEnhancement = ui.proControls,
             )
         },
     )
 }
 
+/** The persisted-setting writers [SettingsContent] calls (all `SettingsRepository`, via [SettingsViewModel]). */
+data class SettingsHandlers(
+    val onGuidanceLevelChange: (GuidanceLevel) -> Unit = {},
+    val onShowScoreChange: (Boolean) -> Unit = {},
+    val onShowThirdsGridChange: (Boolean) -> Unit = {},
+    val onGuidanceEnabledChange: (Boolean) -> Unit = {},
+    val onBatterySaverChange: (Boolean) -> Unit = {},
+    val onDetectObjectsChange: (Boolean) -> Unit = {},
+    val onSubjectMaskChange: (Boolean) -> Unit = {},
+    val onPoseDetectionChange: (Boolean) -> Unit = {},
+    val onDebugModeChange: (Boolean) -> Unit = {},
+)
+
 /**
- * One screen, four primary controls, everything else behind "More" — progressive disclosure, per
- * `docs/APP_UX.md`. Primary, in order: Shooting mode, Guidance, Show score, Grid. "More" holds the
- * settings people set once and forget, and the footer states the privacy position with links to the full
- * policy and the version.
- *
- * "More" opens with the capture rows ([CaptureSettingsRows]: Enhancement, Sharpest of burst, Auto-level
- * horizon, Auto shoot when ready), passed in as [capture] so this layout stays free of camera state.
- *
- * Two rows in "More" are not in the spec's table: "Composition guidance" and "Body detection". Both are
- * persisted settings with real behaviour behind them, and a persisted toggle with no way back to it is a
- * trap (a user who turned coaching off would have no way to turn it on again), so they live at the ends of
- * the disclosed section rather than being dropped.
+ * Settings, reorganised for Wave 2 (`docs/WAVE2.md` 0b, `docs/PRODUCT.md` "Hidden under Pro"):
+ *  1. **Experience** (Easy · Coach); Coach adds "Show score".
+ *  2. **Your eye**, then the **Pro controls** switch; with Pro on, Guidance level and Grid appear.
+ *  3. **More** (collapsed): capture rows (Enhancement only under Pro), Guide by vibration / voice, Composition
+ *     guidance, Battery saver, then under Pro the detection toggles and Developer mode; Reset coaching preferences.
+ *  4. **About**: privacy line, Privacy, Open-source licences, Send feedback, version.
+ * The shooting-mode chips are gone: the outcome strip on the camera is the control, and it sets the scene.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsContent(
     settings: CoachSettings,
+    ui: UiPreferences,
     onBack: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
-    onSceneIntentChange: (SceneIntent) -> Unit,
-    onGuidanceLevelChange: (GuidanceLevel) -> Unit,
-    onShowScoreChange: (Boolean) -> Unit,
-    onShowThirdsGridChange: (Boolean) -> Unit,
-    onGuidanceEnabledChange: (Boolean) -> Unit,
-    onBatterySaverChange: (Boolean) -> Unit,
-    onDetectObjectsChange: (Boolean) -> Unit,
-    onSubjectMaskChange: (Boolean) -> Unit,
-    onPoseDetectionChange: (Boolean) -> Unit,
-    onDebugModeChange: (Boolean) -> Unit,
+    handlers: SettingsHandlers = SettingsHandlers(),
+    actions: ExperienceActions = ExperienceActions(),
     initiallyExpanded: Boolean = false,
     capture: @Composable () -> Unit = {},
 ) {
     var moreExpanded by rememberSaveable { mutableStateOf(initiallyExpanded) }
+    val pro = ui.proControls
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
             )
         },
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            SettingsSectionLabel(stringResource(R.string.settings_shooting_mode))
-            SceneIntentSelector(selected = settings.sceneIntent, onChange = onSceneIntentChange)
-
-            SettingsSectionLabel(stringResource(R.string.settings_guidance))
-            GuidanceLevelSelector(selected = settings.guidanceLevel, onChange = onGuidanceLevelChange)
-
-            Spacer(Modifier.height(8.dp))
-            SwitchRow(
-                label = stringResource(R.string.settings_show_score),
-                checked = settings.showScore,
-                onCheckedChange = onShowScoreChange,
+        Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+            ExperienceSelector(selected = ui.experienceMode, onChange = actions.onExperienceChange)
+            if (ui.experienceMode == ExperienceMode.COACH) {
+                SwitchRow(label = stringResource(R.string.settings_show_score), checked = settings.showScore, onCheckedChange = handlers.onShowScoreChange)
+            }
+            NavigationRow(
+                label = stringResource(R.string.your_eye_title),
+                subtitle = stringResource(R.string.settings_your_eye_subtitle),
+                onClick = actions.onOpenYourEye,
             )
             SwitchRow(
-                label = stringResource(R.string.settings_grid),
-                checked = settings.showThirdsGrid,
-                onCheckedChange = onShowThirdsGridChange,
+                label = stringResource(R.string.settings_pro_controls),
+                subtitle = stringResource(R.string.settings_pro_controls_subtitle),
+                checked = pro,
+                onCheckedChange = actions.onProControlsChange,
             )
+            if (pro) {
+                SettingsSectionLabel(stringResource(R.string.settings_guidance))
+                GuidanceLevelSelector(selected = settings.guidanceLevel, onChange = handlers.onGuidanceLevelChange)
+                Spacer(Modifier.height(8.dp))
+                SwitchRow(label = stringResource(R.string.settings_grid), checked = settings.showThirdsGrid, onCheckedChange = handlers.onShowThirdsGridChange)
+            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             MoreHeader(expanded = moreExpanded, onToggle = { moreExpanded = !moreExpanded })
             MoreContent(expanded = moreExpanded) {
                 capture()
                 SwitchRow(
+                    label = stringResource(R.string.settings_guide_vibration),
+                    subtitle = stringResource(R.string.settings_guide_vibration_subtitle),
+                    checked = ui.guideByVibration,
+                    onCheckedChange = actions.onGuideByVibrationChange,
+                )
+                SwitchRow(
+                    label = stringResource(R.string.settings_guide_voice),
+                    subtitle = stringResource(R.string.settings_guide_voice_subtitle),
+                    checked = ui.guideByVoice,
+                    onCheckedChange = actions.onGuideByVoiceChange,
+                )
+                SwitchRow(
                     label = stringResource(R.string.settings_composition_guidance),
                     subtitle = stringResource(R.string.settings_composition_guidance_subtitle),
                     checked = settings.guidanceEnabled,
-                    onCheckedChange = onGuidanceEnabledChange,
+                    onCheckedChange = handlers.onGuidanceEnabledChange,
                 )
                 SwitchRow(
                     label = stringResource(R.string.settings_battery_saver),
                     subtitle = stringResource(R.string.settings_battery_saver_subtitle),
                     checked = settings.batterySaver,
-                    onCheckedChange = onBatterySaverChange,
+                    onCheckedChange = handlers.onBatterySaverChange,
                 )
-                SwitchRow(
-                    label = stringResource(R.string.settings_detect_objects),
-                    checked = settings.detectObjectsEnabled,
-                    onCheckedChange = onDetectObjectsChange,
-                )
-                SwitchRow(
-                    label = stringResource(R.string.settings_subject_mask),
-                    subtitle = settings.subjectMaskSubtitle(),
-                    checked = settings.effectiveSubjectMaskEnabled,
-                    enabled = !settings.batterySaver,
-                    onCheckedChange = onSubjectMaskChange,
-                )
-                SwitchRow(
-                    label = stringResource(R.string.settings_body_detection),
-                    checked = settings.poseDetectionEnabled,
-                    onCheckedChange = onPoseDetectionChange,
-                )
-                SwitchRow(
-                    label = stringResource(R.string.settings_developer_mode),
-                    checked = settings.debugMode,
-                    onCheckedChange = onDebugModeChange,
-                )
+                if (pro) ProDetectionRows(settings, handlers)
+                ResetCoachingRow(onReset = actions.onResetCoaching)
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            SettingsFooter(onOpenPrivacyPolicy = onOpenPrivacyPolicy)
+            AboutSection(onOpenPrivacyPolicy = onOpenPrivacyPolicy, actions = actions)
         }
     }
 }
 
-/** "All analysis runs on your device." plus the privacy link and the version. */
+/** Detection toggles and developer mode: Pro only. */
 @Composable
-private fun SettingsFooter(onOpenPrivacyPolicy: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = SETTINGS_GUTTER, vertical = 4.dp)) {
-        Text(
-            text = stringResource(R.string.settings_privacy_footer),
-            style = MaterialTheme.typography.bodyMedium,
-            color = OnSurface.copy(alpha = 0.7f),
-        )
-        Row {
-            TextButton(onClick = onOpenPrivacyPolicy, contentPadding = PaddingValues(0.dp)) {
-                Text("Privacy")
-            }
-        }
-        Text(
-            text = "${stringResource(R.string.app_name)} ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
-            style = MaterialTheme.typography.bodySmall,
-            color = OnSurface.copy(alpha = 0.6f),
-        )
-        Spacer(Modifier.height(16.dp))
+private fun ProDetectionRows(settings: CoachSettings, handlers: SettingsHandlers) {
+    SwitchRow(label = stringResource(R.string.settings_detect_objects), checked = settings.detectObjectsEnabled, onCheckedChange = handlers.onDetectObjectsChange)
+    SwitchRow(
+        label = stringResource(R.string.settings_subject_mask),
+        subtitle = settings.subjectMaskSubtitle(),
+        checked = settings.effectiveSubjectMaskEnabled,
+        enabled = !settings.batterySaver,
+        onCheckedChange = handlers.onSubjectMaskChange,
+    )
+    SwitchRow(label = stringResource(R.string.settings_body_detection), checked = settings.poseDetectionEnabled, onCheckedChange = handlers.onPoseDetectionChange)
+    SwitchRow(label = stringResource(R.string.settings_developer_mode), checked = settings.debugMode, onCheckedChange = handlers.onDebugModeChange)
+}
+
+@Preview(name = "Settings, Easy", showBackground = true, heightDp = 900)
+@Composable
+private fun SettingsEasyPreview() {
+    CompositionCoachTheme {
+        SettingsContent(settings = CoachSettings(), ui = UiPreferences(), onBack = {}, onOpenPrivacyPolicy = {})
     }
 }
 
-@Preview(name = "Settings", showBackground = true)
+@Preview(name = "Settings, Coach + Pro, More expanded", showBackground = true, heightDp = 1600)
 @Composable
-private fun SettingsScreenPreview() {
+private fun SettingsProPreview() {
     CompositionCoachTheme {
         SettingsContent(
-            settings = CoachSettings(guidanceLevel = GuidanceLevel.COACH, sceneIntent = SceneIntent.PORTRAIT),
+            settings = CoachSettings(guidanceLevel = GuidanceLevel.COACH, batterySaver = true),
+            ui = UiPreferences(experienceMode = ExperienceMode.COACH, proControls = true, guideByVibration = true),
             onBack = {},
             onOpenPrivacyPolicy = {},
-            onSceneIntentChange = {},
-            onGuidanceLevelChange = {},
-            onShowScoreChange = {},
-            onShowThirdsGridChange = {},
-            onGuidanceEnabledChange = {},
-            onBatterySaverChange = {},
-            onDetectObjectsChange = {},
-            onSubjectMaskChange = {},
-            onPoseDetectionChange = {},
-            onDebugModeChange = {},
-        )
-    }
-}
-
-@Preview(name = "Settings, More expanded", showBackground = true)
-@Composable
-private fun SettingsScreenExpandedPreview() {
-    CompositionCoachTheme {
-        SettingsContent(
-            settings = CoachSettings(batterySaver = true, debugMode = true),
-            onBack = {},
-            onOpenPrivacyPolicy = {},
-            onSceneIntentChange = {},
-            onGuidanceLevelChange = {},
-            onShowScoreChange = {},
-            onShowThirdsGridChange = {},
-            onGuidanceEnabledChange = {},
-            onBatterySaverChange = {},
-            onDetectObjectsChange = {},
-            onSubjectMaskChange = {},
-            onPoseDetectionChange = {},
-            onDebugModeChange = {},
             initiallyExpanded = true,
             capture = {
                 CaptureSettingsRows(
-                    settings = CoachSettings(batterySaver = true, debugMode = true, captureEnhancement = CaptureEnhancement.HDR),
+                    settings = CoachSettings(captureEnhancement = CaptureEnhancement.HDR),
                     availableEnhancements = setOf(CaptureEnhancement.AUTO, CaptureEnhancement.HDR),
                     onEnhancementChange = {},
                     onBurstSharpestChange = {},

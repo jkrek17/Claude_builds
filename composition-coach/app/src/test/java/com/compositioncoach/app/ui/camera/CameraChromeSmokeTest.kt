@@ -10,12 +10,15 @@ import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.dp
 import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.camera.CaptureSessionInfo
 import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.camera.Steadiness
+import com.compositioncoach.app.outcome.Outcome
 import com.compositioncoach.app.settings.CoachSettings
+import com.compositioncoach.app.ui.settings.UiPreferences
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.composition.model.SceneClassification
 import com.compositioncoach.composition.model.SceneType
@@ -30,8 +33,8 @@ import org.robolectric.annotation.Config
  * The whole-flow sanity check for the capture/UI integration: composes exactly what [CameraScreen] draws from
  * [CameraUiState] — [CameraPreviewChrome] (coaching layer + top strip) over a 3:4 box, then
  * [CameraBottomChrome] — with a fake state where Night is running and has paused coaching, the steady-shot gate
- * is holding the shutter, and the lens offers 0.6/1/2. Each of the four pieces of wiring must surface in the
- * semantics tree, upright and at `ROTATION_90`.
+ * is holding the shutter, and the lens offers 0.6/1/2, with "A group" picked on a 3 s timer. Each piece of wiring
+ * must surface in the semantics tree, upright and at `ROTATION_90`; without Pro controls the Pro chrome is gone.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -51,6 +54,8 @@ class CameraChromeSmokeTest {
         zoomRatio = 1f,
         zoomPresets = listOf(0.6f, 1f, 2f),
         deviceRotationDegrees = rotation,
+        outcome = Outcome.GROUP,
+        timerSeconds = 3,
         captureSession = CaptureSessionInfo(
             lensFacing = LensFacing.BACK,
             activeEnhancement = CaptureEnhancement.NIGHT,
@@ -60,8 +65,9 @@ class CameraChromeSmokeTest {
         ),
     )
 
-    private fun compose(rotation: Int) {
+    private fun compose(rotation: Int, preferences: UiPreferences = UiPreferences(proControls = true)) {
         val state = state(rotation)
+        val model = CameraChromeModel.of(state, preferences)
         rule.setContent {
             CompositionCoachTheme {
                 Column(Modifier.size(360.dp, 760.dp)) {
@@ -73,6 +79,7 @@ class CameraChromeSmokeTest {
                             onOpenSettings = {},
                             onEnhancementSelected = {},
                             onOnboardingDismissed = {},
+                            model = model,
                         )
                     }
                     CameraBottomChrome(
@@ -84,9 +91,10 @@ class CameraChromeSmokeTest {
                         onShutterClick = {},
                         onSwitchLensClick = {},
                         onOpenGallery = {},
-                        onSceneIntentSelected = {},
+                        onOutcomeSelected = {},
                         onZoomPresetSelected = {},
                         modifier = Modifier.weight(1f),
+                        model = model,
                     )
                 }
             }
@@ -103,6 +111,12 @@ class CameraChromeSmokeTest {
         rule.onNodeWithContentDescription("Zoom 2×").assertIsNotSelected()
     }
 
+    private fun assertOutcomeStripAndTimer() {
+        rule.onNodeWithText("A group").assertIsSelected()
+        rule.onNodeWithText("A person").assertIsNotSelected()
+        rule.onNodeWithContentDescription("Self-timer: when everyone's ready").assertExists()
+    }
+
     @Test
     fun `upright, the pill, paused chip, steady hint and selected zoom chip all show`() {
         compose(0)
@@ -113,5 +127,26 @@ class CameraChromeSmokeTest {
     fun `at rotation 90, the same four pieces show`() {
         compose(90)
         assertWired()
+    }
+
+    @Test
+    fun `the outcome strip replaces the mode strip and the timer reads the group label, in both holds`() {
+        compose(0)
+        assertOutcomeStripAndTimer()
+    }
+
+    @Test
+    fun `rotated, the outcome strip and timer still show`() {
+        compose(90)
+        assertOutcomeStripAndTimer()
+    }
+
+    @Test
+    fun `without Pro controls the enhancement pill and zoom presets are not drawn at all`() {
+        compose(0, UiPreferences(proControls = false))
+        rule.onNodeWithContentDescription("Photo enhancement: Night").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Zoom 1×").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Coaching paused in Night").assertExists()
+        rule.onNodeWithText("A group").assertIsSelected()
     }
 }
