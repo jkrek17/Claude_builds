@@ -1,4 +1,8 @@
-# Wave 2: signature features
+# Wave 2: the after-action product
+
+Reshaped around `PRODUCT.md`: Easy mode live, coaching after the shot, learning what the user likes.
+Priority order: foundation → after-action card + "Try next time" → crops and what-if → taste model and
+"Your eye" → recipes (Motion first) → group assist → heads-up guidance → ghost → background separation.
 
 Features that only a composition coach can offer. Each entry states the user-facing behaviour, the
 owning module(s), the contract between modules, and the tests. Visual language per `APP_UX.md` and
@@ -20,6 +24,23 @@ preview frame.
   size, crop, re-encode at quality 100, copy EXIF, same folder, name `<original>_crop.jpg`).
 - `di/ReviewStore`: `ReviewEntry.stillAnalysis: FrameAnalysis?` and `stillResult: CompositionResult?`
   filled asynchronously after capture; the review screen shows the live-frame result until they arrive.
+
+## 0. After-action card and "Try next time"
+
+- `composition`: `AfterActionReport.build(result, optimization): AfterActionReport(verdict: Verdict
+  (KEEPER ≥ 80, GOOD 60..79, TRY_AGAIN < 60, adjusted by HIGH severity), worked: List<String> (≤3),
+  tryNextTime: TryNextTime?(sentence, predictedGain: Int, direction), lightNote: String?)`. The
+  sentence is one physical change: derived from the optimizer's best candidate when its gain ≥ 3,
+  else from the top improvement's recommendation. Unit-tested wording for every direction.
+- `app/ui/review`: the card per `PRODUCT.md` section "After the shot" (ring + verdict, worked,
+  try-next-time, better crop, what if, details, actions).
+
+## 0b. Easy / Coach defaults and plain-language intents
+
+- `settings`: `experience_mode` (EASY default, COACH), `pro_controls` (off). Defaults per the table in
+  `PRODUCT.md`. `SceneIntent.label` stays for code; the UI maps to the plain words.
+- `app/ui`: mode strip labels; Settings reorganised: Experience (Easy/Coach), Looks, Pro switch, then
+  the rest hidden unless Pro.
 
 ## 1. Composition crops on review
 
@@ -81,7 +102,12 @@ preview frame.
   Toggle off with a tap on the ghost. Also available from the gallery thumbnail long-press ("Use as
   guide").
 
-## 7. The coach learns you
+## 7. The coach learns you (and "Your eye")
+
+- `app`: a local `PhotoJournal` (JSON lines in app storage, one record per capture: timestamp, score,
+  verdict, scene, intent, recipe, the cue showing at capture, kept/retaken, crop chosen, favourite),
+  capped at 2000 records; feeds `AdaptiveWeights` and the "Your eye" screen (tendencies, follow
+  rates, best three). One-tap reset clears both.
 
 - `composition`: `AdaptiveWeights` keeps per-category multipliers (0.6..1.4) persisted by the app.
   Feedback events: `FOLLOWED(category)` when the headline cue's issue resolved within 6 s while the
@@ -93,6 +119,18 @@ preview frame.
   ("You tend to prefer centred subjects").
 - `app`: `CoachFeedbackTracker` in the ViewModel derives the events from state transitions; persisted
   in DataStore (`adaptive_weights` as a compact string).
+
+## 9. Recipes and Motion mode
+
+- `app`: a "Looks" chip behind the mode strip opens a second row: Silky water, Light trails, Clear the
+  crowd, Night city, Food from above. A recipe = intent + enhancement + capture pipeline + the one
+  instruction it needs; selecting one shows that instruction as the chip until capture.
+- `vision`/`app/camera`: **Motion** capture: frames from a higher-resolution analysis stream
+  (~1280×960 YUV) accumulated for 2-4 s with gyro-based alignment (rotation homography), blend
+  Average (Silky water), Lighten (Light trails) or Median (Clear the crowd); live accumulation shown in
+  the preview with a progress ring; abort on heavy motion ("Too shaky, try again"); save the stack plus
+  the first frame. Pure `FrameAccumulator` unit-tested on synthetic frames (average of constants, lighten
+  of a moving bright dot, median removes a transient).
 
 ## 8. Background separation on review
 
@@ -107,9 +145,9 @@ preview frame.
 
 | Agent | Owns | Delivers |
 |---|---|---|
-| Still analysis + background | `vision/**`, `app/camera/**`, `app/di/**` | Foundation, 4 (vision part), 8 (processing) |
-| Engine | `composition/**` | 1 (CropSuggester), 2 helper, 4 (GroupReadiness), 7 (AdaptiveWeights) |
-| Review and camera UI | `app/ui/**`, `app/res/**` | 1, 2, 4 (arc dots), 5, 6, 7 (settings rows), 8 (chips) |
-| ViewModel/state | `CameraViewModel.kt`, `CameraUiState.kt`, `settings/**` | Feedback tracker, ghost state, heads-up settings, still-analysis orchestration |
+| Capture and still analysis | `vision/**`, `app/camera/**`, `app/di/**` | Foundation, 9 (Motion capture), 4 (vision part), 8 (processing) |
+| Engine | `composition/**` | 0 (AfterActionReport), 1 (CropSuggester), 2 helper, 4 (GroupReadiness), 7 (AdaptiveWeights) |
+| UI | `app/ui/**`, `app/res/**` | 0 (card), 0b (strip, settings), 1, 2, 7 ("Your eye"), 9 (Looks row), 4 (arc dots), 5, 6, 8 (chips) |
+| State and persistence | `CameraViewModel.kt`, `CameraUiState.kt`, `settings/**` | 0b defaults, PhotoJournal, feedback tracker, adaptive weights persistence, recipe state, still-analysis orchestration |
 
 The integrator writes the cross-module contract (new fields with defaults) before launch, as in Wave 1.
