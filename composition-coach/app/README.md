@@ -506,6 +506,63 @@ requirement); decoding/scoring run on `Dispatchers.Default`, file I/O on `Dispat
 frames are simply dropped (`STRATEGY_KEEP_ONLY_LATEST`) while the ISP is busy. Target: burst
 shutter-to-saved under 1.2 s on a Pixel (`latencyMs` in the log line measures exactly that).
 
+### Outcome pipelines (Wave 2)
+
+`CapturePipeline.capture(outcome, request, stacking = frameSource as? FrameStackingSource)` captures an
+`Outcome` with the pipeline its `OutcomeSpec` asks for, degraded to what the device and the current bind can
+do. The steady gate (`awaitSteady`) and auto-level stay where they were (before and after the call). The
+decision is `OutcomeCapturePlanner.plan(outcome, availableEnhancements, PipelineSupport)` (pure, tested):
+
+| Spec asks for | Runs | Falls back to |
+|---|---|---|
+| enhancement preference list | first one the lens offers (OFF always) | missing *named* first choice (Night, HDR, Portrait) -> `degradedNote` "Night isn't available on this phone, using the best we can"; missing AUTO is not reported |
+| SINGLE | `captureSingle` | - |
+| BURST_SHARPEST | lucky imaging (no extension active) | SINGLE under an extension (the vendor merges frames itself) |
+| FOCUS_STACK | `FocusStacker` (no extension, `LensControl.supportsFocusStack`; binds OFF rather than AUTO when the lens can stack) | SINGLE under HDR; BURST_SHARPEST without manual focus (noted) |
+| MOTION_AVERAGE / _LIGHTEN / _MEDIAN | `MotionCapture` over the live stream | BURST_SHARPEST without live frames (noted) |
+
+The enhancement is chosen at **bind** time, so the state layer applies the plan before the shutter:
+`controller.setEnhancementOverride(plan.enhancement)` and, for Motion outcomes,
+`controller.setAnalysisResolutionHint(CameraController.MOTION_ANALYSIS_RESOLUTION)` (null otherwise), then
+`rebind()` when either returned true. `CaptureSessionInfo.requestedEnhancement` keeps reporting the persisted
+`capture_enhancement`; `outcomeEnhancement` reports the override.
+
+* **Motion** (`MotionCapture`): starts stacking (gyro-aligned, see `:vision`'s README), takes a normal still
+  through CameraX in parallel (the first frame, so the experiment never costs the shot), holds for
+  `holdSeconds` while `CapturePipeline.holdProgress` (0..1, the larger of time and frame progress) drives the
+  ring, and ends early as `MotionStatus.TOO_SHAKY` once `MotionSensor` has said MOVING for more than 25 % of
+  the hold. The stack is turned upright (lossless quarter turns) and saved with
+  `CaptureRepository.exportProcessed` (`_silk`, `_trails`, `_clear`); `ShotResult.uri` is the stack and
+  `companionUri` the still. Too shaky / too few frames: `uri` is the still, `motionStatus` says why and
+  `degradedNote` carries "Too shaky, try again". Resolution is the analysis stream's (1280x960 with the hint).
+* **Focus stack** (`FocusStacker`): three in-memory captures at 0 (infinity), 1/3 and 2/3 of
+  `LENS_INFO_MINIMUM_FOCUS_DISTANCE` diopters (`Camera2CameraControl`: `CONTROL_AF_MODE_OFF` +
+  `LENS_FOCUS_DISTANCE`, 180 ms settle each, AF restored in `finally`), the infinity frame saved untouched as
+  the first frame, then `FocusMerge`: Laplacian energy at three window sizes on 8x-downscaled guides,
+  `e^4`-normalized and smoothed weights, bilinear upsampling, per-pixel blend at full resolution in 256-row
+  strips (`BitmapRegionDecoder`; peak ~ one full-size output bitmap), gyro shift between exposures mapped into
+  the stored buffer. Saved in stored orientation with the first frame's EXIF orientation and capture facts
+  (`_stack`). Target <= 2.5 s for the three captures; the merge and encode add ~1-2 s on a 12 MP sensor
+  (estimate) and are logged (`Focus stack: capture N ms, total M ms`).
+* **Shutter sound**: every capture path calls `ShutterSound.playIfMandatory()` first, which plays
+  `MediaActionSound.SHUTTER_CLICK` only when `ShutterSoundPolicy.isMandatory` (API 33+
+  `MediaActionSound.mustPlayShutterSound()`; else the legacy `Camera.CameraInfo.canDisableShutterSound`,
+  the `ro.camera.sound.forced` property via `getprop`, and a JP/KR network or SIM country). Cached per process.
+* **Diagnostics** gain `pipeline`, `framesStacked`, `degradedNote` (appended to the log line only when set:
+  `... latencyMs=780 pipeline=MOTION_AVERAGE stacked=31`).
+
+**Review-side processing** (`CaptureRepository`, `BackgroundSeparator`):
+
+* `decodeForAnalysis(uri, maxLongEdgePx = 1024)`: EXIF-aware (rotation and selfie mirror), power-of-two
+  subsampled at decode then scaled, for `StillImageAnalyzer`. `decodeFull(uri)`: same at full size.
+* `exportCrop(uri, rect, suffix = "_crop")`: full decode, crop by the upright normalized rect, JPEG 100, EXIF
+  capture facts copied with orientation NORMAL and the new size, `<original>_crop.jpg` in the same album.
+  `exportProcessed(bitmap, nameSuffix)`: `CC_<timestamp><suffix>.jpg`, JPEG 100, orientation NORMAL.
+* `BackgroundSeparator.apply(bitmap, mask, strength)` (fallback for phones without the vendor Bokeh
+  extension; offered only when `isApplicable(mask)`: coverage 8-70 %): feathered 32x32 mask upscaled
+  bilinearly, background darkened x0.75 and box-blurred twice (radius 1 % of the long edge) at half
+  resolution, recomposited at full resolution; subject pixels are copied unchanged. Pure core `applyArgb`.
+
 ## Photo saving, thumbnail and gallery-shortcut hooks
 
 * After a successful capture, `CameraViewModel` records the saved `Uri` in

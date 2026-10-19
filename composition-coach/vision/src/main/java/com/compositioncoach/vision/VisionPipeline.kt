@@ -6,37 +6,32 @@ import android.util.Log
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import com.compositioncoach.composition.model.BodyLandmark
-import com.compositioncoach.composition.model.BodyLandmarkType
 import com.compositioncoach.composition.model.DetectedBody
 import com.compositioncoach.composition.model.DetectedFace
 import com.compositioncoach.composition.model.DetectedObject
 import com.compositioncoach.composition.model.FrameAnalysis
-import com.compositioncoach.composition.model.GazeDirection
 import com.compositioncoach.composition.model.ImageStatistics
-import com.compositioncoach.composition.model.NormalizedRect
 import com.compositioncoach.composition.model.SubjectMask
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
-import com.google.mlkit.vision.face.FaceLandmark
 import com.google.mlkit.vision.objects.ObjectDetection
 import com.google.mlkit.vision.objects.ObjectDetector
 import com.google.mlkit.vision.objects.ObjectDetectorOptionsBase
 import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
-import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseDetector
-import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import com.google.mlkit.vision.segmentation.Segmentation
-import com.google.mlkit.vision.segmentation.SegmentationMask
 import com.google.mlkit.vision.segmentation.Segmenter
 import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -44,9 +39,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import java.nio.ByteOrder
 import java.util.concurrent.Executors
-import kotlin.math.abs
 
 /**
  * Real [FrameAnalysisSource] implementation: turns CameraX [ImageProxy] frames into [FrameAnalysis]
@@ -107,14 +100,32 @@ import kotlin.math.abs
  *    previous mask is reused unchanged on off-cadence frames; [MaskDownsampler] converts a fresh raw
  *    mask to a 32x32 [SubjectMask] using the same [FrameCoordinateMapper] built for this frame's
  *    faces/objects.
+ *  - **Face classification** (eyes open, smiling) runs only in group scenes: while
+ *    [setGroupModeEnabled] is on, or once [FaceClassificationGate] has seen two or more faces for a second.
+ *    ML Kit fixes classification at client construction, so a second face client is used for it.
+ *
+ * ## Motion stacking
+ * As a [FrameStackingSource], accepted frames can also be fed to a [FrameAccumulator] (see
+ * [StackingSession]); detectors are skipped for those frames. ML Kit result mapping lives in
+ * [MlKitResultMapping], shared with [StillImageAnalyzer].
  */
 @androidx.annotation.OptIn(ExperimentalGetImage::class)
-class VisionPipeline(private val context: Context) : FrameAnalysisSource, VisionFeatureToggles {
+class VisionPipeline(private val context: Context) : FrameAnalysisSource, VisionFeatureToggles, FrameStackingSource {
 
     private val sampler = AdaptiveSampler()
     private val orientationSensor = OrientationSensor(context)
     private val segmentationCadence = SegmentationCadence()
     private val detectorSchedule = DetectorSchedule()
+    private val classificationGate = FaceClassificationGate()
+
+    @Volatile private var groupModeEnabled = false
+
+    /** The Motion stack in progress, or null; see [FrameStackingSource]. */
+    @Volatile private var stacking: StackingSession? = null
+    private val _stackingProgress = MutableStateFlow<Float?>(null)
+
+    /** Faces of the previous frame: re-reported while stacking, and their count drives [classificationGate]. */
+    @Volatile private var lastFaces: List<DetectedFace> = emptyList()
 
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "vision-pipeline") }
     private val dispatcher = executor.asCoroutineDispatcher()
@@ -136,12 +147,17 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
 
     private val detectorLock = Any()
     private var faceDetector: FaceDetector? = null
+    /** Same as [faceDetector] plus eyes-open/smiling classification; built on first use (group scenes). */
+    private var classifyingFaceDetector: FaceDetector? = null
     private var poseDetector: PoseDetector? = null
     private var objectDetector: ObjectDetector? = null
     private var segmenter: Segmenter? = null
 
     /** Scratch copy of the Y plane; only touched from [dispatcher]. */
     private var lumaScratch = ByteArray(0)
+
+    /** Scratch copies of the three YUV planes while stacking; only touched from [dispatcher]. */
+    private val stackPlaneScratch = Array(3) { ByteArray(0) }
 
     /** Scratch copy of a raw segmentation mask's float confidences; only touched from [dispatcher]. */
     private var maskFloatScratch = FloatArray(0)
@@ -164,15 +180,18 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
     )
     override val frames: Flow<FrameAnalysis> = _frames
 
-    private val faceDetectorOptions: FaceDetectorOptions by lazy {
-        FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-            .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
-            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-            .enableTracking()
-            .setMinFaceSize(0.1f)
-            .build()
-    }
+    private val faceDetectorOptions: FaceDetectorOptions by lazy { faceOptions(FaceDetectorOptions.CLASSIFICATION_MODE_NONE) }
+
+    /** ML Kit fixes classification at client construction, so group scenes use a second client. */
+    private val classifyingFaceDetectorOptions: FaceDetectorOptions by lazy { faceOptions(FaceDetectorOptions.CLASSIFICATION_MODE_ALL) }
+
+    private fun faceOptions(classification: Int): FaceDetectorOptions = FaceDetectorOptions.Builder()
+        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_ALL)
+        .setClassificationMode(classification)
+        .enableTracking()
+        .setMinFaceSize(0.1f)
+        .build()
 
     private val poseDetectorOptions: PoseDetectorOptions by lazy {
         PoseDetectorOptions.Builder()
@@ -250,9 +269,20 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
             // face/pose detection below finishes, which is exactly the work being gated).
             val wasSubjectPresent = hadSubjectLastFrame
 
-            val mediaImage = imageProxy.image
+            // While a Motion stack is running the frame feeds the stack instead of the detectors (the last
+            // detections are re-reported), so the stack gets as many frames as possible.
+            val stackingSession = stacking
+            if (stackingSession != null) {
+                runCatching { feedStack(stackingSession, imageProxy, front) }
+                    .onFailure { Log.w(TAG, "Could not add a frame to the stack", it) }
+                faces = lastFaces
+                objects = lastObjects
+            }
+
+            val mediaImage = if (stackingSession == null) imageProxy.image else null
             if (mediaImage != null) {
                 val input = InputImage.fromMediaImage(mediaImage, rotation)
+                val classify = classificationGate.update(lastFaces.size, System.nanoTime() / 1_000_000, groupModeEnabled)
                 // DetectorSchedule owns pose/object cadence (including the PerformanceTier ladder);
                 // called exactly once per accepted frame that reaches detection, same as the counter
                 // it replaces.
@@ -269,7 +299,7 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                 coroutineScope {
                     val faceDeferred = async {
                         val start = System.nanoTime()
-                        val result = runCatching { getFaceDetector().process(input).await() }.getOrDefault(emptyList())
+                        val result = runCatching { getFaceDetector(classify).process(input).await() }.getOrDefault(emptyList())
                         faceMs = (System.nanoTime() - start) / 1_000_000
                         result
                     }
@@ -298,14 +328,15 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                         }
                     } else null
 
-                    faces = faceDeferred.await().mapIndexed { index, face -> mapFace(index, face, mapper) }
+                    faces = faceDeferred.await().mapIndexed { index, face -> MlKitResultMapping.mapFace(index, face, mapper) }
+                    lastFaces = faces
                     if (poseDeferred != null) {
                         val pose = poseDeferred.await()
-                        bodies = pose?.let { mapPose(it, mapper) }?.let { listOf(it) } ?: emptyList()
+                        bodies = pose?.let { MlKitResultMapping.mapPose(it, mapper) }?.let { listOf(it) } ?: emptyList()
                         lastBodies = bodies
                     }
                     if (objectDeferred != null) {
-                        val rawObjects = objectDeferred.await().map { mapRawObject(it, mapper) }
+                        val rawObjects = objectDeferred.await().map { MlKitResultMapping.mapRawObject(it, mapper) }
                         objects = ObjectMapper.map(rawObjects, faces.map { it.bounds })
                         lastObjects = objects
                     } else if (schedule.reuseStaleObjects) {
@@ -321,8 +352,10 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
                         // process() legitimately returned nothing; either way keep the previous mask
                         // (already the default for `subjectMask`) rather than reporting a hole.
                         segmentationDeferred.await()?.let { mask ->
-                            subjectMask = buildSubjectMask(mask, mapper)
-                            lastSubjectMask = subjectMask
+                            val (built, scratch) = MlKitResultMapping.subjectMask(mask, mapper, maskFloatScratch)
+                            maskFloatScratch = scratch
+                            subjectMask = built
+                            lastSubjectMask = built
                         }
                     }
                 }
@@ -412,153 +445,12 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         return stats to ms
     }
 
-    // --- ML Kit result mapping -------------------------------------------------------------
-
-    /**
-     * Maps an ML Kit [Face] to [DetectedFace].
-     *
-     * ML Kit's `headEulerAngleY` (yaw) is documented as positive when the face is rotated toward the
-     * *camera's* right (i.e. the right side of the un-mirrored, rotated image ML Kit sees). The
-     * contract for [DetectedFace.headEulerY] is screen-space: positive = face turned toward the
-     * screen's right. For the rear camera the preview isn't mirrored, so camera-right == screen-right
-     * and the sign is unchanged; for the front camera the preview *is* mirrored, so camera-right
-     * becomes screen-left and the sign must flip. The same mirroring flips the sense of `headEulerZ`
-     * (roll) and swaps which detected eye lands on the screen-left vs screen-right side (ML Kit's
-     * LEFT_EYE/RIGHT_EYE are the *subject's own* anatomical left/right, which is why they need
-     * swapping post-mirror to keep [DetectedFace.leftEye] meaning "whichever eye is drawn further
-     * left on screen" for downstream composition logic). Pose landmarks below intentionally do *not*
-     * get this swap: [BodyLandmarkType] documents that LEFT/RIGHT there are the subject's own
-     * left/right regardless of mirroring.
-     */
-    private fun mapFace(id: Int, face: Face, mapper: FrameCoordinateMapper): DetectedFace {
-        val box = face.boundingBox
-        val bounds: NormalizedRect = mapper
-            .rotatedFullRectToNormalized(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat())
-            .clampToFrame()
-
-        fun landmark(type: Int) = face.getLandmark(type)?.position?.let { mapper.rotatedFullPointToNormalized(it.x, it.y) }
-
-        var leftEye = landmark(FaceLandmark.LEFT_EYE)
-        var rightEye = landmark(FaceLandmark.RIGHT_EYE)
-        val noseBase = landmark(FaceLandmark.NOSE_BASE)
-        if (mapper.mirror) {
-            val tmp = leftEye
-            leftEye = rightEye
-            rightEye = tmp
+    private fun getFaceDetector(classify: Boolean): FaceDetector = synchronized(detectorLock) {
+        if (classify) {
+            classifyingFaceDetector ?: FaceDetection.getClient(classifyingFaceDetectorOptions).also { classifyingFaceDetector = it }
+        } else {
+            faceDetector ?: FaceDetection.getClient(faceDetectorOptions).also { faceDetector = it }
         }
-
-        val rawYaw = face.headEulerAngleY
-        val rawRoll = face.headEulerAngleZ
-        val screenYaw = if (mapper.mirror) -rawYaw else rawYaw
-        val screenRoll = if (mapper.mirror) -rawRoll else rawRoll
-
-        val gaze = when {
-            abs(screenYaw) < GAZE_CENTER_THRESHOLD_DEGREES -> GazeDirection.CENTER
-            screenYaw > 0f -> GazeDirection.RIGHT
-            else -> GazeDirection.LEFT
-        }
-
-        return DetectedFace(
-            id = face.trackingId ?: id,
-            bounds = bounds,
-            leftEye = leftEye,
-            rightEye = rightEye,
-            noseBase = noseBase,
-            headEulerY = screenYaw,
-            headEulerZ = screenRoll,
-            gaze = gaze,
-            // ML Kit's face detector does not expose a scalar detection-confidence score; 1f is the
-            // documented default for "no confidence information available" per DetectedFace's KDoc.
-            confidence = 1f,
-            smilingProbability = face.smilingProbability,
-        )
-    }
-
-    private fun mapPose(pose: Pose, mapper: FrameCoordinateMapper): DetectedBody? {
-        val landmarks = LinkedHashMap<BodyLandmarkType, BodyLandmark>()
-        for (lm in pose.allPoseLandmarks) {
-            val type = POSE_LANDMARK_MAP[lm.landmarkType] ?: continue
-            val pos = mapper.rotatedFullPointToNormalized(lm.position.x, lm.position.y)
-            landmarks[type] = BodyLandmark(type, pos, lm.inFrameLikelihood)
-        }
-        if (landmarks.isEmpty()) return null
-        val visible = landmarks.values.filter { it.inFrameLikelihood > 0.5f }
-        if (visible.isEmpty()) return null
-
-        var left = Float.MAX_VALUE
-        var top = Float.MAX_VALUE
-        var right = -Float.MAX_VALUE
-        var bottom = -Float.MAX_VALUE
-        for (v in visible) {
-            left = minOf(left, v.position.x)
-            right = maxOf(right, v.position.x)
-            top = minOf(top, v.position.y)
-            bottom = maxOf(bottom, v.position.y)
-        }
-        val bounds = NormalizedRect(left, top, right, bottom).clampToFrame()
-        return DetectedBody(
-            id = 0,
-            bounds = bounds,
-            landmarks = landmarks,
-            confidence = visible.size.toFloat() / landmarks.size,
-        )
-    }
-
-    /**
-     * Maps an ML Kit object-detection result (rotated-full pixel space, per [ObjectDetector]'s
-     * contract — same space as [Face.getBoundingBox]) to a [RawDetectedObject] in normalized,
-     * frame-clamped coordinates. Filtering/categorization happens separately in [ObjectMapper] so it
-     * stays unit-testable without a real ML Kit `DetectedObject`.
-     */
-    private fun mapRawObject(obj: com.google.mlkit.vision.objects.DetectedObject, mapper: FrameCoordinateMapper): RawDetectedObject {
-        val box = obj.boundingBox
-        val bounds = mapper
-            .rotatedFullRectToNormalized(box.left.toFloat(), box.top.toFloat(), box.right.toFloat(), box.bottom.toFloat())
-            .clampToFrame()
-        val topLabel = obj.labels.maxByOrNull { it.confidence }
-        return RawDetectedObject(
-            bounds = bounds,
-            trackingId = obj.trackingId,
-            labelText = topLabel?.text,
-            labelConfidence = topLabel?.confidence,
-        )
-    }
-
-    /**
-     * Converts an ML Kit raw-size [SegmentationMask] (a direct `ByteBuffer` of per-pixel float
-     * confidences, row-major, in rotated-full pixel space) into a 32x32 [SubjectMask] via
-     * [MaskDownsampler]. The `ByteBuffer` -> `FloatArray` copy reuses [maskFloatScratch] (this
-     * happens only on the frames [SegmentationCadence] actually runs the segmenter, i.e. every 3rd-6th
-     * accepted frame, not every frame) but the *output* grid is always a fresh array: the returned
-     * [SubjectMask] is a stable value that [lastSubjectMask] and downstream callers may hold across
-     * several subsequent frames (while segmentation is off-cadence), so it must never alias a buffer
-     * this class goes on to mutate for a later frame.
-     */
-    private fun buildSubjectMask(mask: SegmentationMask, mapper: FrameCoordinateMapper): SubjectMask {
-        val width = mask.width
-        val height = mask.height
-        val needed = width * height
-        val floats = maskFloatScratch.takeIf { it.size >= needed } ?: FloatArray(needed).also { maskFloatScratch = it }
-        val buffer = mask.buffer
-        buffer.rewind()
-        // ML Kit's segmentation buffers are populated by native code in the platform's native byte
-        // order; this matches the reference integration pattern (read via a float view, no manual
-        // per-byte assembly).
-        buffer.order(ByteOrder.nativeOrder()).asFloatBuffer().get(floats, 0, needed)
-        val grid = MaskDownsampler.downsample(
-            source = floats,
-            sourceWidth = width,
-            sourceHeight = height,
-            mapper = mapper,
-            gridWidth = SUBJECT_MASK_GRID_SIZE,
-            gridHeight = SUBJECT_MASK_GRID_SIZE,
-            out = FloatArray(SUBJECT_MASK_GRID_SIZE * SUBJECT_MASK_GRID_SIZE),
-        )
-        return SubjectMask(SUBJECT_MASK_GRID_SIZE, SUBJECT_MASK_GRID_SIZE, grid)
-    }
-
-    private fun getFaceDetector(): FaceDetector = synchronized(detectorLock) {
-        faceDetector ?: FaceDetection.getClient(faceDetectorOptions).also { faceDetector = it }
     }
 
     private fun getPoseDetector(): PoseDetector = synchronized(detectorLock) {
@@ -598,7 +490,9 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
     }
 
     private fun applyEffectiveInterval() {
-        sampler.setTargetIntervalMs(maxOf(settingsTargetIntervalMs, tierTargetIntervalMs))
+        // A Motion stack lasts a few seconds and skips the detectors, so it may run faster than either floor.
+        val floor = if (stacking != null) STACKING_INTERVAL_MS else maxOf(settingsTargetIntervalMs, tierTargetIntervalMs)
+        sampler.setTargetIntervalMs(floor)
     }
 
     // --- VisionFeatureToggles ----------------------------------------------------------------
@@ -627,6 +521,11 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         if (tier != PerformanceTier.FULL) lastSubjectMask = null
     }
 
+    /** See [VisionFeatureToggles.setGroupModeEnabled] and [FaceClassificationGate]. */
+    override fun setGroupModeEnabled(enabled: Boolean) {
+        groupModeEnabled = enabled
+    }
+
     /**
      * Eagerly warms all four ML Kit clients so the first frame doesn't pay their construction cost.
      * This is a *best-effort* warm-up, not a precondition for the pipeline to run: [getFaceDetector] /
@@ -653,8 +552,10 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         running = true
         lastBodies = emptyList()
         lastObjects = emptyList()
+        lastFaces = emptyList()
         lastSubjectMask = null
         hadSubjectLastFrame = false
+        classificationGate.reset()
         detectorSchedule.reset()
         segmentationCadence.reset()
         // Register the rotation listener / orientation sensor first (before the slow detector warm-up) so
@@ -689,6 +590,8 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
         synchronized(detectorLock) {
             faceDetector?.close()
             faceDetector = null
+            classifyingFaceDetector?.close()
+            classifyingFaceDetector = null
             poseDetector?.close()
             poseDetector = null
             objectDetector?.close()
@@ -696,35 +599,62 @@ class VisionPipeline(private val context: Context) : FrameAnalysisSource, Vision
             segmenter?.close()
             segmenter = null
         }
+        stacking = null
+        _stackingProgress.value = null
+        applyEffectiveInterval()
+    }
+
+    // --- FrameStackingSource -----------------------------------------------------------------
+
+    override val stackingProgress: StateFlow<Float?> get() = _stackingProgress
+
+    override fun startAccumulating(
+        mode: StackBlend,
+        maxFrames: Int,
+        aligner: FrameAligner?,
+        focalToLongEdge: Float,
+        maxShiftFraction: Float,
+    ): Boolean {
+        if (!running) return false
+        stacking = StackingSession(mode, maxFrames.coerceAtLeast(1), aligner, focalToLongEdge, maxShiftFraction, orientationSensor.deviceRotationDegrees)
+        _stackingProgress.value = 0f
+        applyEffectiveInterval()
+        return true
+    }
+
+    override suspend fun stopAccumulating(): AccumulatedImage? {
+        // Detach on the pipeline thread so no frame is half-added; the (possibly slow) result runs elsewhere.
+        val session = withContext(dispatcher) { stacking.also { stacking = null } }
+        _stackingProgress.value = null
+        applyEffectiveInterval()
+        return withContext(Dispatchers.Default) { session?.result() }
+    }
+
+    /** Converts the frame and adds it to [session]; runs on the pipeline thread with the frame still open. */
+    private fun feedStack(session: StackingSession, imageProxy: ImageProxy, front: Boolean) {
+        val crop = imageProxy.cropRect
+        val displayMapper = FrameCoordinateMapper(
+            imageProxy.width, imageProxy.height, imageProxy.imageInfo.rotationDegrees,
+            crop.left, crop.top, crop.right, crop.bottom, mirror = front,
+        )
+        val planes = imageProxy.planes
+        // Plane copies reuse per-plane scratch arrays (pipeline thread only): ~1.8 MB a frame at 1280x960.
+        fun copy(index: Int): YuvConverter.Plane {
+            val plane = planes[index]
+            val buffer = plane.buffer.duplicate().also { it.rewind() }
+            val needed = buffer.remaining()
+            val bytes = stackPlaneScratch[index].takeIf { it.size == needed } ?: ByteArray(needed).also { stackPlaneScratch[index] = it }
+            buffer.get(bytes, 0, needed)
+            return YuvConverter.Plane(bytes, plane.rowStride, plane.pixelStride)
+        }
+        session.offer(copy(0), copy(1), copy(2), displayMapper, front, imageProxy.imageInfo.timestamp)
+        _stackingProgress.value = session.progress
     }
 
     companion object {
         private const val TAG = "VisionPipeline"
-        private const val GAZE_CENTER_THRESHOLD_DEGREES = 12f
-        private const val SUBJECT_MASK_GRID_SIZE = MaskDownsampler.DEFAULT_GRID_SIZE
 
-        private val POSE_LANDMARK_MAP: Map<Int, BodyLandmarkType> = mapOf(
-            PoseLandmark.NOSE to BodyLandmarkType.NOSE,
-            PoseLandmark.LEFT_EYE to BodyLandmarkType.LEFT_EYE,
-            PoseLandmark.RIGHT_EYE to BodyLandmarkType.RIGHT_EYE,
-            PoseLandmark.LEFT_EAR to BodyLandmarkType.LEFT_EAR,
-            PoseLandmark.RIGHT_EAR to BodyLandmarkType.RIGHT_EAR,
-            PoseLandmark.LEFT_SHOULDER to BodyLandmarkType.LEFT_SHOULDER,
-            PoseLandmark.RIGHT_SHOULDER to BodyLandmarkType.RIGHT_SHOULDER,
-            PoseLandmark.LEFT_ELBOW to BodyLandmarkType.LEFT_ELBOW,
-            PoseLandmark.RIGHT_ELBOW to BodyLandmarkType.RIGHT_ELBOW,
-            PoseLandmark.LEFT_WRIST to BodyLandmarkType.LEFT_WRIST,
-            PoseLandmark.RIGHT_WRIST to BodyLandmarkType.RIGHT_WRIST,
-            PoseLandmark.LEFT_HIP to BodyLandmarkType.LEFT_HIP,
-            PoseLandmark.RIGHT_HIP to BodyLandmarkType.RIGHT_HIP,
-            PoseLandmark.LEFT_KNEE to BodyLandmarkType.LEFT_KNEE,
-            PoseLandmark.RIGHT_KNEE to BodyLandmarkType.RIGHT_KNEE,
-            PoseLandmark.LEFT_ANKLE to BodyLandmarkType.LEFT_ANKLE,
-            PoseLandmark.RIGHT_ANKLE to BodyLandmarkType.RIGHT_ANKLE,
-            PoseLandmark.LEFT_HEEL to BodyLandmarkType.LEFT_HEEL,
-            PoseLandmark.RIGHT_HEEL to BodyLandmarkType.RIGHT_HEEL,
-            PoseLandmark.LEFT_FOOT_INDEX to BodyLandmarkType.LEFT_FOOT_INDEX,
-            PoseLandmark.RIGHT_FOOT_INDEX to BodyLandmarkType.RIGHT_FOOT_INDEX,
-        )
+        /** Sampler floor while stacking: detectors are skipped, so the pipeline can take frames faster. */
+        private const val STACKING_INTERVAL_MS = 40L
     }
 }

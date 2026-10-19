@@ -8,7 +8,9 @@ import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import android.os.SystemClock
 import com.compositioncoach.composition.model.DeviceOrientation
+import com.compositioncoach.vision.AngularDelta
 import com.compositioncoach.vision.DeviceRotationQuantizer
 import com.compositioncoach.vision.gravityReadingIsReliable
 import com.compositioncoach.vision.gravityToPitchDegrees
@@ -36,6 +38,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * primary rotation comes from `FrameAnalysis`, which stops arriving when an extension session cannot carry
  * ImageAnalysis (or when the vision pipeline failed to start). Without this fallback, the capture EXIF
  * orientation would freeze at the last analysed hold, and auto-level would have no roll to work from.
+ *
+ * ## Gyro history (frame alignment)
+ * Raw gyroscope samples are also kept in a [GyroHistory] (8 s), so stacking code can ask how far the phone has
+ * turned since an instant ([angularDeltaSince], [angularDeltaBetween]); Motion stacks and the focus stack use
+ * that for rotation-only alignment. Sensor-event timestamps are `elapsedRealtimeNanos` on every device this
+ * app supports, so callers pass `SystemClock.elapsedRealtimeNanos()` instants. Only the raw gyroscope feeds
+ * the history; on the rotation-vector fallback the deltas are null (no alignment).
  *
  * ## Lifecycle
  * [start]/[stop] are idempotent and are called from the same resume/pause hooks that start/stop the vision
@@ -77,6 +86,22 @@ class MotionSensor(context: Context) : SensorEventListener {
     private var lastQuaternion: FloatArray? = null
     private var lastQuaternionTimestamp = 0L
     private var started = false
+    private val gyroHistory = GyroHistory()
+
+    /**
+     * Rotation of the phone from [timestampNs] (`SystemClock.elapsedRealtimeNanos()` clock) until the newest
+     * gyro sample, about the device axes; null when the gyro is off or its history does not reach back that far.
+     */
+    fun angularDeltaSince(timestampNs: Long): AngularDelta? {
+        val latest = gyroHistory.latestTimestampNs() ?: return null
+        return gyroHistory.deltaBetween(timestampNs, maxOf(latest, timestampNs))
+    }
+
+    /** Rotation between two `elapsedRealtimeNanos` instants; null when not covered by the history. */
+    fun angularDeltaBetween(fromNs: Long, toNs: Long): AngularDelta? = gyroHistory.deltaBetween(fromNs, toNs)
+
+    /** `SystemClock.elapsedRealtimeNanos()`, the clock [angularDeltaSince] expects; here so callers need no import. */
+    fun nowNs(): Long = SystemClock.elapsedRealtimeNanos()
 
     @Synchronized
     fun start() {
@@ -92,6 +117,7 @@ class MotionSensor(context: Context) : SensorEventListener {
         gravityInitialized = false
         orientation = null
         classifier.reset()
+        gyroHistory.clear()
         lastQuaternion = null
         _steadiness.value = Steadiness.STEADY
         if (sensor == null && gravitySensor == null) {
@@ -135,6 +161,7 @@ class MotionSensor(context: Context) : SensorEventListener {
             if (previous == null) return
             SteadinessClassifier.angularSpeedFromQuaternions(previous, q, (event.timestamp - previousTs) / 1e9f)
         } else {
+            gyroHistory.add(event.timestamp, event.values[0], event.values[1], event.values[2])
             SteadinessClassifier.angularSpeed(event.values[0], event.values[1], event.values[2])
         }
         val next = classifier.update(event.timestamp, speed)

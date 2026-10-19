@@ -37,4 +37,12 @@ interface VisionFeatureToggles {
      * is exactly today's behaviour.
      */
     fun setPerformanceTier(tier: PerformanceTier) {}
+
+    /**
+     * Group mode (the Group outcome): run ML Kit face classification on every frame so
+     * [com.compositioncoach.composition.model.DetectedFace.eyesOpenProbability] is filled. Outside group mode
+     * classification still switches on by itself once two or more faces have been in view for a second (see
+     * [FaceClassificationGate]). Default no-op, like [setPerformanceTier].
+     */
+    fun setGroupModeEnabled(enabled: Boolean) {}
 }

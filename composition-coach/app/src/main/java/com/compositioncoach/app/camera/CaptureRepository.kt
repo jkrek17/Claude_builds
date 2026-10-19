@@ -13,6 +13,7 @@ import android.util.Size
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.exifinterface.media.ExifInterface
+import com.compositioncoach.composition.model.NormalizedRect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -29,7 +30,9 @@ import kotlin.coroutines.resumeWithException
  * [androidx.camera.view.PreviewView] surface; [ImageCapture] reads frames straight from the camera pipeline,
  * so nothing drawn by Compose is ever baked into the saved JPEG. No extra care is needed here for that.
  */
-class CaptureRepository(private val context: Context) {
+class CaptureRepository(internal val context: Context) {
+
+    private val exporter by lazy { PhotoExporter(this) }
 
     /** Takes a photo with [imageCapture] and returns the [Uri] it was saved to (a MediaStore content Uri). */
     suspend fun capture(imageCapture: ImageCapture, isFrontCamera: Boolean): Uri {
@@ -121,7 +124,7 @@ class CaptureRepository(private val context: Context) {
                 }
                 saveAttributes()
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insertIntoMediaStore(temp, name) else copyToLegacyPicturesDir(temp, name)
+            saveFileAsNewPhoto(temp, name)
         } finally {
             temp.delete()
         }
@@ -259,6 +262,55 @@ class CaptureRepository(private val context: Context) {
         }
         return sampleSize
     }
+
+    // --- Still analysis, crops and processed copies (Wave 2) ---------------------------------------------
+
+    /**
+     * Decodes a saved photo upright (EXIF rotation and the selfie mirror applied, i.e. exactly what the gallery
+     * shows) with its long edge at most [maxLongEdgePx], for `StillImageAnalyzer`. Subsampled at decode time,
+     * so a 12 MP photo never lands in memory at full size. Runs on [Dispatchers.IO]; null on any failure.
+     */
+    suspend fun decodeForAnalysis(uri: Uri, maxLongEdgePx: Int = 1024): Bitmap? = withContext(Dispatchers.IO) {
+        runCatching { PhotoCodec.decodeUpright(context.contentResolver, uri, maxLongEdgePx) }.getOrNull()
+    }
+
+    /**
+     * Decodes a saved photo upright at full resolution (ARGB_8888: ~48 MB for 12 MP, transiently twice that
+     * while an EXIF rotation is applied). For processing on review (background separation). Null on failure.
+     */
+    suspend fun decodeFull(uri: Uri): Bitmap? = withContext(Dispatchers.IO) {
+        runCatching { PhotoCodec.decodeUpright(context.contentResolver, uri, null) }.getOrNull()
+    }
+
+    /**
+     * Saves a cropped copy of the photo at [uri] and returns the new photo's Uri; the original is untouched.
+     * [rect] is in the upright photo's normalized coordinates (the same space as the still analysis and
+     * `CropSuggestion.rect`). Full-size decode, crop, JPEG quality 100 (one generation of re-encoding is the
+     * only loss), EXIF capture facts copied with the orientation reset to normal (the pixels are now upright),
+     * same album, named `<original>_crop.jpg` (MediaStore adds " (1)" if that exists). Throws on failure.
+     */
+    suspend fun exportCrop(uri: Uri, rect: NormalizedRect, suffix: String = "_crop"): Uri =
+        exporter.exportCrop(uri, rect, suffix, newFileName())
+
+    /**
+     * Saves a processed image (a Motion stack, a focus stack, a background-separated portrait) as a new photo
+     * named `CC_<timestamp><nameSuffix>.jpg` in the app's album, JPEG quality 100, orientation normal. The
+     * bitmap must already be upright; it is recycled after encoding. Throws on failure.
+     */
+    suspend fun exportProcessed(bitmap: Bitmap, nameSuffix: String): Uri =
+        exporter.save(bitmap, PhotoCodec.derivedName(null, nameSuffix, newFileName()), null)
+
+    /**
+     * Like [exportProcessed] for a bitmap still in a capture's *stored* orientation (the focus stack merges
+     * stored buffers): written with [exifOrientation] instead of being rotated in memory (no second full-size
+     * bitmap), with the capture facts copied from [sourceJpeg]'s EXIF.
+     */
+    internal suspend fun exportProcessedOriented(bitmap: Bitmap, nameSuffix: String, exifOrientation: Int, sourceJpeg: ByteArray?): Uri =
+        exporter.exportOriented(bitmap, PhotoCodec.derivedName(null, nameSuffix, newFileName()), exifOrientation, sourceJpeg)
+
+    /** Inserts [source] as a new photo named [name] in the app's album (MediaStore on 29+, the legacy dir below). */
+    internal suspend fun saveFileAsNewPhoto(source: File, name: String): Uri =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insertIntoMediaStore(source, name) else copyToLegacyPicturesDir(source, name)
 
     /**
      * Finds the most recently added photo under `Pictures/CompositionCoach` via MediaStore — used on a

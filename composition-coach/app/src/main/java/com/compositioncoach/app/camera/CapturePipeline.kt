@@ -10,6 +10,10 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.camera.core.ImageCapture
 import androidx.exifinterface.media.ExifInterface
+import com.compositioncoach.app.outcome.Outcome
+import com.compositioncoach.vision.FrameStackingSource
+import kotlinx.coroutines.flow.StateFlow
+import com.compositioncoach.app.outcome.CapturePipeline as OutcomePipeline
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -43,6 +47,14 @@ class CapturePipeline(
     private val motionSensor: MotionSensor,
 ) {
 
+    /** Motion holds (see [MotionCapture]); its [MotionCapture.progress] is re-exposed as [holdProgress]. */
+    private val motionCapture = MotionCapture(repository, motionSensor)
+    private val stacked = StackedCaptures(repository, motionCapture, FocusStacker(repository, motionSensor), ::baseDiagnostics)
+    private val shutterSound by lazy { ShutterSound(repository.context) }
+
+    /** 0..1 while a Motion hold is running (for the progress ring), null otherwise. */
+    val holdProgress: StateFlow<Float?> get() = motionCapture.progress
+
     /** Everything a capture needs to know, snapshotted at shutter time. */
     class ShotRequest(
         val controller: CameraController?,
@@ -57,7 +69,20 @@ class CapturePipeline(
         val waitedForSteadyMs: Long,
     )
 
-    class ShotResult(val uri: Uri, val diagnostics: CaptureDiagnostics)
+    /**
+     * @param uri the photo to review: the stack for Motion/focus outcomes, else the only photo.
+     * @param companionUri the normal first frame saved alongside a stack (null when there is none).
+     * @param motionStatus how a Motion hold ended (null for other pipelines); TOO_SHAKY means [uri] is the
+     *   first frame and the UI should say "Too shaky, try again".
+     * @param plan what [capture] (outcome overload) decided, including the degraded note.
+     */
+    class ShotResult(
+        val uri: Uri,
+        val diagnostics: CaptureDiagnostics,
+        val companionUri: Uri? = null,
+        val motionStatus: MotionStatus? = null,
+        val plan: CapturePlan? = null,
+    )
 
     /**
      * Step 1. Returns the steadiness at the moment the capture may proceed and how long it waited (0 when the
@@ -72,8 +97,16 @@ class CapturePipeline(
         return (settled ?: motionSensor.steadiness.value) to (SystemClock.elapsedRealtime() - start)
     }
 
-    /** Steps 2 and 3. Throws only if even the single-capture path fails. */
+    /**
+     * Steps 2 and 3. Throws only if even the single-capture path fails. Plays the shutter click first where the
+     * region requires it ([ShutterSoundPolicy]).
+     */
     suspend fun capture(request: ShotRequest): ShotResult {
+        shutterSound.playIfMandatory()
+        return captureAny(request)
+    }
+
+    private suspend fun captureAny(request: ShotRequest): ShotResult {
         val controller = request.controller
         if (request.burst && controller != null) {
             try {
@@ -86,6 +119,52 @@ class CapturePipeline(
         }
         return captureSingle(request)
     }
+
+    /**
+     * Wave 2 entry point: captures [outcome] with the pipeline its spec asks for, degraded to what this device
+     * and bind can do ([OutcomeCapturePlanner]). The steady gate ([awaitSteady]) stays the caller's job, as
+     * for [capture]; auto-level likewise runs afterwards on [ShotResult.uri].
+     *
+     * - SINGLE / BURST_SHARPEST: as [capture] (burst only with no extension active).
+     * - FOCUS_STACK: [FocusStacker] when the lens takes manual focus and no extension is active, else burst.
+     * - MOTION_*: [MotionCapture] over [stacking] (pass `frameSource as? FrameStackingSource`); without it the
+     *   capture falls back to a burst and says so in [CaptureDiagnostics.degradedNote].
+     *
+     * The shutter click plays first when the region requires it ([ShutterSoundPolicy]). Diagnostics carry
+     * `pipeline`, `framesStacked` and `degradedNote`. Throws only if even a single capture fails.
+     */
+    suspend fun capture(outcome: Outcome, request: ShotRequest, stacking: FrameStackingSource? = null): ShotResult {
+        val controller = request.controller
+        val session = request.session
+        val lens = controller?.lensControl
+        val active = session?.activeEnhancement ?: CaptureEnhancement.OFF
+        val support = PipelineSupport(
+            motionStacking = stacking != null && session?.analysisPausedByEnhancement != true,
+            focusStacking = lens?.supportsFocusStack == true,
+        )
+        val plan = OutcomeCapturePlanner.plan(outcome, session?.availableEnhancements ?: setOf(CaptureEnhancement.OFF), support)
+        shutterSound.playIfMandatory()
+        val plain = active == CaptureEnhancement.OFF
+        val result = when (plan.pipeline) {
+            OutcomePipeline.SINGLE -> captureSingle(request).tagged(OutcomePipeline.SINGLE)
+            OutcomePipeline.BURST_SHARPEST -> captureAny(request.withBurst(plain && controller != null))
+                .let { it.tagged(if (it.diagnostics.burstScores != null) OutcomePipeline.BURST_SHARPEST else OutcomePipeline.SINGLE) }
+            OutcomePipeline.FOCUS_STACK -> (if (plain) stacked.focusStack(request, lens) else null)
+                ?: captureAny(request.withBurst(plain && controller != null)).tagged(OutcomePipeline.SINGLE)
+            OutcomePipeline.MOTION_AVERAGE, OutcomePipeline.MOTION_LIGHTEN, OutcomePipeline.MOTION_MEDIAN ->
+                stacked.motion(request, plan.pipeline, outcome.spec.holdSeconds, stacking!!, lens)
+        }
+        // What actually went wrong on this shot ("Too shaky") outranks what the plan expected ("no Night here").
+        val diagnostics = result.diagnostics.copy(degradedNote = result.diagnostics.degradedNote ?: plan.degradedNote)
+        return ShotResult(result.uri, diagnostics, result.companionUri, result.motionStatus, plan)
+    }
+
+    private fun ShotRequest.withBurst(burst: Boolean) = ShotRequest(
+        controller, imageCapture, lensFacing, session, burst, zoomRatio, exposureIndex, shutterAtElapsedMs, steadiness, waitedForSteadyMs,
+    )
+
+    private fun ShotResult.tagged(pipeline: OutcomePipeline, frames: Int? = null) =
+        ShotResult(uri, diagnostics.copy(pipeline = pipeline.name, framesStacked = frames), companionUri, motionStatus, plan)
 
     private suspend fun captureSharpestOfBurst(request: ShotRequest, controller: CameraController): ShotResult {
         val frames = controller.captureBurst(request.imageCapture, BURST_SIZE)
@@ -121,7 +200,7 @@ class CapturePipeline(
         return ShotResult(uri, diagnostics)
     }
 
-    private fun baseDiagnostics(
+    internal fun baseDiagnostics(
         request: ShotRequest,
         tapped: CaptureResultTap.StillResult?,
         exif: ExifFacts?,
