@@ -52,6 +52,7 @@ fun CameraTopBar(
     availableEnhancements: Set<CaptureEnhancement> = emptySet(),
     onEnhancementSelected: (CaptureEnhancement) -> Unit = {},
     animationsEnabled: Boolean = true,
+    enhancementsPausingCoaching: Set<CaptureEnhancement> = emptySet(),
 ) {
     Box(
         modifier = modifier.fillMaxWidth().background(Scrim).padding(horizontal = 4.dp, vertical = 4.dp),
@@ -94,6 +95,7 @@ fun CameraTopBar(
                     available = availableEnhancements,
                     onSelect = onEnhancementSelected,
                     animationsEnabled = animationsEnabled,
+                    pausingCoaching = enhancementsPausingCoaching,
                 )
             }
         }

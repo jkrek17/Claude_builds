@@ -110,6 +110,68 @@ class DiagnosticsFormatterTest {
     }
 
     @Test
+    fun `pipeline rows appear in place when the capture reports them`() {
+        val d = full.copy(
+            captureMode = "MAXIMIZE_QUALITY+BURST3",
+            configuredCaptureSize = "4080x3072",
+            isFullResolution = true,
+            opticalStabilization = true,
+            burstScores = listOf(812.4f, 901.7f, 655f),
+            burstPicked = 1,
+            noiseReductionMode = "HIGH_QUALITY",
+            edgeMode = "ZSL",
+            autoLevelAppliedDegrees = -1.4f,
+        )
+        val rows = DiagnosticsFormatter.details(d).map { it.label to it.value }
+        assertEquals(
+            listOf(
+                "Resolution" to "4000 × 3000 · 12 MP",
+                "Capture size" to "4080 × 3072 · full resolution",
+                "Shutter" to "1/120 s",
+                "ISO" to "160",
+                "Aperture" to "f/1.9",
+                "Focal length" to "6.8 mm",
+                "Lens" to "Back",
+                "Stabilization" to "OIS on",
+                "Enhancement" to "Night",
+                "Capture mode" to "Maximize quality+burst3",
+                "Burst" to "Kept 2 of 3 · 812, 902, 655",
+                "JPEG quality" to "95",
+                "Noise reduction" to "High quality",
+                "Sharpening" to "Zero shutter lag",
+                "Steadiness" to "Steady · waited 240 ms",
+                "Zoom" to "2.0×",
+                "Exposure comp." to "+2 steps",
+                "Auto-level" to "1.4° counter-clockwise",
+                "Shutter latency" to "412 ms",
+            ),
+            rows,
+        )
+    }
+
+    @Test
+    fun `capture size survives either half missing`() {
+        assertEquals("4080 × 3072 · not full resolution", DiagnosticsFormatter.captureSize("4080x3072", false))
+        assertEquals("4080 × 3072", DiagnosticsFormatter.captureSize("4080x3072", null))
+        assertEquals("Full resolution", DiagnosticsFormatter.captureSize(null, true))
+        assertNull(DiagnosticsFormatter.captureSize(null, null))
+    }
+
+    @Test
+    fun `burst without a pick still lists the scores, a single shot has no row`() {
+        assertEquals("10, 20", DiagnosticsFormatter.burst(listOf(10f, 20f), null))
+        assertNull(DiagnosticsFormatter.burst(null, 0))
+        assertNull(DiagnosticsFormatter.burst(emptyList(), null))
+    }
+
+    @Test
+    fun `auto-level reads its direction and OIS off is stated`() {
+        assertEquals("0.8° clockwise", DiagnosticsFormatter.autoLevel(0.8f))
+        val rows = DiagnosticsFormatter.details(CaptureDiagnostics(opticalStabilization = false)).associate { it.label to it.value }
+        assertEquals("OIS off", rows["Stabilization"])
+    }
+
+    @Test
     fun `long exposures read in seconds`() {
         assertEquals("1.5 s", CaptureDiagnostics(exposureTimeNs = 1_500_000_000L).shutterText)
     }

@@ -47,12 +47,10 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
-    enhancement: CaptureEnhancement = CaptureEnhancement.OFF,
     availableEnhancements: Set<CaptureEnhancement> = emptySet(),
     onEnhancementChange: (CaptureEnhancement) -> Unit = {},
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val draft by viewModel.draft.collectAsStateWithLifecycle()
     SettingsContent(
         settings = settings,
         onBack = onBack,
@@ -68,7 +66,14 @@ fun SettingsScreen(
         onPoseDetectionChange = viewModel::setPoseDetectionEnabled,
         onDebugModeChange = viewModel::setDebugMode,
         capture = {
-            CaptureSettingsRows(enhancement, availableEnhancements, onEnhancementChange, draft, viewModel::updateDraft)
+            CaptureSettingsRows(
+                settings = settings,
+                availableEnhancements = availableEnhancements,
+                onEnhancementChange = onEnhancementChange,
+                onBurstSharpestChange = viewModel::setBurstSharpest,
+                onAutoLevelChange = viewModel::setAutoLevel,
+                onAutoShootChange = viewModel::setAutoShoot,
+            )
         },
     )
 }
@@ -256,11 +261,12 @@ private fun SettingsScreenExpandedPreview() {
             initiallyExpanded = true,
             capture = {
                 CaptureSettingsRows(
-                    enhancement = CaptureEnhancement.HDR,
+                    settings = CoachSettings(batterySaver = true, debugMode = true, captureEnhancement = CaptureEnhancement.HDR),
                     availableEnhancements = setOf(CaptureEnhancement.AUTO, CaptureEnhancement.HDR),
                     onEnhancementChange = {},
-                    draft = UiSettingsDraft(),
-                    onDraftChange = {},
+                    onBurstSharpestChange = {},
+                    onAutoLevelChange = {},
+                    onAutoShootChange = {},
                 )
             },
         )

@@ -10,15 +10,16 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** The capture-quality settings keys (`capture_enhancement`, `burst_sharpest`, `auto_level`) and their round trip. */
+/** The capture settings keys (`capture_enhancement`, `burst_sharpest`, `auto_level`, `auto_shoot`) and their round trip. */
 class CaptureSettingsTest {
 
     @Test
-    fun `defaults are AUTO enhancement, burst on, auto-level on`() {
+    fun `defaults are AUTO enhancement, burst on, auto-level off, auto shoot off`() {
         val defaults = emptyPreferences().toCoachSettings()
         assertEquals(CaptureEnhancement.AUTO, defaults.captureEnhancement)
         assertTrue(defaults.burstSharpest)
-        assertTrue(defaults.autoLevel)
+        assertFalse(defaults.autoLevel)
+        assertFalse(defaults.autoShoot)
         assertEquals(CoachSettings(), defaults)
     }
 
@@ -38,13 +39,15 @@ class CaptureSettingsTest {
             onboardingSeen = true,
             captureEnhancement = CaptureEnhancement.NIGHT,
             burstSharpest = false,
-            autoLevel = false,
+            autoLevel = true,
+            autoShoot = true,
         )
         val prefs = mutablePreferencesOf().apply { writeCoachSettings(custom) }
         assertEquals(custom, prefs.toCoachSettings())
         assertEquals("NIGHT", prefs[SettingsRepository.Keys.CAPTURE_ENHANCEMENT])
         assertEquals(false, prefs[SettingsRepository.Keys.BURST_SHARPEST])
-        assertEquals(false, prefs[SettingsRepository.Keys.AUTO_LEVEL])
+        assertEquals(true, prefs[SettingsRepository.Keys.AUTO_LEVEL])
+        assertEquals(true, prefs[SettingsRepository.Keys.AUTO_SHOOT])
     }
 
     @Test
@@ -52,6 +55,7 @@ class CaptureSettingsTest {
         assertEquals("capture_enhancement", SettingsRepository.Keys.CAPTURE_ENHANCEMENT.name)
         assertEquals("burst_sharpest", SettingsRepository.Keys.BURST_SHARPEST.name)
         assertEquals("auto_level", SettingsRepository.Keys.AUTO_LEVEL.name)
+        assertEquals("auto_shoot", SettingsRepository.Keys.AUTO_SHOOT.name)
     }
 
     @Test

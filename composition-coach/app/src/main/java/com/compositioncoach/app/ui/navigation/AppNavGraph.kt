@@ -14,6 +14,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.compositioncoach.app.di.AppContainer
+import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.app.ui.camera.CameraScreen
 import com.compositioncoach.app.ui.camera.CameraViewModel
 import com.compositioncoach.app.ui.permissions.CameraPermissionGate
@@ -21,7 +22,6 @@ import com.compositioncoach.app.ui.privacy.PrivacyScreen
 import com.compositioncoach.app.ui.review.ReviewScreen
 import com.compositioncoach.app.ui.settings.SettingsScreen
 import com.compositioncoach.app.ui.settings.SettingsViewModel
-import com.compositioncoach.app.ui.settings.UiSettingsDraftStore
 
 /** The four screens the app has: camera (start), the post-capture review, settings, and the privacy policy. */
 object Routes {
@@ -49,26 +49,25 @@ fun AppNavGraph(container: AppContainer) {
     NavHost(navController = navController, startDestination = Routes.CAMERA) {
         composable(Routes.CAMERA) {
             val cameraViewModel: CameraViewModel = viewModel(factory = CameraViewModel.factory(container))
-            // "Auto shoot when ready" (`auto_shoot`): from the in-memory draft until the key is persisted.
-            val draft by UiSettingsDraftStore.draft.collectAsStateWithLifecycle()
+            // "Auto shoot when ready" (`auto_shoot`, Settings > More): every tap arms shoot-at-the-peak.
+            val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(initialValue = CoachSettings())
             CameraPermissionGate {
                 CameraScreen(
                     viewModel = cameraViewModel,
                     lastPhotoUri = lastPhotoUri,
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToReview = { navController.navigate(Routes.REVIEW) },
-                    autoShootOnTap = draft.autoShoot,
+                    autoShootOnTap = settings.autoShoot,
                 )
             }
         }
 
         composable(Routes.REVIEW) {
             val entry by container.reviewStore.current.collectAsStateWithLifecycle()
+            // Clearing the entry is all Keep/Retake need to do: CameraViewModel deletes the entry's pre-level
+            // original (ReviewEntry.originalPhotoUri, a cache copy) as soon as it leaves the store.
             ReviewScreen(
                 entry = entry,
-                // No pre-edit original is kept yet (auto-level overwrites the file), so Compare stays hidden;
-                // pass the original's Uri here once `ReviewEntry` carries one.
-                originalPhotoUri = null,
                 captureRepository = container.captureRepository,
                 onKeep = {
                     container.reviewStore.clear()
@@ -83,8 +82,9 @@ fun AppNavGraph(container: AppContainer) {
 
         composable(Routes.SETTINGS) { settingsEntry ->
             val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(container))
-            // The Enhancement row reflects what the *bound* lens offers, which only the camera's view model
-            // knows; Settings is always pushed over the camera, so its back-stack entry is there to share.
+            // The Enhancement row shows the persisted choice against what the *bound* lens offers, which only the
+            // camera's view model knows; Settings is always pushed over the camera, so its back-stack entry is
+            // there to share. A change goes through onEnhancementSelected, which persists it and rebinds.
             val cameraEntry = remember(settingsEntry) { navController.getBackStackEntry(Routes.CAMERA) }
             val cameraViewModel: CameraViewModel = viewModel(viewModelStoreOwner = cameraEntry, factory = CameraViewModel.factory(container))
             val cameraState by cameraViewModel.uiState.collectAsStateWithLifecycle()
@@ -92,7 +92,6 @@ fun AppNavGraph(container: AppContainer) {
                 viewModel = settingsViewModel,
                 onBack = { navController.popBackStack() },
                 onOpenPrivacyPolicy = { navController.navigate(Routes.PRIVACY) },
-                enhancement = cameraState.enhancement,
                 availableEnhancements = cameraState.availableEnhancements,
                 onEnhancementChange = cameraViewModel::onEnhancementSelected,
             )

@@ -48,6 +48,7 @@ class SettingsRepository(context: Context) {
     suspend fun setCaptureEnhancement(enhancement: CaptureEnhancement) = update { it.copy(captureEnhancement = enhancement) }
     suspend fun setBurstSharpest(enabled: Boolean) = update { it.copy(burstSharpest = enabled) }
     suspend fun setAutoLevel(enabled: Boolean) = update { it.copy(autoLevel = enabled) }
+    suspend fun setAutoShoot(enabled: Boolean) = update { it.copy(autoShoot = enabled) }
 
     /** Preference key names. Exposed for tests; do not rename in place without a migration. */
     object Keys {
@@ -65,6 +66,7 @@ class SettingsRepository(context: Context) {
         val CAPTURE_ENHANCEMENT = stringPreferencesKey("capture_enhancement")
         val BURST_SHARPEST = booleanPreferencesKey("burst_sharpest")
         val AUTO_LEVEL = booleanPreferencesKey("auto_level")
+        val AUTO_SHOOT = booleanPreferencesKey("auto_shoot")
     }
 }
 
@@ -86,7 +88,8 @@ internal fun Preferences.toCoachSettings() = CoachSettings(
     onboardingSeen = this[SettingsRepository.Keys.ONBOARDING_SEEN] ?: false,
     captureEnhancement = CaptureEnhancementCodec.decode(this[SettingsRepository.Keys.CAPTURE_ENHANCEMENT]),
     burstSharpest = this[SettingsRepository.Keys.BURST_SHARPEST] ?: true,
-    autoLevel = this[SettingsRepository.Keys.AUTO_LEVEL] ?: true,
+    autoLevel = this[SettingsRepository.Keys.AUTO_LEVEL] ?: false,
+    autoShoot = this[SettingsRepository.Keys.AUTO_SHOOT] ?: false,
 )
 
 /** Writes every field of [settings] into this snapshot; the inverse of [toCoachSettings]. */
@@ -105,4 +108,5 @@ internal fun MutablePreferences.writeCoachSettings(settings: CoachSettings) {
     this[SettingsRepository.Keys.CAPTURE_ENHANCEMENT] = CaptureEnhancementCodec.encode(settings.captureEnhancement)
     this[SettingsRepository.Keys.BURST_SHARPEST] = settings.burstSharpest
     this[SettingsRepository.Keys.AUTO_LEVEL] = settings.autoLevel
+    this[SettingsRepository.Keys.AUTO_SHOOT] = settings.autoShoot
 }

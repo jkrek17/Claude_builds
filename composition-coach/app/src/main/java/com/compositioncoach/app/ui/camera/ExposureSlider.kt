@@ -132,8 +132,13 @@ private fun ExposureSliderBody(
     val density = LocalDensity.current
     val trackPx = with(density) { (TRACK_HEIGHT - THUMB_SIZE).toPx() }
     val currentIndex by rememberUpdatedState(index)
-    var dragFraction by remember { mutableFloatStateOf(0f) }
+    var dragFraction by remember { mutableFloatStateOf(ExposureText.fractionFor(index, range)) }
     val fraction = ExposureText.fractionFor(index, range)
+    // The index can change under the slider (a rebind resets `CameraUiState.exposureIndex` to 0, as CameraX
+    // resets the hardware): move the drag origin with it so a drag in progress continues from the new position.
+    LaunchedEffect(index, range) {
+        if (ExposureText.indexFor(dragFraction, range) != index) dragFraction = ExposureText.fractionFor(index, range)
+    }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,

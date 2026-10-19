@@ -6,6 +6,7 @@ import com.compositioncoach.app.camera.AutoLevelProcessor
 import com.compositioncoach.app.camera.CapturePipeline
 import com.compositioncoach.app.camera.CaptureRepository
 import com.compositioncoach.app.camera.MotionSensor
+import com.compositioncoach.app.camera.OriginalCopyStore
 import com.compositioncoach.app.camera.ThermalPolicy
 import com.compositioncoach.app.settings.SettingsRepository
 import com.compositioncoach.composition.engine.CompositionCoach
@@ -33,7 +34,10 @@ class AppContainer(private val appContext: Context) {
     val capturePipeline: CapturePipeline by lazy { CapturePipeline(captureRepository, motionSensor) }
 
     /** Post-save horizon straightening. */
-    val autoLevelProcessor: AutoLevelProcessor by lazy { AutoLevelProcessor(captureRepository) }
+    val autoLevelProcessor: AutoLevelProcessor by lazy { AutoLevelProcessor(captureRepository, originalCopies) }
+
+    /** Pre-correction copies for the review's Compare chip (app cache, never the gallery). */
+    val originalCopies: OriginalCopyStore by lazy { OriginalCopyStore(appContext.cacheDir) }
 
     /** Thermal/battery-saver-driven [com.compositioncoach.vision.PerformanceTier]; see its KDoc. */
     val thermalPolicy: ThermalPolicy by lazy { ThermalPolicy(appContext) }

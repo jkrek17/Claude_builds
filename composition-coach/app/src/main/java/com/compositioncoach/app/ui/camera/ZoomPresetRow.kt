@@ -37,7 +37,8 @@ private val CHIP_SIZE = 36.dp
 /**
  * Pixel-style zoom presets above the mode strip: small round chips ("0.6", "1×", "2", "5"), the one for
  * the current range filled white and reading the live ratio, so a pinch to 1.4× lights the 1× chip and
- * relabels it "1.4×" ([ZoomPresets]). Hidden when the lens has only one preset. Each chip counter-rotates
+ * relabels it "1.4×" ([ZoomPresets]). [selectedPreset] is `CameraUiState.selectedZoomPreset`; it decides the lit
+ * chip whenever the camera sits on a preset ([ZoomPresets.litIndex]). Hidden when the lens has only one preset. Each chip counter-rotates
  * in place like the other chrome; being round, nothing about the row's layout changes with rotation.
  */
 @Composable
@@ -48,14 +49,20 @@ fun ZoomPresetRow(
     deviceRotationDegrees: Int,
     animationsEnabled: Boolean,
     modifier: Modifier = Modifier,
+    selectedPreset: Float? = null,
 ) {
     if (!ZoomPresets.isVisible(presets)) return
-    val active = ZoomPresets.activeIndex(presets, zoomRatio)
+    val active = ZoomPresets.litIndex(presets, selectedPreset, zoomRatio)
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
         presets.forEachIndexed { index, preset ->
             RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
                 ZoomPresetChip(
-                    label = ZoomPresets.chipLabel(preset, zoomRatio, index == active),
+                    label = ZoomPresets.chipLabel(
+                        preset,
+                        zoomRatio,
+                        active = index == active,
+                        sittingOn = preset == selectedPreset || ZoomPresets.isOnPreset(preset, zoomRatio),
+                    ),
                     description = ZoomPresets.chipDescription(preset),
                     selected = index == active,
                     animationsEnabled = animationsEnabled,
