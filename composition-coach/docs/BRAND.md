@@ -1,18 +1,18 @@
-# JustRight: brand book
+# SceneRight: brand book
 
 The app formerly called Composition Coach. This is the reference for the name, the story, the voice,
 the in-app copy and the identity. Naming rationale, collision checks and the final decision:
 `brand/NAMING.md`. How to adopt the name in the repo: `brand/RENAME.md`. Assets: `brand/identity/`,
 `brand/site/`. In-app strings live in `app/src/main/res/values/strings.xml`.
 
-- **Name:** JustRight (one word, capital J and capital R in prose and as the launcher label; the
-  marketing wordmark is set "justRight" with the descriptor "photo").
-- **Store title:** JustRight: Camera Coach ("just right" is an everyday phrase, so the store title
+- **Name:** SceneRight (one word, capital S and capital R in prose and as the launcher label; the
+  marketing wordmark is set "sceneRight" with the descriptor "photo").
+- **Store title:** SceneRight: Camera Coach ("scene" is an everyday word, so the store title
   carries a descriptor).
 - **Header line:** A little guidance. More keepers.
 - **Tagline:** The photo you meant to take.
 - **Support line:** Frames for you. Shows you why.
-- **One sentence:** JustRight is a camera that frames the shot for you, takes it at the best moment,
+- **One sentence:** SceneRight is a camera that frames the shot for you, takes it at the best moment,
   and then shows you, in your own photo, what worked and one thing to try next time, all on your phone.
 
 ## Brand story
@@ -21,10 +21,10 @@ You see something worth keeping: your daughter laughing, the light on the hills,
 of. You raise your phone, and somehow the photo never looks like the moment did. A little too far
 away. A little crooked. Too much sky.
 
-JustRight is about the middle of that story, the part Goldilocks knew: not too much, not too little.
-Point the camera and one quiet cue shows you where to move. Step, tilt, and then there is a moment
-when the frame settles and everything feels just right. Tap once, and JustRight waits for exactly that
-moment, then takes the picture. It levels the horizon and keeps the sharpest frame without asking.
+SceneRight is about the moment the scene comes right. Point the camera and one quiet cue shows you
+where to move. Step, tilt, and then there is a moment when the frame settles and the scene in front of
+you is the one you saw. Tap once, and SceneRight waits for exactly that moment, then takes the
+picture. It levels the horizon and keeps the sharpest frame without asking.
 
 Afterwards it shows you why the photo works, in plain words, and one thing to try next time. When it's
 right, it says so in one word: **Keeper**.
@@ -36,10 +36,10 @@ And all of it happens on your phone. Nothing leaves it.
 
 ## Positioning statement
 
-For people who love taking photos but never learned photography, **JustRight** is the camera that
+For people who love taking photos but never learned photography, **SceneRight** is the camera that
 frames the shot for you and then shows you, in your own pictures, what worked and what to try next.
 Unlike filter apps, which change the photo, and pro camera apps, which hand you more controls,
-JustRight changes the photographer, gently: just enough guidance, from your own shots, tuned to your
+SceneRight changes the photographer, gently: just enough guidance, from your own shots, tuned to your
 taste, all on your phone.
 
 ## Who it is for
@@ -78,28 +78,28 @@ Caveat on the first truth (the claim stands; this is for the FAQ):
 | AI-powered, AI camera, smart, intelligent, algorithm | It is a claim about us, not about your photo, and the category is full of it | "It sees where to move." "It learns what you like." |
 | Pro, professional, like a pro, DSLR-quality | Our people are not pros and do not want to be told to become one | "The photo you meant to take." |
 | Rule of thirds, composition, leading lines, negative space (in marketing) | Jargon. Easy mode never says it; Coach mode may, inside the app only | "Framing", "where to stand", "eyes a little higher" |
-| Perfect shot, flawless, magic | Untrue and unearnable. "Just right" is the ceiling, and it is enough | "A keeper." |
+| Perfect shot, flawless, magic | Untrue and unearnable. "Right" is the ceiling, and it is enough | "A keeper." |
 | Score as a judgement ("your photo scored 54") | The number is a tool, the verdict is the message | "Try again." "Good." "Keeper." |
 | Wrong, bad, mistake, fix your photo | We never judge the person or argue with their taste | "Try next time: ..." |
 | Streak, badge, level up, unlock, achievement | No gamification; this is a camera | "This month: 38 keepers." |
 | Content, followers, likes, viral, influencer | Not a social app | "Photos", "your pictures" |
 | Cloud, sync, account | We have none, and the words make people wonder | "On your phone." |
 | Revolutionary, game-changing, the best camera app | Never compare up, never shout | Show the card, let it speak |
-| Puns on the name ("just right for you", "get it just right!") | The name already says it; repeating it as a slogan cheapens it | Let the moment say it: "Keeper." |
+| Puns on the name ("set the scene", "get the scene right!") | The name already says it; repeating it as a slogan cheapens it | Let the moment say it: "Keeper." |
 
 ## Voice and tone
 
 **One idea:** a calm friend with a good eye, standing next to you, who says just enough and only when
-it helps. Not too much, not too little.
+it helps.
 
 1. **Live, the fewest words.** One cue, 1-3 words, a physical action: *Slightly right. Closer.
    Level.* No sentences, no reasons, no punctuation.
 2. **After, plain sentences.** Short, concrete, about this photo. A subject you can see and an action
    you can do with your feet or your hands: *Try next time: move a little closer.*
 3. **Physical, not photographic.** Step, raise, lower, closer, turn. Not "reposition the subject".
-4. **Credit the person.** "You kept 38." Not "JustRight took 38."
+4. **Credit the person.** "You kept 38." Not "SceneRight took 38."
 5. **One thing at a time.** Always one "Try next time", never a list.
-6. **The camera never says "I".** JustRight is named in the third person when needed; "we" only on
+6. **The camera never says "I".** SceneRight is named in the third person when needed; "we" only on
    the website and in the store listing.
 7. **Warm, not cute.** No exclamation marks in the app. No puns. No emoji.
 8. **Never argue with taste.** When someone keeps ignoring a cue, the app mentions it less; it does not
@@ -135,11 +135,11 @@ After the shot (the card, plain sentences):
 ## In-app copy
 
 The source of truth is `app/src/main/res/values/strings.xml`; the lines below are the intent behind
-it. The launcher label (`app_name`) is **JustRight**.
+it. The launcher label (`app_name`) is **SceneRight**.
 
 ### Permission screen
 
-- Title: **JustRight needs your camera**
+- Title: **SceneRight needs your camera**
 - Body: It looks through the lens to help you frame. Everything stays on your phone. Nothing is
   uploaded.
 - Button: **Allow camera**
@@ -148,7 +148,7 @@ it. The launcher label (`app_name`) is **JustRight**.
 ### Onboarding (one card, first camera session, never again)
 
 - Title: **Point. Tap once.**
-- Body: Follow the one cue on screen. Tap the shutter and JustRight takes the photo when everything
+- Body: Follow the one cue on screen. Tap the shutter and SceneRight takes the photo when everything
   lines up. Hold to shoot right away.
 - Line under it: After each photo, see what worked and one thing to try next time.
 - Button: **Start**
@@ -161,7 +161,7 @@ green* / **Got it**); with shoot-at-peak shipped, the card above is the one to m
 **Keeper · Good · Try again.** Capitalised as shown, no punctuation. On the card the verdict sits
 beside the score ring and nothing else does; the ring keeps the live arc's tier colours.
 
-- Keeper: the photo you meant to take. Just right.
+- Keeper: the photo you meant to take. The scene, right.
 - Good: worth keeping; the card has one idea for next time.
 - Try again: said kindly, never "bad". The card still leads with what worked.
 
@@ -179,10 +179,10 @@ Keep this one.*
 - Section: **What you like**: You like tight, centred portraits. You like plenty of sky in a view.
   You shoot food close and from above.
 - Section: **Advice you take most**: Closer.
-- Section: **Advice you skip most**: Give looking room. *That's fine. JustRight will mention it less.*
+- Section: **Advice you skip most**: Give looking room. *That's fine. SceneRight will mention it less.*
 - Section: **Your best three** (each opens its card)
 - Footer: Learned on your phone. Never uploaded. · **Start fresh**
-- Start fresh dialog: **Start fresh?** JustRight forgets what it has learned about your taste. Your
+- Start fresh dialog: **Start fresh?** SceneRight forgets what it has learned about your taste. Your
   photos stay where they are. [Start fresh] [Cancel]
 - Empty: Keep a few photos and this fills in.
 
@@ -299,11 +299,11 @@ card), it shows these real in-app colours, framed on Paper.
 
 ### Wordmark and lockup
 
-- **Marketing wordmark:** "justRight": lowercase j, capital R, one word, Semibold. Under the right
+- **Marketing wordmark:** "sceneRight": lowercase s, capital R, one word, Semibold. Under the right
   part of the name sits the descriptor **"photo"**: Medium, small (about a quarter of the name's
   size), widely spaced, right edge aligned with the end of the name, below the descenders.
-- **In prose and as the launcher label:** "JustRight". Never "Just Right", "Justright" or
-  "JUSTRIGHT". The store title is "JustRight: Camera Coach".
+- **In prose and as the launcher label:** "SceneRight". Never "Scene Right", "Sceneright" or
+  "SCENERIGHT". The store title is "SceneRight: Camera Coach".
 - **Lockup** (`brand/identity/wordmark.svg`): the mark at left (on Paper: Ink ring and pupil, Apricot
   catchlight), then the name and descriptor in Ink. Clear space: half the mark's width on every side.
   Minimum: 24 px mark height. Drop the "photo" descriptor when the name is set smaller than about

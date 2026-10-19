@@ -1,4 +1,4 @@
-# Play Store listing: JustRight
+# Play Store listing: SceneRight
 
 Copy-ready text for Play Console "Main store listing" and "App content". Voice and claims follow
 `docs/BRAND.md`. Values that need a Console action by the account owner are marked **[MANUAL]**.
@@ -14,7 +14,7 @@ lines (or use the interim line).
 
 | Claim in the listing | Depends on | Interim line until it ships |
 |---|---|---|
-| "takes it at the best moment", "Tap the shutter and JustRight waits..." | Shoot-at-peak | "When the ring around the shutter turns green, take the shot." |
+| "takes it at the best moment", "Tap the shutter and SceneRight waits..." | Shoot-at-peak | "When the ring around the shutter turns green, take the shot." |
 | "levels the horizon and picks the sharpest frame" | Auto-level, sharpest-of-burst | Remove the line |
 | Verdict, "One thing to try next time", "Better crop?" | After-action card, `CropSuggester` | "After every photo, a short card shows what worked and what could be better." |
 | Whole "It learns what you like" section, "Your eye" screenshot | `AdaptiveWeights`, `PhotoJournal`, "Your eye" | Remove the section and screenshot 7 |
@@ -24,10 +24,10 @@ lines (or use the interim line).
 ## Title (≤ 30 characters)
 
 ```
-JustRight: Camera Coach
+SceneRight: Camera Coach
 ```
 
-(23 characters. The descriptor helps search: "just right" is a generic phrase and alone returns unrelated apps.)
+(23 characters. The descriptor helps search: "scene" is a generic word and alone returns unrelated apps.)
 
 ## Short description (≤ 80 characters)
 
@@ -40,13 +40,13 @@ The camera that frames for you, then shows you why. All on your phone.
 ## Full description (≤ 4000 characters)
 
 ```
-JustRight is a camera for people who love photos but never learned photography. It frames the shot for you, takes it at the best moment, and then shows you, in your own photo, what worked and one thing to try next time.
+SceneRight is a camera for people who love photos but never learned photography. It frames the shot for you, takes it at the best moment, and then shows you, in your own photo, what worked and one thing to try next time.
 
-Everything happens on your phone. JustRight has no internet permission, no account, no ads and no analytics. Your photos never leave your device.
+Everything happens on your phone. SceneRight has no internet permission, no account, no ads and no analytics. Your photos never leave your device.
 
 POINT. TAP ONCE.
 • One quiet cue shows you where to move: a little left, closer, level. One to three words, never a paragraph.
-• Tap the shutter and JustRight waits until the framing is right and your hand is steady, then takes the photo. Hold to shoot right away.
+• Tap the shutter and SceneRight waits until the framing is right and your hand is steady, then takes the photo. Hold to shoot right away.
 • It levels the horizon and picks the sharpest frame without asking.
 
 SEE WHY IT WORKS
@@ -57,7 +57,7 @@ After every photo, a short card you can read in five seconds:
 • Better crop? Up to three suggestions, saved as a copy. Your original is never touched.
 
 IT LEARNS WHAT YOU LIKE
-• JustRight notices what you keep, what you retake, and which advice you take or skip.
+• SceneRight notices what you keep, what you retake, and which advice you take or skip.
 • Love centred portraits? It stops telling you to move off-centre.
 • The Your eye screen shows how you're doing in plain words: keepers this month, what you tend to like, your best three. No streaks, no badges.
 • Start fresh any time with one tap. What it learns stays on your phone.
@@ -69,7 +69,7 @@ PRIVATE BY DESIGN
 • All analysis runs on your phone. The app cannot connect to the internet: the permission is removed, and every build is checked for it.
 • No account. No ads. No analytics. No tracking.
 • Photos save to your own gallery, like any camera app.
-• On first launch, Google Play services may download the face-detection model the app uses on your phone. JustRight itself sends nothing.
+• On first launch, Google Play services may download the face-detection model the app uses on your phone. SceneRight itself sends nothing.
 
 WANT MORE?
 Coach mode adds a short reason under each cue. One switch in Settings reveals manual controls: exposure, zoom presets and a grid. Easy is the default, and you never have to look.
@@ -133,7 +133,7 @@ only after submission in Play Console → Policy → App content → Content rat
 
 ## Data safety form answers
 
-Play Console → Policy → App content → Data safety. JustRight **collects no user data and shares no
+Play Console → Policy → App content → Data safety. SceneRight **collects no user data and shares no
 user data**. Data processed only on the device is not "collected" under Play's definition, and the
 app cannot transmit anything: `INTERNET` is removed from the merged manifest and
 `verifyNoInternetPermission` fails the build if it returns.

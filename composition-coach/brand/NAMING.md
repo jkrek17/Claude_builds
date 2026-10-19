@@ -167,12 +167,13 @@ Alternatives screened afterwards, with results:
 | TrainedEye | Clear: nothing found in either store. |
 | ReFrame | Gated: "ReFrame: Multi-Angle Recorder" (iOS camera app, 2026) and "Reframe AI" (photo editor). |
 | Nudge | No camera app found. NudgeCam was a 2010 research project; the word is generic. |
-| **JustRight** | **Chosen.** No camera or photo app found under "JustRight" or "Just Right" in either store. Nearest names: JustSnap and Just Cam. |
+| JustRight | Chosen first and shipped for one build. No camera or photo app found under "JustRight" or "Just Right" in either store; nearest names JustSnap and Just Cam. Replaced the same day. |
+| SeenRight | No app found. Nearest: "Seen Camera" (iOS selfie-video interview tool) and Seene (2013 3D-photo app). Passed over for its folksy grammar. |
+| **SceneRight** | **Chosen.** No app found under "SceneRight" or "Scene Right" in either store. Nearest names: ColorRight (2010), Scene Scout, "Scene: Organize & Share Photos". |
 
-**JustRight** is the name. Conditions that come with it:
+**SceneRight** is the name. Conditions that come with it:
 
-- "just right" is a generic English phrase, so the store title carries a descriptor:
-  **JustRight: Camera Coach**.
+- "scene" is a generic word, so the store title carries a descriptor: **SceneRight: Camera Coach**.
 - Trademark clearance is still required before launch.
-- Eyebright, the earlier recommendation, is retired; the tagline and support line carry over
-  unchanged. The identity is rebuilt for the new name (`docs/BRAND.md`, `brand/identity/`).
+- Eyebright, the earlier recommendation, and JustRight, the first choice, are retired; the tagline
+  and support line carry over unchanged. The identity is rebuilt for the new name (`docs/BRAND.md`, `brand/identity/`).

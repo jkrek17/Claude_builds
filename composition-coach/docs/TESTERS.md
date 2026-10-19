@@ -1,4 +1,4 @@
-# JustRight: tester guide
+# SceneRight: tester guide
 
 Thanks for testing. The app is an Android camera that coaches your framing in real time. Everything
 runs on your phone; no photos or camera frames leave the device.
@@ -11,11 +11,11 @@ runs on your phone; no photos or camera frames leave the device.
 3. If Google Play Protect says "App blocked" or "unknown developer": tap **More details**, then
    **Install anyway**. If there is no such option: Play Store > your profile picture > Play Protect >
    gear icon > turn off "Scan apps with Play Protect", install, then turn it back on.
-4. Open **JustRight** and allow the camera.
+4. Open **SceneRight** and allow the camera.
 
 To update, install the newer `.apk` the same way; it replaces the old one and keeps your settings.
 
-**Composition Coach (and the short-lived Eyebright build) is now JustRight.** Same app: install the new build over the old one and your settings stay. The icon and name change; nothing else does.
+**Composition Coach (and the short-lived Eyebright and JustRight builds) is now SceneRight.** Same app: install the new build over the old one and your settings stay. The icon and name change; nothing else does.
 
 ## How to use it
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  JustRight adaptive icon, background layer. Proposed replacement for
+  SceneRight adaptive icon, background layer. Proposed replacement for
   app/src/main/res/drawable/ic_launcher_background.xml (copy as-is; same file name).
   Flat Ink (#252A31), the marketing palette's dark: the same ground as the dark card on the brand
   board, so the icon reads as a calm, dark object on both black and light wallpapers.

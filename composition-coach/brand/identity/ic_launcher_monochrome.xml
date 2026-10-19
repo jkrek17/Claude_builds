@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  JustRight adaptive icon, monochrome layer for Android 13+ themed icons. Proposed replacement for
+  SceneRight adaptive icon, monochrome layer for Android 13+ themed icons. Proposed replacement for
   app/src/main/res/drawable/ic_launcher_monochrome.xml (copy as-is; same file name).
   Same ring, pupil and catchlight as the foreground, solid white so the system tint reaches every
   shape. With a single tint the catchlight cannot be a second colour, so it is cut out of the pupil

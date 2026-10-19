@@ -5,7 +5,7 @@ README, build, tests and CI workflow. Nothing is shared between them.
 
 | Project | Folder | What it is |
 |---|---|---|
-| **JustRight** | [`composition-coach/`](composition-coach/README.md) | Android camera that frames for you and coaches you after the shot, all on-device. [Download the latest APK](https://github.com/jkrek17/Claude_builds/releases/tag/release-latest) |
+| **SceneRight** | [`composition-coach/`](composition-coach/README.md) | Android camera that frames for you and coaches you after the shot, all on-device. [Download the latest APK](https://github.com/jkrek17/Claude_builds/releases/tag/release-latest) |
 | **Fantasy Coach** | [`fantasy/`](fantasy/README.md) | Read-only Yahoo Fantasy Football MCP server for Claude: league history, waiver, trade and lineup advice |
 
 ## Repo layout

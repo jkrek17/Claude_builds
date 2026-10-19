@@ -1,6 +1,6 @@
-# JustRight — `:app`
+# SceneRight — `:app`
 
-The camera-facing Compose app (package `com.compositioncoach.app`; the product is JustRight, see
+The camera-facing Compose app (package `com.compositioncoach.app`; the product is SceneRight, see
 `docs/BRAND.md`). This module owns the UI, CameraX binding, capture and storage, settings, the photo journal
 and navigation. It talks to `:composition` (`CompositionCoach`, `AfterActionReport`, `CropSuggester`,
 `AdaptiveWeights`) and `:vision` (`VisionPipelineFactory`, `StillImageAnalyzer`, `FrameStackingSource`) only

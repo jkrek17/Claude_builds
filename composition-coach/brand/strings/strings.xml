@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  PROPOSED in-app copy for the JustRight name and voice. Not wired into the build: the integrator
+  PROPOSED in-app copy for the SceneRight name and voice. Not wired into the build: the integrator
   copies what is needed into app/src/main/res/values/strings.xml (owned by the UI agent).
 
   Section 1 replaces values of keys that already exist (same key names, new text).
@@ -14,9 +14,9 @@
 
     <!-- ===== 1. Existing keys, new text ===== -->
 
-    <string name="app_name">JustRight</string>
+    <string name="app_name">SceneRight</string>
 
-    <string name="permission_camera_title">JustRight needs your camera</string>
+    <string name="permission_camera_title">SceneRight needs your camera</string>
     <string name="permission_camera_body">It looks through the lens to help you frame. Everything stays on your phone. Nothing is uploaded.</string>
     <string name="permission_allow_camera">Allow camera</string>
     <string name="permission_open_settings">Open settings</string>
@@ -33,7 +33,7 @@
 
     <!-- First-run card, Easy mode (tap arms the shutter, it fires at the best moment). -->
     <string name="onboarding_easy_title">Point. Tap once.</string>
-    <string name="onboarding_easy_body">Follow the one cue on screen. Tap the shutter and JustRight takes the photo when everything lines up. Hold to shoot right away.</string>
+    <string name="onboarding_easy_body">Follow the one cue on screen. Tap the shutter and SceneRight takes the photo when everything lines up. Hold to shoot right away.</string>
     <string name="onboarding_easy_after">After each photo, see what worked and one thing to try next time.</string>
     <string name="onboarding_easy_dismiss">Start</string>
 
@@ -72,13 +72,13 @@
     <string name="your_eye_tendencies">What you like</string>
     <string name="your_eye_follow_most">Advice you take most</string>
     <string name="your_eye_follow_least">Advice you skip most</string>
-    <string name="your_eye_skip_note">That\'s fine. JustRight will mention it less.</string>
+    <string name="your_eye_skip_note">That\'s fine. SceneRight will mention it less.</string>
     <string name="your_eye_best">Your best three</string>
     <string name="your_eye_empty">Keep a few photos and this fills in.</string>
     <string name="your_eye_private">Learned on your phone. Never uploaded.</string>
     <string name="your_eye_reset">Start fresh</string>
     <string name="your_eye_reset_confirm_title">Start fresh?</string>
-    <string name="your_eye_reset_confirm_body">JustRight forgets what it has learned about your taste. Your photos stay where they are.</string>
+    <string name="your_eye_reset_confirm_body">SceneRight forgets what it has learned about your taste. Your photos stay where they are.</string>
     <string name="your_eye_reset_confirm_yes">Start fresh</string>
     <string name="your_eye_reset_confirm_no">Cancel</string>
 

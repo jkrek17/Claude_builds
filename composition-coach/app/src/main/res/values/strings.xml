@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">JustRight</string>
+    <string name="app_name">SceneRight</string>
 
-    <string name="permission_camera_title">JustRight needs your camera</string>
+    <string name="permission_camera_title">SceneRight needs your camera</string>
     <string name="permission_camera_body">It looks through the lens to help you frame. Everything stays on your phone. Nothing is uploaded.</string>
     <string name="permission_allow_camera">Allow camera</string>
     <string name="permission_open_settings">Open settings</string>
@@ -177,7 +177,7 @@
     <string name="your_eye_no_tendencies">Nothing stands out yet.</string>
     <string name="your_eye_follow_most">Advice you take most</string>
     <string name="your_eye_follow_least">Advice you skip most</string>
-    <string name="your_eye_skip_note">That\'s fine. JustRight will mention it less.</string>
+    <string name="your_eye_skip_note">That\'s fine. SceneRight will mention it less.</string>
     <string name="your_eye_follow_rate">%1$s · %2$d in 10 times</string>
     <!-- Kinds of advice, in plain words ("Advice you take most: Level horizon · 8 in 10 times"). -->
     <string name="advice_subject_placement">Where the subject sits</string>
@@ -200,7 +200,7 @@
     <string name="your_eye_private">Learned on your phone. Never uploaded.</string>
     <string name="your_eye_reset">Start fresh</string>
     <string name="your_eye_reset_confirm_title">Start fresh?</string>
-    <string name="your_eye_reset_confirm_body">JustRight forgets what it has learned about your taste. Your photos stay where they are.</string>
+    <string name="your_eye_reset_confirm_body">SceneRight forgets what it has learned about your taste. Your photos stay where they are.</string>
     <string name="your_eye_reset_confirm_yes">Start fresh</string>
     <string name="your_eye_reset_confirm_no">Cancel</string>
 

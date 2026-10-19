@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
-  <title>JustRight feature graphic, 1024 x 500</title>
+  <title>SceneRight feature graphic, 1024 x 500</title>
   <!--
     Google Play feature graphic source. Play wants a 1024x500 PNG or JPEG with no alpha: outline the
     text, then export at 1x (and keep this SVG as the master). Text keeps 64 px from every edge.
@@ -11,16 +11,16 @@
   -->
   <rect width="1024" height="500" fill="#F7F3EC"/>
 
-  <!-- Lockup: mark on paper (Ink ring and pupil, Apricot catchlight) + justRight + photo -->
+  <!-- Lockup: mark on paper (Ink ring and pupil, Apricot catchlight) + sceneRight + photo -->
   <g transform="translate(89,108)">
     <circle cx="0" cy="0" r="22" fill="none" stroke="#252A31" stroke-width="6"/>
     <circle cx="0" cy="0" r="12" fill="#252A31"/>
     <circle cx="4" cy="-4" r="4" fill="#E9A17E"/>
   </g>
-  <text x="130" y="116" textLength="160" lengthAdjust="spacing"
+  <text x="130" y="116" textLength="182" lengthAdjust="spacing"
         font-family="Inter, Roboto, 'Helvetica Neue', Arial, sans-serif"
-        font-size="38" font-weight="600" fill="#252A31">justRight</text>
-  <text x="290" y="140" text-anchor="end"
+        font-size="38" font-weight="600" fill="#252A31">sceneRight</text>
+  <text x="312" y="140" text-anchor="end"
         font-family="Inter, Roboto, 'Helvetica Neue', Arial, sans-serif"
         font-size="12" font-weight="500" letter-spacing="4" fill="#252A31">phot<tspan letter-spacing="0">o</tspan></text>
 
