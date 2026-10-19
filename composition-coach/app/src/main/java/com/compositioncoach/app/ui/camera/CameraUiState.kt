@@ -1,6 +1,8 @@
 package com.compositioncoach.app.ui.camera
 
 import android.net.Uri
+import com.compositioncoach.app.camera.CaptureEnhancement
+import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.settings.CoachSettings
@@ -89,6 +91,17 @@ data class CameraUiState(
      * portrait) until the first frame arrives.
      */
     val deviceRotationDegrees: Int = 0,
+
+    // --- Image quality contract (camera engineer implements, UI engineer consumes) -------------------
+    /** Enhancement pipelines the bound lens supports; empty until the camera reports them. */
+    val availableEnhancements: Set<CaptureEnhancement> = emptySet(),
+    /** The enhancement the next capture will use (persisted in settings; AUTO when supported, else OFF). */
+    val enhancement: CaptureEnhancement = CaptureEnhancement.OFF,
+    /** Gyroscope-derived steadiness for the "Hold still" hint and steady-shot gating. */
+    val steadiness: Steadiness = Steadiness.STEADY,
+    /** Current zoom ratio and the preset chips to offer (e.g. 0.6, 1, 2), already clamped to the lens. */
+    val zoomRatio: Float = 1f,
+    val zoomPresets: List<Float> = listOf(1f),
 )
 
 /**
