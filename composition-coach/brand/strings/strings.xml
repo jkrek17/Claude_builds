@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PROPOSED in-app copy for the Eyebright name and voice. Not wired into the build: the integrator
+  copies what is needed into app/src/main/res/values/strings.xml (owned by the UI agent).
+
+  Section 1 replaces values of keys that already exist (same key names, new text).
+  Section 2 proposes keys for screens defined in docs/PRODUCT.md and docs/WAVE2.md that are not built
+  yet (first-run card for Easy mode, after-the-shot card, "Your eye", the Coach nudge). Rename keys
+  freely to fit the UI code; the text is what matters. Voice rules: docs/BRAND.md, "Voice and tone".
+
+  Live chip wording is NOT here: it stays in GuidanceFormatter.chipText (1-3 words, already in voice).
+-->
+<resources>
+
+    <!-- ===== 1. Existing keys, new text ===== -->
+
+    <string name="app_name">Eyebright</string>
+
+    <string name="permission_camera_title">Eyebright needs your camera</string>
+    <string name="permission_camera_body">It looks through the lens to help you frame. Everything stays on your phone. Nothing is uploaded.</string>
+    <string name="permission_allow_camera">Allow camera</string>
+    <string name="permission_open_settings">Open settings</string>
+    <!-- Shown under the body when access was permanently denied, above the Open settings button. -->
+    <string name="permission_camera_denied">Camera access is off. Turn it on in Settings to start.</string>
+
+    <string name="settings_privacy_footer">Everything happens on your phone. Nothing is uploaded.</string>
+
+    <!-- Current single-card onboarding (pre-Wave 2 shutter). -->
+    <string name="onboarding_message">Point · Follow the cue · Shoot when it turns green</string>
+    <string name="onboarding_dismiss">Got it</string>
+
+    <!-- ===== 2. Proposed keys for Wave 2 screens ===== -->
+
+    <!-- First-run card, Easy mode (tap arms the shutter, it fires at the best moment). -->
+    <string name="onboarding_easy_title">Point. Tap once.</string>
+    <string name="onboarding_easy_body">Follow the one cue on screen. Tap the shutter and Eyebright takes the photo when everything lines up. Hold to shoot right away.</string>
+    <string name="onboarding_easy_after">After each photo, see what worked and one thing to try next time.</string>
+    <string name="onboarding_easy_dismiss">Start</string>
+
+    <!-- Shutter states (chip above the shutter). -->
+    <string name="shutter_armed">Waiting for it</string>
+    <string name="shutter_ready">SHOOT</string>
+
+    <!-- After-the-shot card. Verdicts are the only words on the ring. -->
+    <string name="verdict_keeper">Keeper</string>
+    <string name="verdict_good">Good</string>
+    <string name="verdict_try_again">Try again</string>
+    <string name="card_what_worked">What worked</string>
+    <string name="card_try_next_time">Try next time</string>
+    <string name="card_better_crop">Better crop?</string>
+    <string name="card_better_crop_saved">Saved as a copy. Your original is untouched.</string>
+    <string name="card_what_if">What if</string>
+    <string name="card_what_if_hint">Hold to see a better framing</string>
+    <string name="card_details">Details</string>
+    <string name="card_keep">Keep</string>
+    <string name="card_retake">Retake</string>
+    <string name="card_share">Share</string>
+    <!-- When the engine has nothing to suggest. -->
+    <string name="card_nothing_to_change">Nothing to change. Keep this one.</string>
+
+    <!-- "Your eye" screen (gallery thumbnail long-press, or Settings). -->
+    <string name="your_eye_title">Your eye</string>
+    <string name="your_eye_period">This month</string>
+    <!-- %1$d = keepers this month -->
+    <plurals name="your_eye_keepers">
+        <item quantity="one">%1$d keeper</item>
+        <item quantity="other">%1$d keepers</item>
+    </plurals>
+    <!-- %1$d of 10, e.g. "Level horizon 9 in 10 times" -->
+    <string name="your_eye_level_rate">Level horizon %1$d in 10 times</string>
+    <string name="your_eye_light_improved">Your light has improved</string>
+    <string name="your_eye_tendencies">What you like</string>
+    <string name="your_eye_follow_most">Advice you take most</string>
+    <string name="your_eye_follow_least">Advice you skip most</string>
+    <string name="your_eye_skip_note">That\'s fine. Eyebright will mention it less.</string>
+    <string name="your_eye_best">Your best three</string>
+    <string name="your_eye_empty">Keep a few photos and this fills in.</string>
+    <string name="your_eye_private">Learned on your phone. Never uploaded.</string>
+    <string name="your_eye_reset">Start fresh</string>
+    <string name="your_eye_reset_confirm_title">Start fresh?</string>
+    <string name="your_eye_reset_confirm_body">Eyebright forgets what it has learned about your taste. Your photos stay where they are.</string>
+    <string name="your_eye_reset_confirm_yes">Start fresh</string>
+    <string name="your_eye_reset_confirm_no">Cancel</string>
+
+    <!-- Example tendencies (generated from AdaptiveWeights; shown as plain sentences). -->
+    <string name="tendency_tight_centred_portraits">You like tight, centred portraits.</string>
+    <string name="tendency_lots_of_sky">You like plenty of sky in a view.</string>
+    <string name="tendency_symmetry">You like things lined up and even.</string>
+    <string name="tendency_close_food">You shoot food close and from above.</string>
+
+    <!-- One-time Coach nudge after 20 keepers. -->
+    <string name="nudge_coach_title">Want a little more guidance live?</string>
+    <string name="nudge_coach_body">Coach mode adds a short reason under each cue. You can switch back any time.</string>
+    <string name="nudge_coach_yes">Try Coach mode</string>
+    <string name="nudge_coach_no">Not now</string>
+
+    <!-- Intents on the strip, in plain words (docs/PRODUCT.md). -->
+    <string name="intent_anything">Anything</string>
+    <string name="intent_person">A person</string>
+    <string name="intent_group">A group</string>
+    <string name="intent_view">A view</string>
+    <string name="intent_building">A building</string>
+    <string name="intent_food_things">Food &amp; things</string>
+</resources>

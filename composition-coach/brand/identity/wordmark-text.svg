@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 480 120">
+  <title>Eyebright wordmark, text only</title>
+  <!--
+    Text-only wordmark for places where the icon already sits next to it (store listing header,
+    About screen) or where the mark would be too small. Transparent ground; the text colour is
+    OnSurface #F2F2F2 for dark grounds. For light grounds swap fill to #121212.
+    Font: Inter, else Roboto, else the platform sans. Outline the text before print.
+  -->
+  <text x="16" y="82"
+        font-family="Inter, Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="80" font-weight="600" letter-spacing="-1.5" fill="#F2F2F2">eyebright</text>
+</svg>

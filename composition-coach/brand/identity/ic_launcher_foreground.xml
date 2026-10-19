@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Eyebright adaptive icon, foreground layer. Proposed replacement for
+  app/src/main/res/drawable/ic_launcher_foreground.xml (copy as-is; same file name).
+
+  The mark: the shutter's readiness ring at the moment it turns ready-green, with one white
+  catchlight (the bright point in an eye that makes a portrait look alive). Lens, eye and "ready"
+  in two shapes.
+
+  Geometry on the 108 dp canvas (centre 54,54):
+    ring       r = 22, stroke 6        -> outer edge at r = 25
+    catchlight centre (46,46), r = 5   -> farthest point 16.3 from centre, inside the ring's inner edge (19)
+  Everything sits inside r = 25, well within the 66 dp safe-zone circle (r = 33), so no launcher
+  mask (circle, squircle, teardrop) clips it. At 48 dp the ring stroke renders ~4 dp and the
+  catchlight ~6.7 dp across: both legible.
+  Colours: Accent.Ready #34D399 and white, from ui/theme/Color.kt. No other colour.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path
+        android:strokeColor="#34D399"
+        android:strokeWidth="6"
+        android:fillColor="#00000000"
+        android:pathData="M32,54 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M41,46 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0 Z" />
+</vector>
