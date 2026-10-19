@@ -44,10 +44,15 @@ class OutcomeCaptureTest {
             assertEquals("$outcome", Pipeline.BURST_MERGE, plain.pipeline)
             assertEquals("$outcome", Pipeline.BURST_MERGE, plain.requested)
         }
+        // The vendor's AUTO never displaces the merge: the merge is the outcome's point.
         val auto = OutcomeCapturePlanner.plan(Outcome.ANYTHING, setOf(OFF, AUTO), full)
-        assertEquals(AUTO, auto.enhancement)
-        assertEquals(Pipeline.SINGLE, auto.pipeline)
+        assertEquals(OFF, auto.enhancement)
+        assertEquals(Pipeline.BURST_MERGE, auto.pipeline)
         assertFalse(auto.degraded)
+        // A named extension still wins for the outcomes that ask for one (true depth bokeh beats a mask blur).
+        val bokeh = OutcomeCapturePlanner.plan(Outcome.PORTRAIT, setOf(OFF, AUTO, BOKEH), full)
+        assertEquals(BOKEH, bokeh.enhancement)
+        assertEquals(Pipeline.SINGLE, bokeh.pipeline)
     }
 
     @Test
@@ -67,7 +72,9 @@ class OutcomeCaptureTest {
         val plan = OutcomeCapturePlanner.plan(Outcome.GROUP, setOf(OFF), none)
         assertEquals(Pipeline.GROUP_COMPOSITE, plan.pipeline)
         assertFalse(plan.degraded)
-        assertEquals(Pipeline.SINGLE, OutcomeCapturePlanner.plan(Outcome.GROUP, setOf(OFF, AUTO), none).pipeline)
+        val withAuto = OutcomeCapturePlanner.plan(Outcome.GROUP, setOf(OFF, AUTO), none)
+        assertEquals(OFF, withAuto.enhancement)
+        assertEquals(Pipeline.GROUP_COMPOSITE, withAuto.pipeline)
     }
 
     @Test

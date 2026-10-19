@@ -41,6 +41,8 @@ data class CapturePlan(
  *  - BURST_SHARPEST and every Wave 3 merge (BURST_MERGE, NIGHT_STACK, EXPOSURE_BRACKET, GROUP_COMPOSITE) need
  *    the plain (non-extension) session: they cannot run under a vendor extension, so with an extension bound
  *    they become SINGLE (the extension does its own multi-frame work, so this is not reported as degraded).
+ *    The vendor's AUTO never displaces a merge (BURST_MERGE, GROUP_COMPOSITE bind OFF when AUTO would have been
+ *    the pick); a named extension (BOKEH for A person and Selfie) still wins over the merge.
  *  - NIGHT_STACK: with the NIGHT extension available it is bound and the capture is SINGLE (the extension does
  *    the stacking); without it OFF is bound and NIGHT_STACK runs. That is the better path, not a degradation,
  *    so a missing NIGHT extension is not reported.
@@ -63,6 +65,9 @@ object OutcomeCapturePlanner {
             Pipeline.EXPOSURE_BRACKET -> CaptureEnhancement.OFF
             Pipeline.FOCUS_STACK -> if (support.focusStacking) CaptureEnhancement.OFF else preferred
             Pipeline.NIGHT_STACK -> if (CaptureEnhancement.NIGHT in available) CaptureEnhancement.NIGHT else CaptureEnhancement.OFF
+            // A merge is the outcome's point: the vendor's AUTO never displaces it (a named extension such as
+            // BOKEH still does, because true depth bokeh beats a mask blur).
+            Pipeline.BURST_MERGE, Pipeline.GROUP_COMPOSITE -> if (preferred == CaptureEnhancement.AUTO) CaptureEnhancement.OFF else preferred
             else -> preferred
         }
         val first = preference.first()

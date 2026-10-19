@@ -31,7 +31,7 @@
     <string name="settings_burst_sharpest">Sharpest of burst</string>
     <string name="settings_burst_sharpest_subtitle">Takes a quick burst and keeps the sharpest frame</string>
     <string name="settings_multi_frame_merges">Multi-frame merges</string>
-    <string name="settings_multi_frame_merges_subtitle">Off saves the single photo only, for comparing with the stock camera</string>
+    <string name="settings_multi_frame_merges_subtitle">Off skips the merges and keeps the sharpest of a short burst, for comparing with the stock camera</string>
     <string name="settings_auto_level">Auto-level horizon</string>
     <string name="settings_auto_level_subtitle">Straightens a slightly tilted horizon after the shot</string>
     <string name="settings_auto_shoot">Auto shoot when ready</string>
