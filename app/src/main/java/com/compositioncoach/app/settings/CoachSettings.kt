@@ -1,5 +1,6 @@
 package com.compositioncoach.app.settings
 
+import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.composition.model.GuidanceLevel
 import com.compositioncoach.composition.model.SceneIntent
 
@@ -20,7 +21,34 @@ data class CoachSettings(
     val subjectMaskEnabled: Boolean = true,
     /** Whether the first-launch onboarding card has been dismissed. */
     val onboardingSeen: Boolean = false,
+    /**
+     * The CameraX Extensions pipeline the user wants captures routed through (`capture_enhancement`).
+     * Defaults to AUTO: on a phone whose vendor ships an extensions library, AUTO lets the vendor's own
+     * multi-frame pipeline pick HDR or night processing per scene, which is the closest a third-party app
+     * can get to the stock camera's merge. When the bound lens does not offer the requested mode, the
+     * camera falls back to OFF for that bind (the stored preference is kept, so it applies again on a lens
+     * that does offer it).
+     */
+    val captureEnhancement: CaptureEnhancement = CaptureEnhancement.AUTO,
+    /**
+     * Lucky imaging (`burst_sharpest`): capture three frames and keep the sharpest. The stored value is
+     * the user's preference; [burstSharpestEffective] is what a given capture actually does, because an
+     * extension's own multi-frame merge already does better than picking one of three frames.
+     */
+    val burstSharpest: Boolean = true,
+    /** Straighten small (0.7-8 degree) horizon tilts after saving (`auto_level`). */
+    val autoLevel: Boolean = true,
 ) {
+    /**
+     * Whether a capture taken with [activeEnhancement] (what the bound session actually uses, not the
+     * request) should be a three-frame sharpest-of burst: only when the user wants it, no extension is
+     * handling the capture (the vendor pipeline already merges frames; a burst of extension captures would
+     * take seconds), and the device is not conserving power (three full-resolution captures are three times
+     * the ISP and encoder work).
+     */
+    fun burstSharpestEffective(activeEnhancement: CaptureEnhancement, conservingPower: Boolean): Boolean =
+        burstSharpest && activeEnhancement == CaptureEnhancement.OFF && !conservingPower
+
     /** Target interval between vision analyses, see [FrameAnalysisSource.setTargetIntervalMs]. */
     val analysisIntervalMs: Long get() = if (batterySaver) BATTERY_SAVER_INTERVAL_MS else DEFAULT_INTERVAL_MS
 
@@ -79,4 +107,15 @@ object SceneIntentCodec {
 
     fun decode(raw: String?): SceneIntent =
         raw?.let { runCatching { SceneIntent.valueOf(it) }.getOrNull() } ?: SceneIntent.AUTO
+}
+
+/**
+ * Serializes [CaptureEnhancement] to/from the plain string DataStore stores it as (`capture_enhancement`).
+ * A missing or unrecognized value decodes to [CaptureEnhancement.AUTO], the documented default.
+ */
+object CaptureEnhancementCodec {
+    fun encode(enhancement: CaptureEnhancement): String = enhancement.name
+
+    fun decode(raw: String?): CaptureEnhancement =
+        raw?.let { runCatching { CaptureEnhancement.valueOf(it) }.getOrNull() } ?: CaptureEnhancement.AUTO
 }

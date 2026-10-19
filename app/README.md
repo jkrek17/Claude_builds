@@ -161,12 +161,15 @@ CameraScreen (collectAsStateWithLifecycle) ── CoachingLayer / shutter arc / 
     to ever actually return `awaitingSubject = true` (see Known limitations below).
 
 * `CameraViewModel` never touches a `Context` beyond what `AppContainer` (built from
-  `Application`) already holds; it does not store a `PreviewView`, `Activity`, or `CameraController`.
+  `Application`) already holds; it does not store a `PreviewView` or `Activity`. It *does* keep the
+  `CameraController` handed back in `CameraBindResult.Success.controller` (application-context only once the
+  screen unbinds it), so zoom presets, exposure, enhancement rebinds and the capture pipeline act on the
+  session the screen bound.
 * Per-frame scoring runs on `Dispatchers.Default` (`flowOn`); the sampled `onEach` that pushes into
   `MutableStateFlow` runs on the ViewModel's own dispatcher (`Main`, via `viewModelScope`).
-* On shutter: `CaptureRepository.capture(...)` saves the JPEG, then
-  `CompositionCoach.evaluateOnce(lastFrame, GuidanceLevel.COACH)` computes the one-off review result,
-  both are parked in `AppContainer.reviewStore` (a tiny in-memory `StateFlow<ReviewEntry?>`, not a nav
+* On shutter: the capture pipeline (see "Capture pipeline" below) saves the JPEG, then
+  `CompositionCoach.evaluateOnce(frameAtShutter, GuidanceLevel.COACH)` computes the one-off review result on
+  `Dispatchers.Default`, both are parked in `AppContainer.reviewStore` (a tiny in-memory `StateFlow<ReviewEntry?>`, not a nav
   argument — richer objects don't round-trip through navigation-compose args), and the screen
   navigates to `"review"`.
 * Overlays never draw anything Compose renders as part of the *photo* — the `PreviewView` and the
@@ -214,7 +217,7 @@ Other binding details:
   degraded `PerformanceTier`, see below, calls for it). CameraX fixes an `ImageCapture`'s capture mode at
   `Builder.build()` time, so this only takes effect on the *next* bind — a caller that wants it to react
   live should include whatever drives `preferFastCapture` in the rebind `DisposableEffect`'s keys, the
-  same way `lensFacing` already is. JPEG quality is 95; `ImageCapture.setTargetRotation` is set at bind
+  same way `lensFacing` already is. JPEG quality is 100 (see "Capture pipeline"); `ImageCapture.setTargetRotation` is set at bind
   time from the display rotation (always `ROTATION_0` for this portrait-locked app) *and* kept live
   afterwards from the phone's actual physical rotation — see "Device rotation (Pixel style)" below for
   why a bind-time-only value isn't enough for correct EXIF.
@@ -414,6 +417,86 @@ itself for the analysis interval, both `maxOf`/"more conservative wins") rather 
 other. `ThermalPolicy.start()`/`stop()` are called from the same `resumePipeline()`/`pausePipeline()` as
 the vision pipeline above.
 
+## Capture pipeline (shutter press to saved file)
+
+Field report: "photos are not as sharp as the Google stock app". The stock app's advantage is mostly HDR+:
+a burst of underexposed RAW frames aligned and merged on the ISP before demosaicing, which no third-party
+API exposes directly. What a third-party app *can* do is below, in the order it happens. Code:
+`CameraController` (bind-time configuration), `CapturePipeline` (steps 2-5), `AutoLevelProcessor` (step 6),
+orchestrated by `CameraViewModel.onShutterClick`.
+
+**At bind time** (before any shutter press):
+
+* **Extensions** (`capture_enhancement`, default AUTO): the lens is asked which of AUTO/HDR/NIGHT its vendor
+  extensions library offers; the chosen one binds through `ExtensionsManager.getExtensionEnabledCameraSelector`,
+  routing the still capture through the vendor's own multi-frame pipeline. If that session cannot also carry
+  `ImageAnalysis` (`isImageAnalysisSupported`), Preview + ImageCapture bind under the extension and analysis
+  is not bound: `CameraUiState.analysisPausedByEnhancement` is true and live coaching pauses until the user
+  picks Off (or an analysis-capable mode). That trade is only made on an explicit HDR/Night choice: AUTO, the
+  default, is offered only when its session keeps analysis (`CaptureQuality.offeredEnhancements`), so the
+  default never opens the app with coaching off; when AUTO is not offered the default resolves to OFF and
+  lucky imaging takes over. `CaptureSessionInfo.enhancementsPausingCoaching` lists the modes that would pause
+  it, so a chip can say so before it is picked. The VM owns the rebind on a change (settings emission ->
+  `CameraController.rebind()`); a change during a capture is deferred until it finishes.
+* **Camera2 request options** (no extension active, not conserving power, each only if advertised):
+  NOISE_REDUCTION, EDGE, COLOR_CORRECTION_ABERRATION, HOT_PIXEL and DISTORTION_CORRECTION at HIGH_QUALITY,
+  OIS on. `TONEMAP_MODE` is deliberately left alone (HIGH_QUALITY would replace the vendor's tuned tone
+  curve). The same values go on Preview too, because CameraX merges every use case's interop options into the
+  one repeating request anyway.
+* **Full resolution, no re-encode:** JPEG quality 100; the capture stream size is compared with the largest
+  4:3 JPEG size in the stream configuration map and the ViewPort crop with the whole stream. Logged at bind
+  (`CameraController` tag, WARN if not full resolution) and carried into every capture's diagnostics.
+* A `CaptureResultTap` (`Camera2Interop` session capture callback) records each still request's
+  `TotalCaptureResult`, so diagnostics can report what the ISP actually did.
+
+**On the shutter press:**
+
+1. **Snapshot** the shutter-time `FrameAnalysis` (for the review score) and orientation (for auto-level):
+   the frame's own `DeviceOrientation` if it is under 1 s old, else `MotionSensor`'s gravity fallback.
+2. **Steady-shot gate** (always on; no setting): `MotionSensor` classifies gyro RMS angular speed over a
+   150 ms window (STEADY < 0.08 rad/s, MOVING > 0.35, hysteresis 0.12 / 0.26). If MOVING, wait up to 450 ms
+   for STEADY/SLIGHT_MOTION (`CameraUiState.isWaitingForSteady` is true meanwhile), then shoot regardless.
+3. **Capture**, one of:
+   * **Lucky imaging** (`burst_sharpest`, effective only with no extension active, flash OFF, not
+     conserving power; `CameraUiState.burstSharpestActive`): three in-memory `takePicture` requests queued
+     back to back; each JPEG's centre half is decoded at 1:2 and scored by `SharpnessScorer` (variance of
+     the Laplacian); the sharpest frame's *original* JPEG bytes are written to MediaStore with the EXIF
+     orientation from `ImageInfo.rotationDegrees` plus, for the front camera, a display-space mirror
+     (`ExifOrientations.tagFor`). The others are discarded. Any failure falls back to a single capture.
+   * **Single capture** through CameraX's own MediaStore file path (extensions, flash, power saving, or
+     burst off).
+4. **Diagnostics** (`CaptureDiagnostics` on `ReviewEntry.diagnostics`): ISO, shutter, aperture and focal
+   length from the tapped capture result, else from EXIF; noise-reduction/edge modes and OIS from the
+   result; enhancement, capture mode, JPEG quality, steadiness at capture, wait time, zoom, EV index,
+   burst scores and pick, configured size and full-resolution verdict, shutter-to-saved latency.
+5. **Review**: the `ReviewEntry` is put in `ReviewStore` and the screen navigates, so the photo appears as
+   soon as it is saved.
+6. **Auto-level** (`auto_level`): if the shutter-time roll was reliable and 0.7-8 degrees, the saved JPEG is
+   decoded, rotated by -roll about its centre, cropped to the largest same-aspect rectangle
+   (`AutoLevelGeometry`), re-encoded at 100 and written over the same Uri on `Dispatchers.Default`/IO, EXIF
+   orientation and capture tags preserved. The entry is then replaced with `autoLevelAppliedDegrees` set,
+   `revision + 1` and `processing = false` (the review image must key its cache on `revision`). Applies to
+   extension captures too, since it is a purely geometric step.
+7. **Log**: one INFO line per capture, tag `CaptureDiagnostics` (`adb logcat -s CaptureDiagnostics`), after
+   step 6 when it runs:
+
+```
+capture size=4080x3072 configured=4080x3072 fullRes=true lens=BACK enhancement=OFF mode=MAXIMIZE_QUALITY+BURST3
+jpegQ=100 iso=50 shutter=1/120 s f=1.68 focal=6.9mm nr=HIGH_QUALITY edge=HIGH_QUALITY ois=true steadiness=STEADY
+waitedMs=0 zoom=1.00 ev=0 burst=[812.4,901.7,655.0] picked=1 autoLevel=-1.40 latencyMs=780
+```
+
+Zoom presets (`CameraUiState.zoomPresets`, `ZoomPresets.compute`): 0.6 or the lens minimum rounded up to 0.1
+when the lens goes below 1x, then 1, 2 and (when `maxZoom >= 5`) 5; `onZoomPresetSelected` eases there over
+~200 ms in log-zoom steps (CameraX itself does not animate `setZoomRatio`), and `zoomRatio` follows the
+camera's own `ZoomState`, so pinch-zoom updates it too. Exposure compensation (`onExposureCompensationChanged`)
+is applied by the VM and resets to 0 on every rebind, as CameraX itself does.
+
+Performance: nothing in the pipeline runs on the main thread except queuing `takePicture` (a CameraX
+requirement); decoding/scoring run on `Dispatchers.Default`, file I/O on `Dispatchers.IO`, and analysis
+frames are simply dropped (`STRATEGY_KEEP_ONLY_LATEST`) while the ISP is busy. Target: burst
+shutter-to-saved under 1.2 s on a Pixel (`latencyMs` in the log line measures exactly that).
+
 ## Photo saving, thumbnail and gallery-shortcut hooks
 
 * After a successful capture, `CameraViewModel` records the saved `Uri` in
@@ -441,11 +524,17 @@ the vision pipeline above.
 | `detect_objects` | bool | `true` | Forwarded to `(frameSource as? VisionFeatureToggles)?.setObjectDetectionEnabled` |
 | `subject_mask` | bool | `true` | User's own preference; see `CoachSettings.effectiveSubjectMaskEnabled` below for what's actually applied |
 | `onboarding_seen` | bool | `false` | Whether the first-launch `OnboardingCard` has been dismissed |
+| `capture_enhancement` | string (`CaptureEnhancement` name) | `AUTO` | OFF / AUTO / HDR / NIGHT: CameraX Extensions session for captures; falls back to OFF for a bind whose lens does not offer it |
+| `burst_sharpest` | bool | `true` | Lucky imaging (three frames, keep the sharpest); only runs when no extension is active, the flash is off and the device is not conserving power |
+| `auto_level` | bool | `true` | Straighten 0.7-8 degree horizon tilts after saving |
 
 An unrecognized or missing `guidance_level` value falls back to `BALANCED`, and an unrecognized,
 missing, or legacy `scene_intent` value falls back to `AUTO`, rather than crashing
 (`GuidanceLevelCodec` / `SceneIntentCodec`, unit-tested in `CoachSettingsTest`) — this is the intended
-way to evolve the schema, not a bug to "fix" by renaming keys in place.
+way to evolve the schema, not a bug to "fix" by renaming keys in place. `capture_enhancement` falls back to
+`AUTO` the same way (`CaptureEnhancementCodec`). Every key's read/write round trip is unit-tested on the JVM
+through the pure `Preferences.toCoachSettings()` / `MutablePreferences.writeCoachSettings()` pair that
+`SettingsRepository` itself uses (`CaptureSettingsTest`).
 
 ## Detection settings (`VisionFeatureToggles`)
 
@@ -608,7 +697,9 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
 * **No instrumentation tests** were added (not required); all tests run on the JVM — plain JUnit4
   (`OverlayMapperTest`, `RotationTruthTableTest`, `GuidanceFormatterTest`, `ReadinessArcTest`,
   `CueEdgeTest`, `HorizonRollTest`, `ModeStripLogicTest`, `CameraUiStateTest`, `CoachSettingsTest`,
-  `ZoomChipFormatterTest`, `ReviewFormatterTest`) plus three Robolectric+Compose ones
+  `ZoomChipFormatterTest`, `ReviewFormatterTest`, and for the capture pipeline `SharpnessScorerTest`,
+  `AutoLevelGeometryTest`, `SteadinessClassifierTest`, `ZoomPresetsTest`, `CaptureQualityTest`,
+  `CaptureDiagnosticsTest`, `CaptureSettingsTest`) plus three Robolectric+Compose ones
   (`AppLaunchTest`, `RotatedChromeRotationTest`, `CoachingLayerSmokeTest`).
   `CoachingLayerSmokeTest` composes the real coaching layer with a hand-built `SmoothedComposition`
   carrying a physical-RIGHT headline at rotation 0 and 90, and checks the cue chip actually travels to
@@ -619,8 +710,9 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
   `CoachSettings`/`effectiveSubjectMaskEnabled` logic on the JVM; `SettingsRepository` itself needs a real
   DataStore-backed `Context` (no Robolectric in this module), so its read/write plumbing is exercised by
   the app running, not a JVM test — consistent with how the pre-existing keys were covered.
-* **Front camera capture** sets `ImageCapture.Metadata.isReversedHorizontal = true` so the saved JPEG
-  matches what the mirrored preview showed; this does not affect analysis, which is already mirrored
+* **Front camera capture** sets `ImageCapture.Metadata.isReversedHorizontal = true` (single capture) or
+  writes a display-space mirrored EXIF orientation (lucky imaging) so the saved JPEG matches what the
+  mirrored preview showed; this does not affect analysis, which is already mirrored
   by the vision layer's normalized-coordinate contract.
 * **Device rotation** (see the dedicated section above): a capture taken in the brief window before the
   first `FrameAnalysis` arrives (fresh process start, phone already held sideways) uses the default
@@ -629,6 +721,16 @@ capture), and it decodes the full-size photo via `Coil` for a 44dp thumbnail rat
   window rather than a systemic issue, since every subsequent frame corrects it immediately.
 * Pinch-to-zoom is still not exposed as a settings toggle — it's a direct gesture on the preview — but it
   now drives the `ZoomChip` readout described above.
+* **Capture pipeline, needs a device to confirm** (each is visible in the `CaptureDiagnostics` log line or
+  the `CameraController` bind log): which extensions the lens offers and whether they carry analysis
+  (`Extensions available=... withAnalysis=...`); that the capture stream is the full 4:3 size
+  (`fullRes=true`); that the HAL honoured the quality options (`nr=`/`edge=`/`ois=`); burst latency
+  (`latencyMs`, target < 1.2 s) and that scores differ meaningfully between frames (`burst=`); steady-shot
+  thresholds against real hand shake (`steadiness=`/`waitedMs=`); auto-level direction on a deliberately
+  tilted shot in each hold and on the front camera (`autoLevel=` plus looking at the horizon); that the
+  levelled file replaces the review image (needs the review screen to key on `ReviewEntry.revision`); and
+  whether HIGH_QUALITY noise reduction in the shared repeating request costs preview frame rate on a given
+  HAL (the debug overlay's fps).
 * **Needs a physical device to confirm:** `CAPTURE_MODE_MAXIMIZE_QUALITY`'s actual shutter-to-saved-JPEG
   latency (the KDoc's "typically well under a second" is the documented CameraX trade-off, not measured
   here); `ThermalPolicy`'s live behaviour against `PowerManager.addThermalStatusListener` (Robolectric has

@@ -1,7 +1,10 @@
 package com.compositioncoach.app.ui.camera
 
+import com.compositioncoach.app.camera.CaptureEnhancement
+import com.compositioncoach.app.camera.CaptureSessionInfo
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.LensFacing
+import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.settings.CoachSettings
 import com.compositioncoach.composition.model.CompositionResult
 import com.compositioncoach.composition.model.SmoothedComposition
@@ -169,11 +172,58 @@ class CameraUiStateTest {
     }
 
     @Test
-    fun `withCameraBound records the exposure range and clamps the current index into it`() {
-        val state = CameraUiState(exposureIndex = 10)
+    fun `withCameraBound records the exposure range and resets the index like CameraX does on rebind`() {
+        val state = CameraUiState(exposureIndex = 3, exposureRange = -4..4)
         val updated = state.withCameraBound(LensFacing.BACK, hasFlashUnit = false, exposureRange = -4..4)
         assertEquals(-4..4, updated.exposureRange)
-        assertEquals(4, updated.exposureIndex)
+        assertEquals(0, updated.exposureIndex)
+    }
+
+    @Test
+    fun `withCameraBound publishes the session's enhancements, analysis note and zoom presets`() {
+        val session = CaptureSessionInfo(
+            lensFacing = LensFacing.BACK,
+            requestedEnhancement = CaptureEnhancement.NIGHT,
+            activeEnhancement = CaptureEnhancement.NIGHT,
+            availableEnhancements = setOf(CaptureEnhancement.OFF, CaptureEnhancement.NIGHT),
+            analysisPausedByEnhancement = true,
+            minZoomRatio = 0.5f,
+            maxZoomRatio = 10f,
+        )
+        val updated = CameraUiState().withCameraBound(LensFacing.BACK, hasFlashUnit = true, session = session)
+        assertEquals(setOf(CaptureEnhancement.OFF, CaptureEnhancement.NIGHT), updated.availableEnhancements)
+        assertEquals(CaptureEnhancement.NIGHT, updated.enhancement)
+        assertTrue(updated.analysisPausedByEnhancement)
+        assertEquals(listOf(0.6f, 1f, 2f, 5f), updated.zoomPresets)
+        assertEquals(session, updated.captureSession)
+    }
+
+    @Test
+    fun `withZoomState clamps the ratio and tracks the selected preset`() {
+        val state = CameraUiState().withZoomState(2.03f, 0.6f, 8f)
+        assertEquals(listOf(0.6f, 1f, 2f, 5f), state.zoomPresets)
+        assertEquals(2f, state.selectedZoomPreset)
+        assertEquals(1f, CameraUiState().withZoomState(0.2f, 1f, 4f).zoomRatio)
+        assertNull(CameraUiState().withZoomState(1.5f, 1f, 4f).selectedZoomPreset)
+    }
+
+    @Test
+    fun `burst runs only with no extension, no flash and no power saving`() {
+        val base = CameraUiState(settings = CoachSettings(burstSharpest = true), enhancement = CaptureEnhancement.OFF)
+        assertTrue(base.burstSharpestActive)
+        assertFalse(base.copy(enhancement = CaptureEnhancement.AUTO).burstSharpestActive)
+        assertFalse(base.copy(flashMode = FlashMode.AUTO).burstSharpestActive)
+        assertFalse(base.copy(performanceTier = PerformanceTier.REDUCED).burstSharpestActive)
+        assertFalse(base.copy(settings = CoachSettings(burstSharpest = false)).burstSharpestActive)
+    }
+
+    @Test
+    fun `steady-shot waiting clears when the capture ends either way`() {
+        val waiting = CameraUiState().withCaptureStarted().withWaitingForSteady(true).withSteadiness(Steadiness.MOVING)
+        assertTrue(waiting.isWaitingForSteady)
+        assertEquals(Steadiness.MOVING, waiting.steadiness)
+        assertFalse(waiting.withCaptureFinished().isWaitingForSteady)
+        assertFalse(waiting.withCaptureError("x").isWaitingForSteady)
     }
 
     @Test

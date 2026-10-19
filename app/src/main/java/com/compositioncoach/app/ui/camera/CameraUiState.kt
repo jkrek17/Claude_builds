@@ -2,6 +2,8 @@ package com.compositioncoach.app.ui.camera
 
 import android.net.Uri
 import com.compositioncoach.app.camera.CaptureEnhancement
+import com.compositioncoach.app.camera.CaptureSessionInfo
+import com.compositioncoach.app.camera.ZoomPresets
 import com.compositioncoach.app.camera.Steadiness
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.LensFacing
@@ -102,7 +104,36 @@ data class CameraUiState(
     /** Current zoom ratio and the preset chips to offer (e.g. 0.6, 1, 2), already clamped to the lens. */
     val zoomRatio: Float = 1f,
     val zoomPresets: List<Float> = listOf(1f),
+    /**
+     * True when the selected enhancement runs in a vendor extensions session that cannot also carry
+     * ImageAnalysis, so live coaching is paused while it is selected (the camera still previews and captures).
+     * The UI should show a small note (e.g. "Coaching paused in Night") rather than the analysis-unavailable
+     * chip, since switching the enhancement back to Off or Auto restores coaching immediately.
+     */
+    val analysisPausedByEnhancement: Boolean = false,
+    /**
+     * True from the shutter press until the capture is actually taken while steady-shot gating waits (at
+     * most 450 ms) for the phone to stop MOVING; the UI can show "Hold still" during it.
+     */
+    val isWaitingForSteady: Boolean = false,
+    /**
+     * What the current bind configured (active/requested enhancement, capture stream size and whether it is
+     * the full sensor resolution, capture mode). Null until the first successful bind. For the debug overlay.
+     */
+    val captureSession: CaptureSessionInfo? = null,
 )
+
+/** The zoom preset chip that matches [CameraUiState.zoomRatio] (within 5%), or null between presets. */
+val CameraUiState.selectedZoomPreset: Float?
+    get() = ZoomPresets.selectedPreset(zoomPresets, zoomRatio)
+
+/**
+ * Whether the next shutter press will run lucky imaging (three frames, keep the sharpest): the user's
+ * burst_sharpest setting, no extension handling the capture, not conserving power, and the flash not armed
+ * (three flash pops would be both slow and differently lit, so the sharpness comparison would be meaningless).
+ */
+val CameraUiState.burstSharpestActive: Boolean
+    get() = settings.burstSharpestEffective(enhancement, preferFastCapture) && flashMode == FlashMode.OFF
 
 /**
  * Whether the *next* camera bind should trade capture quality for shutter speed — true when either the
@@ -118,19 +149,55 @@ val CameraUiState.preferFastCapture: Boolean
 
 fun CameraUiState.withSettings(settings: CoachSettings): CameraUiState = copy(settings = settings)
 
+/**
+ * A (re)bind succeeded. CameraX resets exposure compensation to 0 whenever a camera is rebound, so the
+ * slider's index resets too rather than displaying a value the hardware no longer has. When [session] is
+ * given, the enhancement chips, the coaching-paused note and the zoom presets follow the freshly bound lens.
+ */
 fun CameraUiState.withCameraBound(
     lensFacing: LensFacing,
     hasFlashUnit: Boolean,
     exposureRange: IntRange = 0..0,
-): CameraUiState = copy(
-    lensFacing = lensFacing,
-    hasFlashUnit = hasFlashUnit,
-    cameraError = null,
-    exposureRange = exposureRange,
-    // A fresh bind may report a different (or no) exposure range than before (e.g. a lens switch to a
-    // camera with different capabilities); re-clamp rather than leave a now out-of-range index in place.
-    exposureIndex = exposureIndex.coerceIn(exposureRange),
-)
+    session: CaptureSessionInfo? = null,
+): CameraUiState {
+    val bound = copy(
+        lensFacing = lensFacing,
+        hasFlashUnit = hasFlashUnit,
+        cameraError = null,
+        exposureRange = exposureRange,
+        exposureIndex = 0.coerceIn(exposureRange),
+    )
+    if (session == null) return bound
+    return bound.copy(
+        availableEnhancements = session.availableEnhancements,
+        enhancement = session.activeEnhancement,
+        analysisPausedByEnhancement = session.analysisPausedByEnhancement,
+        captureSession = session,
+    ).withZoomState(zoomRatio, session.minZoomRatio, session.maxZoomRatio)
+}
+
+/** The camera's live zoom state changed (pinch, preset, or a lens switch); re-derives the preset chips. */
+fun CameraUiState.withZoomState(ratio: Float, minRatio: Float, maxRatio: Float): CameraUiState {
+    val safeMin = if (minRatio > 0f) minRatio else 1f
+    val safeMax = if (maxRatio >= safeMin) maxRatio else safeMin
+    return copy(zoomRatio = ratio.coerceIn(safeMin, safeMax), zoomPresets = ZoomPresets.compute(safeMin, safeMax))
+}
+
+/**
+ * The phone's quantized physical rotation from the gyro/gravity fallback (`MotionSensor`), used only while no
+ * `FrameAnalysis` is arriving to carry it (analysis paused by an enhancement, or unavailable). Drives the same
+ * chrome rotation and capture EXIF orientation as the frame-borne value.
+ */
+fun CameraUiState.withDeviceRotation(deviceRotationDegrees: Int): CameraUiState = copy(deviceRotationDegrees = deviceRotationDegrees)
+
+/** Latest gyro classification, see [CameraUiState.steadiness]. */
+fun CameraUiState.withSteadiness(steadiness: Steadiness): CameraUiState = copy(steadiness = steadiness)
+
+/** Steady-shot gating started or ended, see [CameraUiState.isWaitingForSteady]. */
+fun CameraUiState.withWaitingForSteady(waiting: Boolean): CameraUiState = copy(isWaitingForSteady = waiting)
+
+/** The user picked an enhancement; shown immediately while the camera rebinds to it. */
+fun CameraUiState.withEnhancementRequested(enhancement: CaptureEnhancement): CameraUiState = copy(enhancement = enhancement)
 
 /** Applies a new device-health-driven cadence tier; see [CameraUiState.performanceTier]'s doc. */
 fun CameraUiState.withPerformanceTier(tier: PerformanceTier): CameraUiState = copy(performanceTier = tier)
@@ -154,10 +221,11 @@ fun CameraUiState.withCaptureStarted(): CameraUiState = copy(isCapturing = true,
  * abrupt jump from full-opacity UI. [CameraViewModel] clears [postCaptureFadeActive] again ~1s later via
  * [withPostCaptureFadeEnded], whether or not navigation actually happened by then.
  */
-fun CameraUiState.withCaptureFinished(): CameraUiState = copy(isCapturing = false, postCaptureFadeActive = true)
+fun CameraUiState.withCaptureFinished(): CameraUiState =
+    copy(isCapturing = false, isWaitingForSteady = false, postCaptureFadeActive = true)
 
 fun CameraUiState.withCaptureError(message: String): CameraUiState =
-    copy(isCapturing = false, captureError = message, postCaptureFadeActive = false)
+    copy(isCapturing = false, isWaitingForSteady = false, captureError = message, postCaptureFadeActive = false)
 
 /** Ends the post-capture fade window started by [withCaptureFinished]. */
 fun CameraUiState.withPostCaptureFadeEnded(): CameraUiState = copy(postCaptureFadeActive = false)
