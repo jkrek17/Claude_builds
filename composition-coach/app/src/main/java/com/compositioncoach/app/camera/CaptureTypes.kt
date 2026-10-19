@@ -72,6 +72,20 @@ data class CaptureDiagnostics(
     val noiseReductionMode: String? = null,
     val edgeMode: String? = null,
     val opticalStabilization: Boolean? = null,
+    // --- Wave 2 additive fields (capture pipelines) ------------------------------------------------------
+    /**
+     * Which pipeline produced the photo, as `CapturePipeline.capture(outcome, ...)` ran it: "SINGLE",
+     * "BURST_SHARPEST", "MOTION_AVERAGE"/"MOTION_LIGHTEN"/"MOTION_MEDIAN", "FOCUS_STACK", or the fallback it
+     * used ("SINGLE" for a focus stack the lens could not do). Null for the pre-outcome capture path.
+     */
+    val pipeline: String? = null,
+    /** Frames merged into the saved image (Motion stack frames, 3 for a focus stack); null for one frame. */
+    val framesStacked: Int? = null,
+    /**
+     * One plain sentence when the outcome could not get what it asked for ("Night isn't available on this
+     * phone, using the best we can"); null when nothing was degraded. Shown once by the UI.
+     */
+    val degradedNote: String? = null,
 ) {
     /** "1/120 s" style shutter speed, or null. */
     val shutterText: String?
@@ -100,6 +114,8 @@ data class CaptureDiagnostics(
             "f=${aperture.v()} focal=${focalLengthMm.v()}mm nr=${noiseReductionMode.v()} edge=${edgeMode.v()} " +
             "ois=${opticalStabilization.v()} steadiness=${steadiness.v()} waitedMs=${waitedForSteadyMs.v()} " +
             "zoom=${zoom.v()} ev=${ev.v()} burst=${scores.v()} picked=${burstPicked.v()} " +
-            "autoLevel=${level.v()} latencyMs=${captureLatencyMs.v()}"
+            "autoLevel=${level.v()} latencyMs=${captureLatencyMs.v()}" +
+            (if (pipeline != null || framesStacked != null) " pipeline=${pipeline.v()} stacked=${framesStacked.v()}" else "") +
+            (if (degradedNote != null) " degraded=\"$degradedNote\"" else "")
     }
 }

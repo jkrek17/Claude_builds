@@ -27,7 +27,89 @@ MaskDownsampler            // segmentation-mask -> SubjectMask grid resampling (
 SegmentationCadence        // segmentation run cadence + thermal/perf ladder (pure Kotlin)
 DetectorSchedule           // pose/object cadence + PerformanceTier ladder (pure Kotlin)
 PerformanceTier            // FULL/REDUCED/MINIMAL cadence tier, set via VisionFeatureToggles
+// --- Wave 2 ---
+StillImageAnalyzer         // analyze(bitmap, isFrontCamera, alreadyMirrored = true): FrameAnalysis of a captured photo
+FrameStackingSource        // Motion stacking on the live stream (implemented by VisionPipeline)
+FrameAccumulator           // pure AVERAGE / LIGHTEN / MEDIAN stacker with integer alignment shifts
+StackBlend, AccumulatedImage
+GyroAlignment              // pure: gyro rotation -> image shift (rotation-only alignment); AngularDelta, PixelShift
+FrameAligner               // fun interface :app implements on top of the gyro
+YuvConverter               // pure YUV_420_888 -> upright ARGB through a FrameCoordinateMapper
+FaceClassificationGate     // pure: when the live face detector classifies (eyes open)
 ```
+
+## Still-photo analysis (`StillImageAnalyzer`)
+
+The review screen scores the *captured* photo, not the last preview frame:
+`StillImageAnalyzer().analyze(bitmap, isFrontCamera)` (suspend, runs on `Dispatchers.Default`).
+
+- Input: an **upright** bitmap (`CaptureRepository.decodeForAnalysis(uri)` applies the EXIF rotation and the
+  selfie mirror). The analyzer downscales its own ARGB_8888 copy to at most 1024 px on the long edge
+  (`MAX_LONG_EDGE_PX`); the caller's bitmap is never modified or recycled.
+- Detectors: its **own** single-image clients, created per call and closed afterwards, so it can run while the
+  live pipeline is streaming: face (ACCURATE, landmarks, `CLASSIFICATION_MODE_ALL`, min face 5 %), object
+  (`SINGLE_IMAGE_MODE`, multiple, classified, filtered by `ObjectMapper` exactly like the live path), selfie
+  segmentation (`SINGLE_IMAGE_MODE`, raw-size mask) only when a face was found, and `ImageStatisticsComputer`
+  on BT.601 luma of the working copy. Face/object run concurrently.
+- Geometry: `FrameCoordinateMapper(w, h, rotation = 0, crop = whole bitmap, mirror)`; result mapping is shared
+  with the live path (`MlKitResultMapping`). `deviceRotationDegrees` and `analysisRotationDegrees` are 0.
+- **Mirroring.** A saved selfie is already mirrored (it is what the user framed), so by default nothing is
+  mirrored again (`alreadyMirrored = true`): ML Kit then sees the same mirrored image the user saw, and yaw,
+  eye sides and boxes come out exactly as the live path reports them for the mirrored preview. Pass
+  `alreadyMirrored = false` for a raw front-camera image to apply the live path's mirror instead. (A naive
+  "mirror if front camera" would double-mirror every saved selfie.)
+- Failure: never throws (except cancellation). Detector failure leaves faces/objects empty and the mask null;
+  a decode failure of the working copy returns a bare frame of the input size. `detectorTimings` has
+  `faces`, `objects`, `segmentation`, `stats`, `total`.
+
+## Eyes open in the live path (`FaceClassificationGate`)
+
+`DetectedFace.eyesOpenProbability` = min(left, right) of ML Kit's eye-open probabilities, null when
+classification did not run. ML Kit fixes classification at client construction and it roughly doubles face
+time, so `VisionPipeline` keeps a second face client with `CLASSIFICATION_MODE_ALL` and uses it only when
+`VisionFeatureToggles.setGroupModeEnabled(true)` (the Group outcome) or once two or more faces have been in
+view for 1 s; it stays on until fewer than two faces have been seen for 2 s (no flapping). The decision uses
+the previous frame's face count. Tracking ids differ between the two clients, so a face's id can change once
+when classification switches on.
+
+## Motion stacking (`FrameStackingSource`, `FrameAccumulator`)
+
+CameraX allows one `ImageAnalysis`, so stacks are built from the live analysis stream:
+`(frameSource as? FrameStackingSource)?.startAccumulating(mode, maxFrames, aligner, focalToLongEdge)`,
+then `stopAccumulating(): AccumulatedImage?` (suspend). `stackingProgress: StateFlow<Float?>` is
+frames/maxFrames while stacking, null otherwise.
+
+- While stacking, each accepted frame is converted (`YuvConverter`, full-range BT.601, nearest sample,
+  incremental affine walk, no per-pixel allocation) to ARGB at the analysis resolution in the
+  **display-portrait** orientation (`imageInfo.rotationDegrees`, crop rect, front mirror), aligned, and added.
+  The ML detectors are skipped on those frames (last faces/objects/mask re-reported) and the sampler floor
+  drops to 40 ms, so the stack gets as many frames as conversion allows. Raise the analysis stream to
+  1280x960 for Motion outcomes with `CameraController.setAnalysisResolutionHint` (in `:app`) before binding.
+- Blends on 8-bit channels: AVERAGE (per-channel mean, rounded), LIGHTEN (per-channel max), MEDIAN (per
+  pixel, the frame whose luma is the median contributes its whole colour, so no colour is invented).
+  MEDIAN keeps a ring of at most 24 frames, further capped by a 64 MB budget (13 frames at 1280x960), and
+  keeps every `ceil(maxFrames / capacity)`-th frame so the ring spans the whole hold.
+- **Alignment is rotation-only** (`GyroAlignment`): the gyro rotation since the start, times the focal length
+  in pixels, is the image shift (rear: `dx = f*wy`, `dy = f*wx`; mirrored front: both negated); frames are
+  sampled back by that integer shift, clamped to 4 % of the long edge, edge pixels repeated. Not corrected:
+  roll about the optical axis, hand translation (parallax: matters for subjects within a few metres), lens
+  distortion at the edges, rolling shutter.
+- The result carries `uprightRotationDegrees`, the extra clockwise quarter turn for a landscape hold at the
+  start of the stack (front camera: negated, because the mirror is applied after rotating); `:app` applies it
+  losslessly before saving.
+
+## Known limitations (Wave 2)
+
+- Still analysis runs on a 1024 px copy: faces smaller than ~5 % of the frame height (a big group far away)
+  can be missed even though the live path at 640x480 found them on a closer framing.
+- Stacking shares the analysis stream: at 1280x960, conversion plus accumulation costs roughly 20-50 ms per
+  frame on a mid-range phone (estimate, not benchmarked here), so expect ~10-20 stacked frames per second.
+  The live coaching detectors run on the same larger frames while a Motion outcome is selected, which is
+  slower than at 640x480.
+- MEDIAN's selection at the end is O(pixels x frames log frames) on one core: ~0.3-1 s at 1280x960 x 13.
+- Gyro and frame timestamps are matched only when the camera's timestamp source shares the gyro clock
+  (`elapsedRealtimeNanos`); otherwise alignment uses the rotation up to the moment the frame is processed
+  (tens of ms late, sub-pixel during a steady hold).
 
 ## Pipeline
 

@@ -173,6 +173,50 @@ class CameraController(
      */
     @Volatile private var captureSurfaceRotation: Int? = null
 
+    /** Target size of the [ImageAnalysis] stream for the next bind; see [setAnalysisResolutionHint]. */
+    @Volatile private var analysisResolution: Size = DEFAULT_ANALYSIS_RESOLUTION
+
+    /** Outcome-driven enhancement for the next bind, overriding the persisted preference; see [setEnhancementOverride]. */
+    @Volatile private var enhancementOverride: CaptureEnhancement? = null
+
+    /**
+     * Sets the analysis stream's target size for the **next** bind (CameraX fixes it at build time): pass
+     * [MOTION_ANALYSIS_RESOLUTION] (1280x960) while a Motion outcome is selected, so its stacks are built from
+     * ~1.2 MP frames, and null to return to the 640x480 coaching default. Returns true when the value changed,
+     * i.e. the caller should [rebind] for it to apply. Higher analysis resolution makes live detection slower
+     * (detectors scale with input size), which is why it is only raised for Motion outcomes.
+     */
+    fun setAnalysisResolutionHint(hint: Size?): Boolean {
+        val next = hint ?: DEFAULT_ANALYSIS_RESOLUTION
+        if (next == analysisResolution) return false
+        analysisResolution = next
+        return true
+    }
+
+    /**
+     * Sets the enhancement the next bind uses instead of the persisted `capture_enhancement` preference (null
+     * = use the preference again): the outcome's choice from [OutcomeCapturePlanner.plan]. Returns true when the
+     * value changed (the caller should [rebind]). [CaptureSessionInfo.requestedEnhancement] keeps reporting the
+     * persisted preference; [CaptureSessionInfo.outcomeEnhancement] reports this override.
+     */
+    fun setEnhancementOverride(enhancement: CaptureEnhancement?): Boolean {
+        if (enhancement == enhancementOverride) return false
+        enhancementOverride = enhancement
+        return true
+    }
+
+    /** [ImageCapture.getTargetRotation] in degrees (0/90/180/270, `Surface.ROTATION_*` sense); 0 while unbound. */
+    val captureTargetRotationDegrees: Int
+        get() = when (imageCapture?.targetRotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+
+    /** Camera2 facts and manual focus for the current bind, or null while unbound. */
+    val lensControl: LensControl? get() = camera?.let { LensControl(it) }
+
     val hasFlashUnit: Boolean get() = camera?.cameraInfo?.hasFlashUnit() == true
 
     /** The bound camera's current zoom ratio, or null while unbound. */
@@ -244,7 +288,8 @@ class CameraController(
         checkGeneration(generation)
         val (available, pausesCoaching) = availableEnhancements(extensions, baseSelector, needsAnalysis = args.frameAnalyzer != null)
         val requested = runCatching { enhancementPreference() }.getOrElse { CaptureEnhancement.AUTO }
-        val resolved = CaptureQuality.resolveEnhancement(requested, available)
+        val override = enhancementOverride
+        val resolved = CaptureQuality.resolveEnhancement(override ?: requested, available)
 
         val bound = try {
             bindUseCases(provider, args, baseSelector, resolved, extensions, generation)
@@ -269,6 +314,7 @@ class CameraController(
         val info = CaptureSessionInfo(
             lensFacing = boundLens,
             requestedEnhancement = requested,
+            outcomeEnhancement = override,
             activeEnhancement = bound.enhancement,
             availableEnhancements = available,
             enhancementsPausingCoaching = pausesCoaching,
@@ -363,7 +409,7 @@ class CameraController(
         val analysisResolutionSelector = ResolutionSelector.Builder()
             .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
             .setResolutionStrategy(
-                ResolutionStrategy(Size(640, 480), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
+                ResolutionStrategy(analysisResolution, ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
             )
             .build()
         val newImageAnalysis = args.frameAnalyzer?.takeIf { analysisAllowed }?.let { analyzer ->
@@ -688,6 +734,12 @@ class CameraController(
         private const val TAG = "CameraController"
         private const val RETRY_DELAY_MS = 300L
         private const val EXTENSIONS_TIMEOUT_MS = 2_000L
+
+        /** The coaching analysis stream: enough for the detectors, cheap enough for 10 Hz. */
+        val DEFAULT_ANALYSIS_RESOLUTION = Size(640, 480)
+
+        /** The analysis stream while a Motion outcome is selected (stacks are built from these frames). */
+        val MOTION_ANALYSIS_RESOLUTION = Size(1280, 960)
 
         private fun defaultEnhancementPreference(context: Context): suspend () -> CaptureEnhancement = {
             SettingsRepository(context).settings.first().captureEnhancement

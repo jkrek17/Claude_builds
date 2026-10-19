@@ -34,7 +34,7 @@ object CaptureQuality {
      * Which enhancements to offer the user for a lens, given which extension modes the vendor library reports
      * as available and which of those can also carry `ImageAnalysis`.
      *
-     * OFF is always offered. HDR and NIGHT are offered whenever available: choosing one is an explicit trade
+     * OFF is always offered. HDR, NIGHT and BOKEH are offered whenever available: choosing one is an explicit trade
      * (vendor multi-frame processing in exchange for pausing live coaching if the session cannot carry
      * analysis). AUTO is different because it is the **default**: it is only offered when its session keeps
      * live coaching running (or when there is no analyzer to keep), since a default that silently switched
@@ -47,7 +47,7 @@ object CaptureQuality {
         needsAnalysis: Boolean,
     ): Set<CaptureEnhancement> {
         val offered = linkedSetOf(CaptureEnhancement.OFF)
-        for (enhancement in listOf(CaptureEnhancement.AUTO, CaptureEnhancement.HDR, CaptureEnhancement.NIGHT)) {
+        for (enhancement in listOf(CaptureEnhancement.AUTO, CaptureEnhancement.HDR, CaptureEnhancement.NIGHT, CaptureEnhancement.BOKEH)) {
             if (enhancement !in extensionAvailable) continue
             if (enhancement == CaptureEnhancement.AUTO && needsAnalysis && enhancement !in analysisSupported) continue
             offered += enhancement

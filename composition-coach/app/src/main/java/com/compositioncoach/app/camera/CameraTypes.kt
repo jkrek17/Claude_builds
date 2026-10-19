@@ -66,6 +66,8 @@ fun Range<Int>.toIntRange(): IntRange = lower..upper
 data class CaptureSessionInfo(
     val lensFacing: LensFacing,
     val requestedEnhancement: CaptureEnhancement = CaptureEnhancement.OFF,
+    /** The outcome's enhancement override in effect for this bind ([CameraController.setEnhancementOverride]), or null. */
+    val outcomeEnhancement: CaptureEnhancement? = null,
     val activeEnhancement: CaptureEnhancement = CaptureEnhancement.OFF,
     val availableEnhancements: Set<CaptureEnhancement> = setOf(CaptureEnhancement.OFF),
     val enhancementsPausingCoaching: Set<CaptureEnhancement> = emptySet(),
