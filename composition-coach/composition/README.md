@@ -41,6 +41,17 @@ CompositionSmoother.update()      -> SmoothedComposition (EMA score + advice-slo
 CompositionCoach                  <- facade the :app module actually calls
 ```
 
+After the shot (review screen), on the evaluation of the captured still:
+
+```
+CompositionResult --AfterActionReport.build()--> verdict, what worked, one "try next time", light note
+FrameAnalysis     --CropSuggester.suggest()----> up to 3 crops, each scored by re-running the engine on
+                                                 FrameTransform.crop(frame, rect)
+OptimizationResult.best.asCrop()               -> the "What if" window
+```
+
+Every entry point takes an optional `AdaptiveWeights` (the on-device taste model, default `NEUTRAL`).
+
 `CompositionEngine.evaluate()` runs the whole top pipeline (everything above `CompositionSmoother`) and is
 itself wrapped in a final `runCatching`, falling back to `CompositionResult.empty()` — the engine is
 guaranteed not to throw regardless of what the vision layer sends it.
@@ -70,7 +81,8 @@ consistently everywhere in this module:
   `nearestThird - horizonY`), which told the photographer to move the camera in exactly the wrong vertical
   direction for every off-thirds horizon; see the "Quality gate" section below for how the robustness
   suite now guards against a regression there.
-- `FrameTransform` (used only by `CompositionOptimizer`) implements the *forward* simulation directly from
+- `FrameTransform.transform` (used by `CompositionOptimizer`; `FrameTransform.crop` is the separate crop
+  mapping, see [Crops](#crops)) implements the *forward* simulation directly from
   the two bullet points above (`x -= dx`, `y += dy`, then scale by `1 + zoom` about the centre) — it does
   not depend on `toMoveSubject` and is the one place in this module you can sanity-check the sign
   convention against a diagram.
@@ -211,6 +223,7 @@ Any other value:
 | `LANDSCAPE` | `LANDSCAPE` | faces/bodies excluded entirely; `primary` is always `null` | `HorizonAnalyzer` dead zone tightens 2.5° → 1.5°; `NegativeSpaceAnalyzer` never flags "too small" (scene-type gated, automatic); `SceneSpecificAnalyzer` accepts a weaker horizontal-line/luminance-transition signal for horizon placement |
 | `ARCHITECTURE` | `ARCHITECTURE` | faces/bodies excluded; salient-region fallback still runs (a strongly distinct architectural detail can be `primary`) | `HorizonAnalyzer` dead zone tightens to 1.5°; converging-verticals advice unchanged |
 | `OBJECT` | `OBJECT` | faces/bodies ignored; salient-region fallback runs with a relaxed contrast requirement (2.2 → 1.6, `SubjectResolver.OBJECT_SALIENT_REGION_MIN_CONTRAST`) | unaffected beyond the subject change |
+| `SELFIE` | `PORTRAIT` | exactly PORTRAIT's (`SceneIntent.rulesIntent()` returns `PORTRAIT`) | exactly PORTRAIT's; the result reports `intent = SELFIE`. Mirror-aware wording of directional cues is the app's job |
 
 **Awaiting subject.** PORTRAIT, GROUP_PORTRAIT and OBJECT are meaningless without their kind of subject, so
 when one isn't in frame yet `IntentSubjectCoach` short-circuits the engine to a minimal result instead of
@@ -221,7 +234,7 @@ null` is a perfectly normal result for them).
 
 | Intent | Trigger | Recommendation id | Instruction |
 |---|---|---|---|
-| `PORTRAIT` | no usable face (post-filter) | `intent.portrait.find_subject` | "Move closer to your subject" if a face was detected but too small, else "Point the camera at your subject" |
+| `PORTRAIT`, `SELFIE` | no usable face (post-filter) | `intent.portrait.find_subject` | "Move closer to your subject" if a face was detected but too small, else "Point the camera at your subject" |
 | `GROUP_PORTRAIT` | fewer than 2 usable faces | `intent.group.find_subjects` | "Step back to fit everyone in" if exactly one face was found, else "Point the camera at the group" |
 | `OBJECT` | no salient region found | `intent.object.find_subject` | "Move closer to your subject" |
 
@@ -308,6 +321,191 @@ ranked recommendation already argues for that same direction, that recommendatio
 front (an independent simulation *validating* existing advice, never inventing new advice the analyzers
 didn't produce); and any recommendation missing `expectedImprovement` gets it filled in from whichever
 candidate shares its direction.
+
+## After-action report (`AfterActionReport`)
+
+`AfterActionReport.build(result, optimization = result.optimization)` turns the still photo's
+`CompositionResult` (evaluate it at `GuidanceLevel.COACH`) into the review card's content:
+
+| Field | Rule |
+|---|---|
+| `verdict` | `KEEPER` score ≥ 80, `GOOD` 60..79, `TRY_AGAIN` < 60; any *applicable* HIGH-severity metric caps it at `GOOD` |
+| `worked` | `result.strengths` (already best-first), rewritten to plain words where needed (table below), de-duplicated, at most 3 |
+| `tryNextTime` | one `TryNextTime(sentence, predictedGain, direction, category, recommendationId, fromOptimizer)`, or null (nothing to say, or awaiting a subject) |
+| `lightNote` | when the LIGHT metric found a problem: `"<issue>. <instruction>."`, e.g. "Your subject is darker than the background. Turn so the light is behind you."; null when the light is fine (the good-light strength is already in `worked`) |
+
+**Where "Try next time" comes from.**
+1. The optimizer's best candidate, when it beats the photo by ≥ 3 points and has a direction. The move is
+   credited to (a) the first recommendation (ranked, then any metric's) asking for the same direction; else
+   (b) a background problem with a region, for a sideways move; else (c) the movable category (placement,
+   headroom, looking room, edge, cropping) with the largest weighted shortfall. Gain = predicted − current,
+   rounded.
+2. Otherwise the top ranked recommendation (find-your-subject messages excluded). Gain = its
+   `expectedImprovement`, or, when none, an estimate (the category's share of the applicable weight × its
+   shortfall × 100, + 3.5 if HIGH), capped at `100 − score`, at least 1.
+
+**Sentence** = `"<lead> would have <outcome> (+N)"`, at most 90 characters (if longer: `"<lead> would have
+helped (+N)"`). No jargon: never "thirds", "rule", "negative space", "composition", "leading line"
+(unit-tested over every direction × category × id × subject kind).
+
+| Direction | Lead |
+|---|---|
+| LEFT | A step to the left |
+| RIGHT | A step to the right |
+| UP | Raising the camera a little |
+| DOWN | Lowering the camera a little |
+| CLOSER | Moving a little closer |
+| BACK | A step back |
+| ROTATE_CLOCKWISE | Turning the phone slightly clockwise |
+| ROTATE_COUNTER_CLOCKWISE | Turning the phone slightly counter-clockwise |
+| NONE + `light.backlit` | Turning so the light was behind you |
+| NONE + `light.dark` | Moving toward the light |
+| NONE + `light.blown` | Stepping into the shade |
+| NONE + `light.split` | Turning them toward the light |
+| NONE + `separation.blends` | A plainer background |
+| NONE, anything else | A small change of angle |
+
+`<who>` is "them" for a person, "it" for an object or salient region, "the subject" with no subject.
+
+| Category (id) | Outcome |
+|---|---|
+| SUBJECT_PLACEMENT | placed `<who>` off centre, where it reads better; "centred `<who>`" when the placement target is the centre |
+| HORIZON | levelled the horizon |
+| HEADROOM | fixed the headroom |
+| CROPPING (`cropping.feet` / `cropping.headtop` / other) | kept their feet in / kept the top of their head in / avoided cutting them at a joint |
+| LOOKING_ROOM | given `<who>` room to look into |
+| EDGE_TENSION (`edge.tension.group_cutoff` / other) | brought everyone into the frame / eased `<who>` away from the edge |
+| BACKGROUND_DISTRACTION (`background.pole` / other) | cleared the pole behind `<who>` / cleared the clutter behind `<who>` |
+| SUBJECT_SEPARATION | made `<who>` stand out |
+| BALANCE | balanced the frame |
+| SYMMETRY | centred the scene |
+| NEGATIVE_SPACE | made `<who>` bigger in the frame |
+| LEADING_LINES | let the lines lead to `<who>` |
+| SCENE_SPECIFIC (`scene.landscape.horizon` / `scene.architecture.converging` / other) | moved the horizon off centre / kept the walls straight / made `<who>` bigger in the frame |
+| LIGHT | lit their face better (person) / lit `<who>` better |
+
+Examples: "A step to the left would have cleared the pole behind them (+9)", "Lowering the camera a little
+would have fixed the headroom (+4)", "A step to the left would have placed them off centre, where it reads
+better (+6)".
+
+Strength rewrites for `worked` (everything else passes through unchanged):
+
+| Analyzer strength | Card text |
+|---|---|
+| Subject sits on a strong thirds point | Subject sits off centre, where it reads well |
+| Good looking room | Space in front of their face |
+| Strong, well-centred symmetry | Nicely centred and symmetrical |
+| Intentional tight crop | A bold, tight crop |
+| Verticals are nicely parallel | Straight, upright lines |
+| Leading lines draw the eye to your subject | Lines lead the eye to your subject |
+
+## Crops
+
+**`CropSuggester(engine).suggest(frame, intent, level = COACH, adaptive = NEUTRAL): List<CropSuggestion>`**
+(an overload also takes an existing `current: CompositionResult` to save one engine run). Returns at most 3
+`CropSuggestion(rect, aspect: CropAspect {ORIGINAL, FOUR_FIVE, SQUARE}, predictedScore, headline)`, best
+first, each scoring ≥ current + 3, de-duplicated by IoU > 0.8. Never throws (empty list on failure).
+
+| Candidate | Window | Aspect | Headline |
+|---|---|---|---|
+| Optimizer best | `best.asCrop()` | ORIGINAL | Nudged left / Nudged right / Nudged up / Nudged down / Tighter |
+| Thirds (not for symmetric scenes) | 85 % and 70 % of each side, primary anchor (eyes, else box centre) on the nearest thirds intersection, shifted to stay inside | ORIGINAL | Tighter, eyes on the third (face) / Tighter, subject on the third |
+| Centred (symmetric scenes only) | 85 %, centred horizontally on the subject (or frame) | ORIGINAL | Centred |
+| Head and shoulders (exactly one face) | 3.2 face heights tall, eyes on the upper third, face centred | FOUR_FIVE, SQUARE | 4:5 portrait / Square portrait |
+
+Hard rules: a crop must contain the visible part of **every** subject face (the engine would happily score a
+single-face crop of a group *higher*, as a tidy portrait); crops smaller than 30 % of a side, crops that lose
+the primary subject and crops whose evaluation is "awaiting subject" are dropped; every rect is inside `0..1`.
+
+**Scoring a crop: `FrameTransform.crop(frame, rect)`.** Faces, bodies, objects re-expressed in the window
+(`x' = (x − left) / width`); detections entirely outside are dropped, ones straddling the edge kept (they are
+cut); landmarks more than 3 % outside get `inFrameLikelihood = 0` (out of the picture, not "cut at the
+joint"). Mask and luminance/edge grids are re-sampled nearest-neighbour into the same grid size.
+`meanLuminance`, `contrast` and both symmetry scores are shifted by how much the re-sampled grid changes them
+(symmetry with the same construction as `:vision`'s `ImageStatisticsComputer`), so an identity crop changes
+nothing. Dominant lines are mapped and clipped. `frameWidth/Height` become the crop's pixel size. Orientation
+and horizon angle are kept.
+
+**What if: `FramingCandidate.asCrop(): NormalizedRect?`.** Null for `"current"`/zero vectors and for stepping
+back (a crop cannot show what is outside the photo). Otherwise a window centred at `(0.5 + dx, 0.5 − dy)` of
+size `min(1 / (1 + zoom), 1 − 2|dx|, 1 − 2|dy|)` (the same fraction of both sides, so the photo's aspect),
+clamped inside. Approximation: a pan is shown as a shifted window that must shrink to fit, so a 7 % pan
+appears as an 86 % crop, slightly tighter than the real move; `predictedScore` is the optimizer's figure for
+the real move.
+
+## Group readiness
+
+`CompositionResult.groupStatus: GroupStatus?` (and the shorthand `groupReady: Boolean?`) is filled whenever
+the scene is a group portrait, declared (`intent = GROUP_PORTRAIT`) or detected (`scene.type =
+GROUP_PORTRAIT`); null otherwise. `GroupReadiness.evaluate(faces, metrics)` over the post-filter faces:
+
+| Check (per face) | Threshold | Blocker |
+|---|---|---|
+| Not cut at an edge | every side of the face box ≥ 2 % inside the frame | Someone's cut off |
+| Eyes open | `DetectedFace.eyesOpenProbability` ≥ 0.6, or null (unknown) | Eyes closed |
+| Big enough | face height ≥ 6 % of the frame | Someone's too small |
+
+`ready` = at least 2 faces, every face ready, and no applicable HIGH-severity metric. A HIGH edge/cropping
+metric reports "Someone's cut off"; any other HIGH metric adds its recommendation's instruction, so the chip is
+never blank while the shutter waits. Blockers come in the order above, each at most once, and are empty when
+ready. `facesReady` counts faces passing all three checks (the readiness arc's dots). While a declared group is
+still awaiting its second face, `ready` is false and the "find subject" message carries the instruction.
+`DetectedFace.eyesOpenProbability` is new and optional (`:vision` fills it from ML Kit classification).
+
+## Adaptive weights
+
+`AdaptiveWeights` is the on-device taste model: a multiplier per `MetricCategory` in `0.6..1.4` (default 1.0)
+and a crop histogram. Immutable; `apply(Feedback)` returns the new weights.
+
+| Event | Multiplier step (after decay) |
+|---|---|
+| `Feedback.IGNORED_AND_KEPT(category)` | −0.03 |
+| `Feedback.NOT_HELPFUL(category)` | −0.03 |
+| `Feedback.FOLLOWED(category)` | +0.01, only while below 1.0 (never above 1.0) |
+| `Feedback.IGNORED_AND_RETAKEN(category)` | +0.02 |
+| `Feedback.CROP_CHOSEN(aspect, tighter)` | none; updates the crop histogram |
+
+Every event first decays every multiplier 0.5 % toward 1.0, then steps, then clamps. A category that is always
+ignored settles at 0.6; one always regretted at 1.4.
+
+**Applied** by `ScoreAggregator.aggregate(metrics, scene, adaptive)` (scene weight × multiplier ×
+confidence), by `RecommendationEngine.rank(metrics, level, adaptive)` (within a severity band, by confidence ×
+multiplier), and by the optimizer's predictions; `CompositionEngine.evaluate(frame, level, intent, adaptive)`,
+`CompositionCoach.process/evaluateOnce(..., adaptive)` and `CropSuggester.suggest(..., adaptive)` thread it.
+`NEUTRAL` multiplies by exactly 1.0, so it reproduces the earlier results bit for bit (pinned in
+`AdaptiveWeightsTest` against scores recorded before the change).
+
+**Persistence**: `serialize()` / `AdaptiveWeights.parse(String?)`, e.g.
+`HORIZON=0.94,HEADROOM=1.1,crop.SQUARE=3,crop.tight=2,crop.total=4` (only non-1.0 multipliers, 3 decimals;
+unknown keys and bad numbers are ignored, values clamped; never throws).
+
+**`summaryTendencies()`**: up to three sentences, strongest first: each multiplier at least 0.1 from 1.0
+(strength = distance from 1.0) and, after 3 chosen crops, a crop habit (strength = share − 0.5, needs a 60 %
+majority).
+
+| Category | Below 1.0 | Above 1.0 |
+|---|---|---|
+| SUBJECT_PLACEMENT | You tend to keep centred subjects | You care where your subject sits |
+| HORIZON | You rarely follow levelling advice | You like level horizons |
+| HEADROOM | You rarely follow headroom advice | You care about headroom |
+| CROPPING | You don't mind cropping into arms and legs | You like whole arms and legs in frame |
+| LOOKING_ROOM | You don't mind faces looking out of the frame | You like space in front of faces |
+| EDGE_TENSION | You don't mind subjects near the edge | You keep subjects clear of the edges |
+| BACKGROUND_DISTRACTION | You rarely follow background advice | You like clean backgrounds |
+| SUBJECT_SEPARATION | You don't mind subjects blending in | You like subjects that stand out |
+| BALANCE | You don't mind a lopsided frame | You like a balanced frame |
+| SYMMETRY | You like subjects a little off the middle | You like symmetry |
+| NEGATIVE_SPACE | You like small subjects in big spaces | You like your subject to fill the frame |
+| LEADING_LINES | You rarely follow advice about lines | You like lines that lead to the subject |
+| SCENE_SPECIFIC | You rarely follow scene advice | You follow scene advice closely |
+| LIGHT | You rarely follow light advice | You care about light |
+
+| Crop habit | Sentence |
+|---|---|
+| ≥ 60 % of chosen crops tighter | You like tight crops |
+| ≤ 40 % tighter | You like leaving room around your subject |
+| ≥ 60 % SQUARE | You like square crops |
+| ≥ 60 % FOUR_FIVE | You like tall 4:5 crops |
 
 ## Tuning
 
@@ -426,6 +624,6 @@ Bugs this suite caught and fixed, as a record of why each invariant above exists
 ## Running
 
 ```
-./gradlew :composition:test            # 97 tests, no Android SDK required
+./gradlew :composition:test            # 136 tests, no Android SDK required
 ./gradlew :composition:compileKotlin   # warnings-clean
 ```

@@ -64,10 +64,20 @@ class RecommendationEngine {
         return weight * (1f - metric.score.coerceIn(0f, 1f)) * severityBoost
     }
 
-    /** Ranks and trims every metric's recommendation according to [level]. */
-    fun rank(metrics: List<CompositionMetric>, level: GuidanceLevel): List<Recommendation> {
+    /**
+     * Ranks and trims every metric's recommendation according to [level].
+     *
+     * @param adaptive the user's taste multipliers: within a severity band, advice is ordered by
+     *   `confidence × multiplier(category)` instead of confidence alone, so a category the user keeps
+     *   ignoring stops winning the headline. [AdaptiveWeights.NEUTRAL] reproduces the previous order exactly.
+     */
+    fun rank(
+        metrics: List<CompositionMetric>,
+        level: GuidanceLevel,
+        adaptive: AdaptiveWeights = AdaptiveWeights.NEUTRAL,
+    ): List<Recommendation> {
         val raw = metrics.mapNotNull { it.recommendation }
-        val sorted = raw.sortedWith(rankingComparator)
+        val sorted = raw.sortedWith(rankingComparator(adaptive))
         val deduped = dropConflictingDirections(sorted)
         val minSeverity = if (level == GuidanceLevel.MINIMAL) Severity.MEDIUM else Severity.NONE
         val filtered = deduped.filter { it.severity.ordinal >= minSeverity.ordinal }
@@ -79,8 +89,8 @@ class RecommendationEngine {
         return filtered.take(limit)
     }
 
-    private val rankingComparator = compareByDescending<Recommendation> { it.severity.ordinal }
-        .thenByDescending { it.confidence }
+    private fun rankingComparator(adaptive: AdaptiveWeights) = compareByDescending<Recommendation> { it.severity.ordinal }
+        .thenByDescending { it.confidence * adaptive.multiplier(it.category) }
         .thenByDescending { it.expectedImprovement ?: 0f }
         .thenByDescending { easeOfCorrection(it.direction) }
 

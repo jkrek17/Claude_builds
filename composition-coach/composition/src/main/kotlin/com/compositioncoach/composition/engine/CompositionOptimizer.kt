@@ -37,24 +37,32 @@ class CompositionOptimizer(
         currentScore: Float,
         level: GuidanceLevel,
         intent: SceneIntent = SceneIntent.AUTO,
+        adaptive: AdaptiveWeights = AdaptiveWeights.NEUTRAL,
     ): OptimizationResult {
-        val candidates = mutableListOf(FramingCandidate("current", ReframeVector.ZERO, currentScore))
+        val candidates = mutableListOf(FramingCandidate(FramingCandidate.CURRENT_LABEL, ReframeVector.ZERO, currentScore))
         for ((label, vector) in MOVES) {
-            val predicted = predictScore(frame, scene, vector, level, intent)
+            val predicted = predictScore(frame, scene, vector, level, intent, adaptive)
             candidates += FramingCandidate(label, vector, predicted)
         }
         val best = candidates.maxByOrNull { it.predictedScore }
         return OptimizationResult(currentScore, candidates, best)
     }
 
-    private fun predictScore(frame: FrameAnalysis, scene: SceneClassification, vector: ReframeVector, level: GuidanceLevel, intent: SceneIntent): Float {
+    private fun predictScore(
+        frame: FrameAnalysis,
+        scene: SceneClassification,
+        vector: ReframeVector,
+        level: GuidanceLevel,
+        intent: SceneIntent,
+        adaptive: AdaptiveWeights,
+    ): Float {
         val transformed = FrameTransform.transform(frame, vector)
         val resolution = SubjectResolver.resolve(transformed, intent)
         val context = AnalysisContext(transformed, scene, resolution.subjects, resolution.primary, level, intent)
         val metrics: List<CompositionMetric> = analyzers.mapNotNull { analyzer ->
             runCatching { analyzer.analyze(context) }.getOrNull()
         }
-        return ScoreAggregator.aggregate(metrics, scene)
+        return ScoreAggregator.aggregate(metrics, scene, adaptive)
     }
 
     companion object {

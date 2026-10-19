@@ -31,7 +31,7 @@ object SubjectFilter {
 
     /** The background-face threshold to use for a given declared [intent]. */
     fun minSubjectFaceHeight(intent: SceneIntent): Float = when (intent) {
-        SceneIntent.PORTRAIT, SceneIntent.GROUP_PORTRAIT -> PORTRAIT_INTENT_MIN_SUBJECT_FACE_HEIGHT
+        SceneIntent.PORTRAIT, SceneIntent.GROUP_PORTRAIT, SceneIntent.SELFIE -> PORTRAIT_INTENT_MIN_SUBJECT_FACE_HEIGHT
         else -> MIN_SUBJECT_FACE_HEIGHT
     }
 

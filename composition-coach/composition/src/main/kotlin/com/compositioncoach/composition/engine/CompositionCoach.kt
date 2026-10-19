@@ -17,14 +17,23 @@ class CompositionCoach(
     private val smoother: CompositionSmoother,
 ) {
     /** Evaluate a frame and fold it into the smoothed state the UI displays. */
-    fun process(frame: FrameAnalysis, level: GuidanceLevel = GuidanceLevel.BALANCED, intent: SceneIntent = SceneIntent.AUTO): SmoothedComposition {
-        val raw = engine.evaluate(frame, level, intent)
+    fun process(
+        frame: FrameAnalysis,
+        level: GuidanceLevel = GuidanceLevel.BALANCED,
+        intent: SceneIntent = SceneIntent.AUTO,
+        adaptive: AdaptiveWeights = AdaptiveWeights.NEUTRAL,
+    ): SmoothedComposition {
+        val raw = engine.evaluate(frame, level, intent, adaptive)
         return smoother.update(raw)
     }
 
     /** One-off evaluation without touching smoothing state (used for the post-capture review). */
-    fun evaluateOnce(frame: FrameAnalysis, level: GuidanceLevel = GuidanceLevel.COACH, intent: SceneIntent = SceneIntent.AUTO): CompositionResult =
-        engine.evaluate(frame, level, intent)
+    fun evaluateOnce(
+        frame: FrameAnalysis,
+        level: GuidanceLevel = GuidanceLevel.COACH,
+        intent: SceneIntent = SceneIntent.AUTO,
+        adaptive: AdaptiveWeights = AdaptiveWeights.NEUTRAL,
+    ): CompositionResult = engine.evaluate(frame, level, intent, adaptive)
 
     fun reset() = smoother.reset()
 

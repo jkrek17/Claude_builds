@@ -5,7 +5,45 @@ data class FramingCandidate(
     val label: String,
     val vector: ReframeVector,
     val predictedScore: Float,
-)
+) {
+    /**
+     * This candidate expressed as a crop of the *current* photo, for the review screen's "What if" view and
+     * as a [com.compositioncoach.composition.engine.CropSuggester] candidate. Null for the current framing
+     * (label `"current"` or a zero vector) and for any move a crop cannot show (stepping back reveals content
+     * that is not in the photo).
+     *
+     * **Approximation.** The optimizer simulates a real camera move ([com.compositioncoach.composition.geometry.FrameTransform]:
+     * content shifts by `(-dx, +dy)`, then scales by `s = 1 + zoom` about the centre). A crop can only reproduce
+     * that by moving a smaller window over the photo:
+     *  - the window's centre is `(0.5 + dx, 0.5 - dy)`, so the subject shifts by the same amount the pan would
+     *    shift it;
+     *  - its size (the same fraction of both sides, so the frame's aspect is kept) is
+     *    `min(1 / s, 1 - 2|dx|, 1 - 2|dy|)`: the zoom's own window, shrunk further until the shifted window fits
+     *    inside the photo. A pure 7 % pan therefore shows as an 86 % crop, slightly tighter than the real move;
+     *  - the result is clamped into the frame.
+     * The candidate's [predictedScore] is the optimizer's prediction for the real move, not for this crop; use
+     * `CropSuggester` when the crop itself must be scored.
+     */
+    fun asCrop(): NormalizedRect? {
+        if (label == CURRENT_LABEL || vector == ReframeVector.ZERO) return null
+        val scale = (1f + vector.zoom).coerceAtLeast(MIN_SCALE)
+        val size = minOf(1f / scale, 1f - 2f * kotlin.math.abs(vector.dx), 1f - 2f * kotlin.math.abs(vector.dy))
+        if (size >= 1f - NO_CHANGE_EPSILON || size < MIN_CROP_SIZE) return null
+        val cx = (0.5f + vector.dx).coerceIn(size / 2f, 1f - size / 2f)
+        val cy = (0.5f - vector.dy).coerceIn(size / 2f, 1f - size / 2f)
+        return NormalizedRect.fromCenter(NormalizedPoint(cx, cy), size, size).clampToFrame()
+    }
+
+    companion object {
+        /** Label the optimizer gives the unchanged framing. */
+        const val CURRENT_LABEL = "current"
+        private const val MIN_SCALE = 0.05f
+        private const val NO_CHANGE_EPSILON = 0.005f
+
+        /** Below this fraction of the frame a crop is too small to be a sensible "what if". */
+        const val MIN_CROP_SIZE = 0.3f
+    }
+}
 
 /** Result of the simulated framing search (Phase 5). */
 data class OptimizationResult(
@@ -46,7 +84,16 @@ data class CompositionResult(
      * "find your subject" instruction and the UI should show that instead of a number.
      */
     val awaitingSubject: Boolean = false,
+    /**
+     * Group readiness ([com.compositioncoach.composition.engine.GroupReadiness]): filled when the scene is a
+     * group portrait, either declared (`intent == GROUP_PORTRAIT`) or detected (`scene.type == GROUP_PORTRAIT`);
+     * null otherwise. In a group, the shoot-at-peak shutter should wait for [GroupStatus.ready].
+     */
+    val groupStatus: GroupStatus? = null,
 ) {
+    /** Shorthand for `groupStatus?.ready`: null when this is not a group scene. */
+    val groupReady: Boolean? get() = groupStatus?.ready
+
     companion object {
         fun empty(timestampNanos: Long = 0L) = CompositionResult(
             timestampNanos = timestampNanos,

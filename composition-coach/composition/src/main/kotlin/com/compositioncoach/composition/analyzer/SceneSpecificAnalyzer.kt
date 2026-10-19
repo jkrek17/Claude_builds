@@ -42,7 +42,7 @@ class SceneSpecificAnalyzer : CompositionAnalyzer {
     override val category: MetricCategory = MetricCategory.SCENE_SPECIFIC
 
     override fun analyze(context: AnalysisContext): CompositionMetric {
-        if (context.intent == SceneIntent.PORTRAIT) {
+        if (context.intent.rulesIntent() == SceneIntent.PORTRAIT) {
             return analyzePortraitTooSmall(context)
         }
         val stats = context.frame.stats ?: return notApplicable()
