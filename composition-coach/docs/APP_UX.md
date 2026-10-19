@@ -1,4 +1,4 @@
-# Composition Coach: app UX specification
+# Eyebright: app UX specification
 
 Goal: a camera you can hand to anyone. They point, they see one cue, they follow it, the shutter
 turns green, they shoot. Nothing else demands attention. `docs/COACHING_UI.md` specifies the coaching
@@ -79,8 +79,8 @@ Every row 56 dp tall, 48 dp targets, one-line subtitles only where the label is 
 
 ## First run
 
-1. Permission screen: camera glyph, one sentence ("Composition Coach needs the camera to coach your
-   framing. Nothing leaves your phone."), "Allow camera" filled button; when permanently denied,
+1. Permission screen: camera glyph, one sentence ("Eyebright needs your camera" / "It looks through
+   the lens to help you frame. Everything stays on your phone. Nothing is uploaded."), "Allow camera" filled button; when permanently denied,
    "Open settings" text button.
 2. A single dismissible card over the first camera session: "Point · Follow the cue · Shoot when green"
    with a "Got it" button. Never shown again.

@@ -1,4 +1,4 @@
-# Releasing Composition Coach
+# Releasing Eyebright
 
 This covers cutting a signed release build, what CI does with it, and the manual Play Console steps
 only the account owner can do.
@@ -26,7 +26,7 @@ The current version and build number are shown in-app at **Settings → About**.
 
 ## 2. Creating a real upload/signing key (one-time, per app)
 
-Composition Coach is not yet signed with a real upload key — `assembleRelease`/`bundleRelease` fall
+Eyebright is not yet signed with a real upload key — `assembleRelease`/`bundleRelease` fall
 back to the checked-in debug keystore (`keystore/debug.keystore`) when the four release-signing env
 vars below aren't set, specifically so the build never breaks, but **a debug-keystore-signed AAB
 cannot be uploaded to Play Console** (Play requires app signing by Google, which itself requires a real

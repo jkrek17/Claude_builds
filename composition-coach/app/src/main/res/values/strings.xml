@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Composition Coach</string>
+    <string name="app_name">Eyebright</string>
 
-    <string name="permission_camera_title">Camera access needed</string>
-    <string name="permission_camera_body">Composition Coach needs the camera to coach your framing.
-        Nothing leaves your phone.</string>
+    <string name="permission_camera_title">Eyebright needs your camera</string>
+    <string name="permission_camera_body">It looks through the lens to help you frame. Everything stays on your phone. Nothing is uploaded.</string>
     <string name="permission_allow_camera">Allow camera</string>
     <string name="permission_open_settings">Open settings</string>
 
@@ -154,7 +153,7 @@
     <string name="your_eye_no_tendencies">Nothing stands out yet.</string>
     <string name="your_eye_follow_most">Advice you take most</string>
     <string name="your_eye_follow_least">Advice you skip most</string>
-    <string name="your_eye_skip_note">That\'s fine. It will come up less.</string>
+    <string name="your_eye_skip_note">That\'s fine. Eyebright will mention it less.</string>
     <string name="your_eye_follow_rate">%1$s · %2$d in 10 times</string>
     <string name="your_eye_best">Your best three</string>
     <string name="your_eye_best_description">Photo scored %1$d</string>
@@ -162,7 +161,7 @@
     <string name="your_eye_private">Learned on your phone. Never uploaded.</string>
     <string name="your_eye_reset">Start fresh</string>
     <string name="your_eye_reset_confirm_title">Start fresh?</string>
-    <string name="your_eye_reset_confirm_body">The coach forgets what it has learned about your taste. Your photos stay where they are.</string>
+    <string name="your_eye_reset_confirm_body">Eyebright forgets what it has learned about your taste. Your photos stay where they are.</string>
     <string name="your_eye_reset_confirm_yes">Start fresh</string>
     <string name="your_eye_reset_confirm_no">Cancel</string>
 

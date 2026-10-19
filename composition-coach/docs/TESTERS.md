@@ -1,4 +1,4 @@
-# Composition Coach: tester guide
+# Eyebright: tester guide
 
 Thanks for testing. The app is an Android camera that coaches your framing in real time. Everything
 runs on your phone; no photos or camera frames leave the device.
@@ -11,9 +11,11 @@ runs on your phone; no photos or camera frames leave the device.
 3. If Google Play Protect says "App blocked" or "unknown developer": tap **More details**, then
    **Install anyway**. If there is no such option: Play Store > your profile picture > Play Protect >
    gear icon > turn off "Scan apps with Play Protect", install, then turn it back on.
-4. Open **Composition Coach** and allow the camera.
+4. Open **Eyebright** and allow the camera.
 
 To update, install the newer `.apk` the same way; it replaces the old one and keeps your settings.
+
+**Composition Coach is now Eyebright.** Same app: install the new build over the old one and your settings stay. The icon and name change; nothing else does.
 
 ## How to use it
 
