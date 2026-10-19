@@ -27,8 +27,8 @@ object Strategies {
                 if (e.source == ProbabilitySource.NONE) return@mapNotNull null
                 var p = if (discount) Probability.discount(e.probability, w - currentWeek, settings.futureDiscountPerWeek) else e.probability
                 if (contrarian) {
-                    val lev = Safety.leverage(e.probability, Evaluator.effectivePickShare(season, user, w, t), settings.fieldAverageWinProbability)
-                    if (lev != null) p = (p + 0.25 * (lev.expectedEquity - 1.0)).coerceIn(0.01, 0.99)
+                    val lev = Safety.poolEquity(e.probability, Evaluator.effectivePickShare(season, user, w, t), settings.fieldAverageWinProbability, eval.strikesUsed)
+                    if (lev != null) p = (p + 0.25 * lev.leverageScore / 100.0).coerceIn(0.01, 0.99)
                 }
                 Candidate(t, p)
             }

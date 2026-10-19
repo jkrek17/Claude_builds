@@ -270,31 +270,28 @@ week, team)` is the pick share used everywhere in the model: a manual `Adjustmen
 team-week always wins when set, else Yahoo's fetched share, else null (no estimate at all, leverage disabled
 for that team). A Yahoo fetch failure is non-fatal - the app keeps whatever shares it already had.
 
-**Leverage.** With effective pick share `o` and the field's average win probability `f` (default 76%):
+**Pool equity (double elimination).** Ownership is priced as what it does to your expected *share of the
+pool* after this week, relative to an unowned pick at the same win probability:
 
-- surviving share of the pool if you advance ≈ `o + (1 − o) · f`
-- **expected pool equity** = `p / (o + (1 − o) · f)` (1.0 = average)
-- **leverage score** = `(equity − 1) · 100`
+- after the week an entry is worth 1 (alive, no strike), `r` (alive with a strike in hand) or 0 (out), where
+  `r` = P(0 further losses) / P(≤ 1 further loss) along the remaining optimized route (≈0.2 early, higher late);
+- everyone on your team shares your fate; the rest of the field wins at the ownership-weighted field win
+  probability `f` for the week; a fraction `z₀` of the alive field still has no strike (binomial at `f` over
+  the weeks played);
+- **equity** = `p · (your weight if win) / (field weight if your team wins) + (1 − p) · (your weight if loss) /
+  (field weight if your team loses)`;
+- **leverage score** = `(equity_owned / equity_unowned − 1) · 100`, the pure ownership effect in percent.
 
-`Safety.leverage` computes this from `effectivePickShare`; `TeamWeekEvaluation.leverage` (and its
-`leverageAdjustment` Safety term) reflect it for every team playing the current week, not just ones with a
-manual estimate. Strategy presets set the leverage weight: Conservative 0, Balanced 0.3, Contrarian 0.7, Max
-Pool Equity ranks by equity outright. This is a proxy - it does not know which teams *your specific* pool's
-entries hold, only Yahoo's much larger public pool - so a manual pick share remains available to override it
-per team-week; a pool-size-aware equity model is listed under future improvements.
+The expectation is taken per scenario, so a chalk loss that strikes 42% of the field along with you is priced
+correctly: it barely moves your share, whereas surviving a week in which the chalk fell does. Worked example,
+2026 Week 6 (`f` ≈ 0.80, `r` = 0.2, `z₀` = 0.44): LAR at 88% and 42% owned scores −6.3%, NE at 85% and 18%
+owned −2.8%. With the Balanced weight of 1.5 safety points per percent, NE ranks above LAR by about two
+points, while under Conservative (weight 0) LAR stays first.
 
-**Field win probability, refined for the current week.** `RouteObjective.POOL_WIN`'s field model (§6 "Pool-win
-objective") normally uses one flat `f` for every remaining week. When Yahoo (or manual) pick shares are known
-for the *current* week, `Evaluator` instead computes `fieldWinProbabilityThisWeek = Σ share_t · p_t / Σ share_t`
-over the teams playing this week with a known effective share, using their resolved current-week win
-probabilities `p_t` - i.e. the field's actual pick-weighted win rate this week, rather than the flat average.
-`Evaluation.fieldWinProbabilityThisWeek` exposes this (null when no shares are known for the current week).
-`Survival.poolWinProbability`, `Survival.objectiveValue`, `Route.objectiveValue` and `Optimizer.optimize` all
-accept an optional per-week field-win-probability override (`fieldWinProbabilities`, sized to the route/sequence
-in week order) that replaces the flat `f` for the corresponding weeks and falls back to it everywhere else;
-`Evaluator` passes `[fieldWinProbabilityThisWeek] + flat f for every later week` wherever it builds or scores a
-route, so `Evaluation.poolWinProbability` and the season optimizer both use the sharper current-week number
-while every existing caller that omits the override keeps the exact flat-`f` behavior it always had.
+Strategy presets: **Conservative** 0, **Balanced** 1.5 (default), **Contrarian** 3.0; **Max Pool Equity**
+ranks by equity outright. Because the double-elimination field also only takes strikes when the chalk falls,
+the ownership effect is a few percent, not the large swings a single-elimination pool would show, which is why
+the weight is calibrated in safety points per percent rather than treated as a tie-breaker.
 
 ## Formula reference
 

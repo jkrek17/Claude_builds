@@ -63,7 +63,7 @@ override in Model Settings.
 - **Strategy** - the route objective as radio cards (Win the pool / Survive the season / Expected weeks alive
   / Blended, each with a one-line description; Win the pool is the default and marked recommended for most
   pools), the horizon weight (Blended only), the ownership strategy preset (sets the leverage weight:
-  Conservative 0, Balanced 0.3, Contrarian 0.7, Max Pool Equity ranks by equity when shares exist), and the
+  Conservative 0, Balanced 1.5 (default), Contrarian 3.0, Max Pool Equity ranks by equity when shares exist; the weight is safety points per 1% of double-elimination pool equity lost to ownership), and the
   current-week override.
 - **Advanced model parameters** (collapsed by default) - every remaining weight and penalty behind the Safety
   Score, each with a description and safe bounds, plus **Restore defaults**.

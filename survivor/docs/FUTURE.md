@@ -1,6 +1,6 @@
 # Recommended improvements for future versions
 
-1. **Field model with ownership.** The `POOL_WIN` objective assumes other entries pick at a flat win probability;
+1. **Field model with ownership (partly done: double-elimination pool equity now prices chalk).** The `POOL_WIN` objective assumes other entries pick at a flat win probability;
    use the entered pick shares (and later a popularity feed) so the field's survival is correlated with yours
    when you are on the chalk.
 2. **Ownership feed.** Import survivor pick-percentage data (several public sites publish it weekly) instead of

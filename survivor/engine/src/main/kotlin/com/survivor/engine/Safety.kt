@@ -31,15 +31,46 @@ object Safety {
     const val LEVERAGE_CAP = 30.0
 
 
-    fun leverage(p: Double, pickShare: Double?, fieldAverageWinProbability: Double): Leverage? {
+    /**
+     * Pool equity under double elimination: your expected SHARE of the pool after this week, relative to an
+     * unowned pick at the same win probability, so [Leverage.leverageScore] is the pure ownership effect in %.
+     *
+     * Entry weights after the week: alive with no strike = 1, alive with a strike in hand = [strikeValueRatio]
+     * (the relative worth of a one-strike entry, e.g. P(0 further losses) / P(≤1 further loss) along the
+     * remaining route), eliminated = 0. Everyone on your team shares your fate; the rest of the field wins at
+     * [fieldWinProbability]; [fieldZeroStrikeFraction] of the alive field still has no strike. The expectation
+     * is taken over your team's win/loss, so a chalk loss that strikes 42% of the field along with you is
+     * priced correctly: it barely moves your share, whereas surviving a week in which the chalk fell does.
+     */
+    fun poolEquity(
+        p: Double,
+        pickShare: Double?,
+        fieldWinProbability: Double,
+        strikesUsed: Int = 0,
+        fieldZeroStrikeFraction: Double = 1.0,
+        strikeValueRatio: Double = 0.3,
+    ): Leverage? {
         if (pickShare == null) return null
         val share = pickShare.coerceIn(0.0, 1.0)
-        // Fraction of the pool still alive after this week if we advance: everyone on our team plus the
-        // share of everyone else that wins their own pick. Equity = our advance probability / that.
-        val survivingShare = share + (1 - share) * fieldAverageWinProbability
-        val equity = p / survivingShare
-        return Leverage(share, equity, (equity - 1.0) * 100.0)
+        val f = fieldWinProbability.coerceIn(0.01, 0.99)
+        val z0 = fieldZeroStrikeFraction.coerceIn(0.0, 1.0)
+        val r = strikeValueRatio.coerceIn(0.0, 1.0)
+        val strike = strikesUsed >= 1
+        fun groupWeight(winProb: Double) = z0 * (winProb + (1 - winProb) * r) + (1 - z0) * (winProb * r)
+        fun mine(win: Boolean) = if (win) (if (strike) r else 1.0) else (if (strike) 0.0 else r)
+        fun equity(o: Double): Double {
+            val totalIfWin = o * groupWeight(1.0) + (1 - o) * groupWeight(f)
+            val totalIfLoss = o * groupWeight(0.0) + (1 - o) * groupWeight(f)
+            return p * mine(true) / totalIfWin + (1 - p) * mine(false) / totalIfLoss
+        }
+        val owned = equity(share)
+        val unowned = equity(0.0)
+        return Leverage(share, owned, if (unowned > 0) (owned / unowned - 1.0) * 100.0 else 0.0)
     }
+
+    /** Single-elimination approximation kept for callers without strike context; prefer [poolEquity]. */
+    fun leverage(p: Double, pickShare: Double?, fieldAverageWinProbability: Double): Leverage? =
+        poolEquity(p, pickShare, fieldAverageWinProbability)
 
     fun components(
         estimate: ProbabilityEstimate,

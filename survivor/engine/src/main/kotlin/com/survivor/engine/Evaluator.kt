@@ -107,6 +107,10 @@ data class Evaluation(
      *  Null when no pick shares are known for [currentWeek] at all. Overrides [settings.fieldAverageWinProbability]
      *  for the current week only in [poolWinProbability] and route optimization; see [Survival.poolWinProbability]. */
     val fieldWinProbabilityThisWeek: Double? = null,
+    /** Relative worth of an entry carrying a strike vs a clean one along the remaining route (0.1..0.9). */
+    val strikeValueRatio: Double = 0.3,
+    /** Modeled share of the alive field that still has no strike this week. */
+    val fieldZeroStrikeFraction: Double = 1.0,
     /** Where [fieldWinProbabilityThisWeek] came from (e.g. [Season.pickSharesSource]); null when it's null. */
     val ownershipSource: String? = null,
     val ownershipFetchedAtEpochMs: Long? = null,
@@ -278,6 +282,29 @@ object Evaluator {
             return ((1.0 - without / pathWith) * 100.0).coerceAtLeast(0.0)
         }
 
+        // Pool-equity context (see Safety.poolEquity): how much a strike-in-hand entry is worth relative to a
+        // clean one along the rest of the route, and what share of the alive field still has no strike.
+        val futureRaw = unconstrainedRoute.steps.filter { it.week > currentWeek }.map { s -> estimates.getValue(s.team)[s.week]?.probability ?: s.probability }
+        val strikeValueRatio = run {
+            val p0 = Survival.zeroLoss(futureRaw); val p1 = Survival.exactlyOneLoss(futureRaw)
+            if (p0 + p1 <= 0) 0.3 else (p0 / (p0 + p1)).coerceIn(0.1, 0.9)
+        }
+        val weeksPlayed = (currentWeek - 1).coerceAtLeast(0)
+        val fieldZeroStrikeFraction = run {
+            val f = settings.fieldAverageWinProbability
+            val z = Math.pow(f, weeksPlayed.toDouble()); val one = weeksPlayed * Math.pow(f, (weeksPlayed - 1).coerceAtLeast(0).toDouble()) * (1 - f)
+            if (weeksPlayed == 0) 1.0 else (z / (z + one)).coerceIn(0.05, 1.0)
+        }
+        // Ownership-weighted field win probability; the part of the field with no known share is assumed to
+        // pick at settings.fieldAverageWinProbability (shares sum to ~1 with Yahoo data, so this rarely matters).
+        val fieldWinProbabilityThisWeekValue: Double? = run {
+            val shares = Team.entries.mapNotNull { t -> effectivePickShare(season, user, currentWeek, t)?.let { sh -> t to sh } }
+                .filter { (t, _) -> estimates[t]?.get(currentWeek) != null }
+            if (shares.isEmpty()) return@run null
+            val known = shares.sumOf { it.second }.coerceAtMost(1.0)
+            val num = shares.sumOf { (t, sh) -> sh * estimates.getValue(t).getValue(currentWeek).probability }
+            num + (1.0 - known) * settings.fieldAverageWinProbability
+        }
         val evaluated = weekGames.flatMap { g -> listOf(g.home, g.away).map { t -> t to g } }.map { (team, game) ->
             val estimate = estimates.getValue(team).getValue(currentWeek)
             val situation = ScheduleAnalysis.situation(season, team, game)
@@ -286,7 +313,11 @@ object Evaluator {
             val cost = if (used) 0.0 else opportunityCost(team)
             val pathLoss = if (used) 0.0 else seasonPathLoss(team)
             val fv = futureValues.getValue(team)
-            val leverage = Safety.leverage(estimate.probability, effectivePickShare(season, user, currentWeek, team), settings.fieldAverageWinProbability)
+            val leverage = Safety.poolEquity(
+                estimate.probability, effectivePickShare(season, user, currentWeek, team),
+                fieldWinProbabilityThisWeekValue ?: settings.fieldAverageWinProbability,
+                strikesUsed, fieldZeroStrikeFraction, strikeValueRatio,
+            )
             val components = Safety.components(estimate, situation, adjustment, cost, pathLoss, fv.premiumSpots, leverage, strikesUsed, settings)
             TeamWeekEvaluation(currentWeek, team, game, game.opponentOf(team), situation, estimate, used, fv, cost, pathLoss, unconstrainedRoute.team(currentWeek) == team, components, leverage, adjustment, rank = 0)
         }
@@ -346,7 +377,7 @@ object Evaluator {
             usedTeams = usedTeams, pickOutcomes = outcomes, currentPick = currentPick,
             rankings = ranked, unavailable = unavailable, recommended = recommended, alternatives = alternatives, explanation = explanation,
             route = route, unconstrainedRoute = unconstrainedRoute, routeRawProbabilities = routeRaw, planner = planner, grid = grid, futureValues = futureValues, settings = settings,
-            fieldWinProbabilityThisWeek = fieldWinProbabilityThisWeek, ownershipSource = ownershipSource, ownershipFetchedAtEpochMs = ownershipFetchedAtEpochMs,
+            fieldWinProbabilityThisWeek = fieldWinProbabilityThisWeek, strikeValueRatio = strikeValueRatio, fieldZeroStrikeFraction = fieldZeroStrikeFraction, ownershipSource = ownershipSource, ownershipFetchedAtEpochMs = ownershipFetchedAtEpochMs,
         )
     }
 

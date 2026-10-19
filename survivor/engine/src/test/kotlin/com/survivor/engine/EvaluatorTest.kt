@@ -139,13 +139,16 @@ class EvaluatorTest {
         assertTrue(jax.safetyScore > lac.safetyScore, "jax=${jax.safetyScore} lac=${lac.safetyScore}")
     }
 
-    @Test fun `ownership leverage only matters under contrarian strategies`() {
+    @Test fun `ownership leverage is off under conservative and on under balanced and contrarian`() {
         val season = TestSeason.build(15)
         val top = Evaluator.evaluate(season, UserState(), now).recommended!!.team
         val adj = Adjustment(1, top, estimatedPickShare = 0.6)
-        val conservative = Evaluator.evaluate(season, UserState(adjustments = listOf(adj)), now).rankings.first { it.team == top }
+        val conservative = Evaluator.evaluate(season, UserState(adjustments = listOf(adj), settings = ModelSettings().forStrategy(Strategy.CONSERVATIVE)), now).rankings.first { it.team == top }
         val contrarian = Evaluator.evaluate(season, UserState(adjustments = listOf(adj), settings = ModelSettings(strategy = Strategy.CONTRARIAN)), now).rankings.first { it.team == top }
+        val balanced = Evaluator.evaluate(season, UserState(adjustments = listOf(adj), settings = ModelSettings().forStrategy(Strategy.BALANCED)), now).rankings.first { it.team == top }
         assertEquals(0.0, conservative.components.leverageAdjustment, 1e-12)
+        assertTrue(balanced.components.leverageAdjustment < 0.0)
+        assertTrue(contrarian.components.leverageAdjustment < balanced.components.leverageAdjustment)
         assertTrue(contrarian.components.leverageAdjustment < 0.0)
         assertNotNull(contrarian.leverage)
         assertNull(Evaluator.evaluate(season, UserState(), now).recommended!!.leverage)
@@ -287,7 +290,46 @@ class EvaluatorTest {
             val top = owned.rankings.maxByOrNull { it.probability }!!
             assertTrue(top.safetyScore >= 70.0, "$strategy top=${top.team} safety=${top.safetyScore}")
         }
-        assertEquals(0.3, ModelSettings().forStrategy(Strategy.BALANCED).ownershipLeverageWeight, 1e-9)
-        assertEquals(0.7, ModelSettings().forStrategy(Strategy.CONTRARIAN).ownershipLeverageWeight, 1e-9)
+        assertEquals(1.5, ModelSettings().forStrategy(Strategy.BALANCED).ownershipLeverageWeight, 1e-9)
+        assertEquals(3.0, ModelSettings().forStrategy(Strategy.CONTRARIAN).ownershipLeverageWeight, 1e-9)
+    }
+
+    @Test fun `week 6 chalk case - 42 percent owned 88 percent favorite loses to 18 percent owned 85 percent favorite under balanced`() {
+        // Real 2026 Week 6: LAR -12.5 (88%, 42% of Yahoo entries) lost; NE -7.5 (85%, 18%) won.
+        // Flat ratings → every remaining game is a near coin flip, so a strike-in-hand entry is worth little
+        // (strikeValueRatio ≈ 0.1), as in the real 2026 season at Week 6.
+        val season = TestSeason.build(41, ratings = Team.entries.associateWith { 0.0 }, finalsThroughWeek = 5)
+        val w6 = season.gamesInWeek(6)
+        val chalk = w6[0].home; val second = w6[1].home
+        val picks = (1..5).map { w -> Pick(w, season.gamesInWeek(w).first { it.winner != null && it.winner != chalk && it.winner != second }.winner!!) }
+        val adjustments = listOf(
+            Adjustment(6, chalk, overrideWinProbability = 0.88, estimatedPickShare = 0.42),
+            Adjustment(6, second, overrideWinProbability = 0.85, estimatedPickShare = 0.18),
+        )
+        val base = ModelSettings(futureValueWeight = 0.0, futureScarcityWeight = 0.0, pathLossWeight = 0.0, roadPenalty = 0.0, divisionalPenalty = 0.0, travelPenaltyPerTimeZone = 0.0, shortRestPenaltyPerDay = 0.0, fieldAverageWinProbability = 0.80)
+        fun rankOf(strategy: Strategy, team: Team) = Evaluator.evaluate(season, UserState(picks = picks, adjustments = adjustments, settings = base.forStrategy(strategy)), now).rankings.first { it.team == team }
+        val chalkC = rankOf(Strategy.CONSERVATIVE, chalk); val secondC = rankOf(Strategy.CONSERVATIVE, second)
+        assertTrue(chalkC.safetyScore > secondC.safetyScore, "conservative should still prefer the safer team")
+        val chalkB = rankOf(Strategy.BALANCED, chalk); val secondB = rankOf(Strategy.BALANCED, second)
+        assertTrue(secondB.safetyScore > chalkB.safetyScore, "balanced: second=${secondB.safetyScore} chalk=${chalkB.safetyScore} lev ${secondB.components.leverageAdjustment} vs ${chalkB.components.leverageAdjustment}")
+        assertTrue(chalkB.leverage!!.leverageScore < secondB.leverage!!.leverageScore)
+        assertTrue(chalkB.leverage!!.leverageScore < -4.0 && chalkB.leverage!!.leverageScore > -10.0, "ownership effect ${chalkB.leverage!!.leverageScore}")
+        val e = Evaluator.evaluate(season, UserState(picks = picks, adjustments = adjustments, settings = base.forStrategy(Strategy.BALANCED)), now)
+        assertTrue(e.strikeValueRatio < 0.3, "strikeValueRatio=${e.strikeValueRatio}")
+        assertTrue(e.fieldZeroStrikeFraction in 0.3..0.6, "z0=${e.fieldZeroStrikeFraction}")
+        assertEquals(Strategy.BALANCED, ModelSettings().strategy)
+    }
+
+    @Test fun `pool equity formula hand-checks`() {
+        // Unowned pick → leverage score 0 by construction; heavier ownership → lower equity; both signs sane.
+        val free = Safety.poolEquity(0.85, 0.0, 0.8, 0, 0.44, 0.2)!!
+        assertEquals(0.0, free.leverageScore, 1e-9)
+        val light = Safety.poolEquity(0.85, 0.02, 0.8, 0, 0.44, 0.2)!!
+        val heavy = Safety.poolEquity(0.85, 0.42, 0.8, 0, 0.44, 0.2)!!
+        assertTrue(light.leverageScore < 0.0 && light.leverageScore > -1.0)
+        assertTrue(heavy.leverageScore < light.leverageScore)
+        assertEquals(-6.4, Safety.poolEquity(0.88, 0.42, 0.8, 0, 0.44, 0.2)!!.leverageScore, 0.5)
+        assertEquals(-2.8, Safety.poolEquity(0.85, 0.18, 0.8, 0, 0.44, 0.2)!!.leverageScore, 0.5)
+        assertNull(Safety.poolEquity(0.85, null, 0.8))
     }
 }

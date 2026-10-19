@@ -148,9 +148,9 @@ enum class RouteObjective(val label: String, val description: String) {
 }
 
 enum class Strategy(val label: String, val description: String) {
-    CONSERVATIVE("Conservative", "Maximize your own survival. Ownership (fetched automatically from Yahoo Survival Football, or your own manual estimate) is ignored; future value still matters."),
-    BALANCED("Balanced", "Survival first, with a modest bonus for lightly-owned picks. Pick shares come from Yahoo Survival Football automatically; a manual pick share for a team-week overrides Yahoo's."),
-    CONTRARIAN("Contrarian", "Accept slightly more risk to fade heavily-owned teams, using pick shares fetched automatically from Yahoo Survival Football (or your own manual estimate, which overrides Yahoo's)."),
+    CONSERVATIVE("Conservative", "Maximize your own survival. Ownership is ignored; future value still matters. Best for very small pools."),
+    BALANCED("Balanced", "Default. Safety plus pool equity: heavily-owned chalk is penalised by what it costs your share of the pool under double elimination (Yahoo pick shares, or your manual estimate). Flips to the second favorite when ownership is lopsided and the safety gap is small."),
+    CONTRARIAN("Contrarian", "Twice the ownership weight of Balanced: routinely fades the chalk. Wins more pools in large fields, lasts fewer weeks on average."),
     MAX_POOL_EQUITY("Max Pool Equity", "Rank by expected pool equity: win probability divided by the share of the pool that survives with you, using pick shares fetched automatically from Yahoo Survival Football (or your own manual estimate, which overrides Yahoo's)."),
 }
 
@@ -207,8 +207,8 @@ data class ModelSettings(
     val minimumAcceptableWinProbability: Double = 0.62,
     /** Multiplier on future-value weight after the first strike (double elimination → single). */
     val strikeFutureWeightMultiplier: Double = 0.4,
-    val ownershipLeverageWeight: Double = 0.0,
-    val strategy: Strategy = Strategy.CONSERVATIVE,
+    val ownershipLeverageWeight: Double = 1.5,
+    val strategy: Strategy = Strategy.BALANCED,
     /** Average win probability of the field's picks, used as the pool-equity proxy when ownership is entered
      *  and as every other entry's flat weekly win probability in the [RouteObjective.POOL_WIN] field model. */
     val fieldAverageWinProbability: Double = 0.76,
@@ -300,8 +300,8 @@ data class ModelSettings(
         strategy = strategy,
         ownershipLeverageWeight = when (strategy) {
             Strategy.CONSERVATIVE -> 0.0
-            Strategy.BALANCED -> 0.3
-            Strategy.CONTRARIAN -> 0.7
+            Strategy.BALANCED -> 1.5
+            Strategy.CONTRARIAN -> 3.0
             Strategy.MAX_POOL_EQUITY -> 0.0
         },
     )
@@ -327,7 +327,7 @@ data class ModelSettings(
             "projectionOnlyPenalty" to "Safety penalty when only a projection (no line) backs the number.",
             "minimumAcceptableWinProbability" to "Picks below this win % are flagged as risky regardless of future value.",
             "strikeFutureWeightMultiplier" to "After a strike, future value weight is multiplied by this (be conservative).",
-            "ownershipLeverageWeight" to "Safety bonus per unit of leverage when pick share is entered. Set by strategy.",
+            "ownershipLeverageWeight" to "Safety points per 1% of pool equity lost or gained through ownership (double-elimination equity vs an unowned pick). Set by strategy: Conservative 0, Balanced 1.5, Contrarian 3.",
             "fieldAverageWinProbability" to "Assumed win % of the rest of the pool's picks in the equity proxy, and of every other entry's weekly pick in the pool-win objective.",
             "monteCarloIterations" to "Simulated seasons per strategy in the Monte Carlo tab.",
             "routeObjective" to "What the season-path optimizer maximizes: win the pool (default), survive the whole season, expected weeks alive, or a blend of the last two.",
