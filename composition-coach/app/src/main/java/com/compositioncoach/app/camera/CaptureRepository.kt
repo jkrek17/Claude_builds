@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import android.util.Size
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -32,7 +33,7 @@ class CaptureRepository(private val context: Context) {
 
     /** Takes a photo with [imageCapture] and returns the [Uri] it was saved to (a MediaStore content Uri). */
     suspend fun capture(imageCapture: ImageCapture, isFrontCamera: Boolean): Uri {
-        val name = "CC_${TIMESTAMP_FORMAT.format(System.currentTimeMillis())}.jpg"
+        val name = newFileName()
         // Front-camera JPEGs are flipped so the saved photo matches the mirrored preview the user framed with.
         val metadata = ImageCapture.Metadata().apply { isReversedHorizontal = isFrontCamera }
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -97,6 +98,112 @@ class CaptureRepository(private val context: Context) {
                 },
             )
         }
+
+    /**
+     * Saves JPEG [bytes] captured in memory (the lucky-imaging path) to the same album, name pattern and
+     * MediaStore collection as [capture], without re-encoding them. The pixels stay as the sensor delivered
+     * them, so orientation lives in EXIF exactly as in CameraX's own file path: [rotationDegrees]
+     * (`ImageInfo.rotationDegrees`, which follows `ImageCapture.targetRotation`, i.e. the phone's physical
+     * hold) plus, for the front camera, a display-space horizontal mirror so the selfie matches the mirrored
+     * preview (see [ExifOrientations.tagFor]). Runs on [Dispatchers.IO].
+     */
+    suspend fun saveJpeg(bytes: ByteArray, rotationDegrees: Int, mirrorHorizontally: Boolean): Uri = withContext(Dispatchers.IO) {
+        val name = newFileName()
+        val temp = File.createTempFile("cc_capture_", ".jpg", context.cacheDir)
+        try {
+            temp.writeBytes(bytes)
+            ExifInterface(temp.absolutePath).apply {
+                setAttribute(ExifInterface.TAG_ORIENTATION, ExifOrientations.tagFor(rotationDegrees, mirrorHorizontally).toString())
+                if (getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) == null) {
+                    val now = EXIF_DATE_FORMAT.format(System.currentTimeMillis())
+                    setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, now)
+                    setAttribute(ExifInterface.TAG_DATETIME, now)
+                }
+                saveAttributes()
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) insertIntoMediaStore(temp, name) else copyToLegacyPicturesDir(temp, name)
+        } finally {
+            temp.delete()
+        }
+    }
+
+    private fun insertIntoMediaStore(source: File, name: String): Uri {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, name)
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$ALBUM_DIR_NAME")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: error("MediaStore refused the insert")
+        try {
+            val out = resolver.openOutputStream(uri) ?: error("No output stream for $uri")
+            out.use { stream -> source.inputStream().use { it.copyTo(stream) } }
+            resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+        } catch (t: Throwable) {
+            runCatching { resolver.delete(uri, null, null) }
+            throw t
+        }
+        return uri
+    }
+
+    private suspend fun copyToLegacyPicturesDir(source: File, name: String): Uri {
+        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), ALBUM_DIR_NAME)
+        if (!dir.exists() && !dir.mkdirs()) error("Could not create ${dir.absolutePath}")
+        val file = File(dir, name)
+        source.copyTo(file, overwrite = true)
+        val scannedUri = suspendCancellableCoroutine<Uri?> { cont ->
+            MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), arrayOf("image/jpeg")) { _, uri ->
+                if (cont.isActive) cont.resume(uri)
+            }
+        }
+        return scannedUri ?: Uri.fromFile(file)
+    }
+
+    /**
+     * Replaces the bytes of an already-saved photo with [source] (the auto-level step). Handles MediaStore
+     * content Uris (the app owns the row it inserted, so no permission is needed on API 29+) and the legacy
+     * `file:` fallback.
+     */
+    suspend fun overwrite(uri: Uri, source: File) = withContext(Dispatchers.IO) {
+        if (uri.scheme == "file") {
+            val target = File(uri.path ?: error("No path in $uri"))
+            // Never resurrect a photo the user deleted (Retake) while auto-level was running.
+            if (!target.exists()) error("$uri was deleted")
+            source.copyTo(target, overwrite = true)
+        } else {
+            val resolver = context.contentResolver
+            val out = runCatching { resolver.openOutputStream(uri, "wt") }.getOrNull()
+                ?: resolver.openOutputStream(uri, "w")
+                ?: error("No output stream for $uri")
+            out.use { stream -> source.inputStream().use { it.copyTo(stream) } }
+        }
+    }
+
+    /** Reads a saved photo's full bytes (for auto-level and for EXIF-based diagnostics). Runs on [Dispatchers.IO]. */
+    suspend fun readBytes(uri: Uri): ByteArray = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Cannot open $uri")
+    }
+
+    /**
+     * The first [maxBytes] of a saved photo: enough for the EXIF/APP1 segment and the frame header, which is
+     * all the diagnostics need, without reading a 10 MB file. Runs on [Dispatchers.IO].
+     */
+    suspend fun readExifHeader(uri: Uri, maxBytes: Int = 256 * 1024): ByteArray = withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(maxBytes)
+            var read = 0
+            while (read < maxBytes) {
+                val n = input.read(buffer, read, maxBytes - read)
+                if (n < 0) break
+                read += n
+            }
+            buffer.copyOf(read)
+        } ?: error("Cannot open $uri")
+    }
+
+    /** A scratch file in the app cache, for building a replacement JPEG before [overwrite]. */
+    fun newScratchFile(): File = File.createTempFile("cc_level_", ".jpg", context.cacheDir)
 
     /** Deletes a photo the user chose to retake. Handles both content Uris and the legacy file Uri fallback. */
     suspend fun delete(uri: Uri) {
@@ -185,9 +292,16 @@ class CaptureRepository(private val context: Context) {
         }.getOrNull()
     }
 
+    /**
+     * `CC_yyyyMMdd_HHmmss_SSS.jpg`. The milliseconds keep two captures in the same second (easy with the
+     * volume key) from colliding; MediaStore would otherwise rename one with a " (1)" suffix.
+     */
+    private fun newFileName(): String = "CC_${TIMESTAMP_FORMAT.format(System.currentTimeMillis())}.jpg"
+
     companion object {
         private const val ALBUM_DIR_NAME = "CompositionCoach"
-        private val TIMESTAMP_FORMAT = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+        private val TIMESTAMP_FORMAT = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US)
+        private val EXIF_DATE_FORMAT = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US)
     }
 }
 

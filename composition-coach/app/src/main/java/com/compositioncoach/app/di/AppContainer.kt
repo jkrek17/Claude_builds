@@ -2,7 +2,10 @@ package com.compositioncoach.app.di
 
 import android.content.Context
 import android.util.Log
+import com.compositioncoach.app.camera.AutoLevelProcessor
+import com.compositioncoach.app.camera.CapturePipeline
 import com.compositioncoach.app.camera.CaptureRepository
+import com.compositioncoach.app.camera.MotionSensor
 import com.compositioncoach.app.camera.ThermalPolicy
 import com.compositioncoach.app.settings.SettingsRepository
 import com.compositioncoach.composition.engine.CompositionCoach
@@ -22,6 +25,15 @@ class AppContainer(private val appContext: Context) {
     val settingsRepository: SettingsRepository by lazy { SettingsRepository(appContext) }
     val captureRepository: CaptureRepository by lazy { CaptureRepository(appContext) }
     val reviewStore: ReviewStore by lazy { ReviewStore() }
+
+    /** Gyroscope steadiness for steady-shot gating; started/stopped with the vision pipeline. */
+    val motionSensor: MotionSensor by lazy { MotionSensor(appContext) }
+
+    /** Shutter-to-saved-file orchestration (steady-shot, lucky imaging, diagnostics). */
+    val capturePipeline: CapturePipeline by lazy { CapturePipeline(captureRepository, motionSensor) }
+
+    /** Post-save horizon straightening. */
+    val autoLevelProcessor: AutoLevelProcessor by lazy { AutoLevelProcessor(captureRepository) }
 
     /** Thermal/battery-saver-driven [com.compositioncoach.vision.PerformanceTier]; see its KDoc. */
     val thermalPolicy: ThermalPolicy by lazy { ThermalPolicy(appContext) }

@@ -1,16 +1,27 @@
 package com.compositioncoach.app.di
 
 import android.net.Uri
+import com.compositioncoach.app.camera.CaptureDiagnostics
 import com.compositioncoach.composition.model.CompositionResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 
 /** What was captured, waiting to be shown on the review screen. */
 data class ReviewEntry(
     val photoUri: Uri,
     val result: CompositionResult,
     /** What the camera did for this capture; defaults to "unknown" so older call sites keep compiling. */
-    val diagnostics: com.compositioncoach.app.camera.CaptureDiagnostics = com.compositioncoach.app.camera.CaptureDiagnostics(),
+    val diagnostics: CaptureDiagnostics = CaptureDiagnostics(),
+    /**
+     * Bumped every time the file behind [photoUri] is rewritten in place (auto-level finishing after the
+     * review screen is already showing). The Uri itself does not change, so an image loader keyed only on the
+     * Uri would keep showing the unlevelled bitmap from its cache: include this in the request's cache key
+     * (e.g. Coil `memoryCacheKey("$photoUri#$revision")`) to pick up the new pixels.
+     */
+    val revision: Int = 0,
+    /** True while auto-level is still running for this photo (the review screen may show a subtle spinner). */
+    val processing: Boolean = false,
 )
 
 /**
@@ -25,6 +36,24 @@ class ReviewStore {
 
     fun put(entry: ReviewEntry) {
         _current.value = entry
+    }
+
+    /**
+     * Applies [transform] to the current entry only if it is still the photo at [photoUri] (the user may have
+     * kept it and taken another, or retaken it, while background processing ran). Returns whether it applied.
+     */
+    fun updateIfCurrent(photoUri: Uri, transform: (ReviewEntry) -> ReviewEntry): Boolean {
+        var applied = false
+        _current.update { entry ->
+            applied = false
+            if (entry != null && entry.photoUri == photoUri) {
+                applied = true
+                transform(entry)
+            } else {
+                entry
+            }
+        }
+        return applied
     }
 
     fun clear() {
