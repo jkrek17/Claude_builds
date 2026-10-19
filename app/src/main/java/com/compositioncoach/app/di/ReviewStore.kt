@@ -6,7 +6,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /** What was captured, waiting to be shown on the review screen. */
-data class ReviewEntry(val photoUri: Uri, val result: CompositionResult)
+data class ReviewEntry(
+    val photoUri: Uri,
+    val result: CompositionResult,
+    /** What the camera did for this capture; defaults to "unknown" so older call sites keep compiling. */
+    val diagnostics: com.compositioncoach.app.camera.CaptureDiagnostics = com.compositioncoach.app.camera.CaptureDiagnostics(),
+)
 
 /**
  * Tiny in-memory hand-off between the camera and review screens. Navigation-compose does not carry rich

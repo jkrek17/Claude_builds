@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.compositioncoach.app.camera.CameraBindResult
 import com.compositioncoach.app.camera.FlashMode
 import com.compositioncoach.app.camera.FrameFpsTracker
+import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.camera.LensFacing
 import com.compositioncoach.app.camera.toIntRange
 import com.compositioncoach.app.di.AppContainer
@@ -337,6 +338,18 @@ class CameraViewModel(private val container: AppContainer) : ViewModel() {
 
     fun onOnboardingDismissed() {
         viewModelScope.launch { container.settingsRepository.setOnboardingSeen(true) }
+    }
+
+    // --- Image quality contract (camera engineer fills these in; UI calls them) ---------------------
+
+    /** User picked an enhancement (HDR/Night/Auto/Off). STATUS: stub until the camera engineer wires it. */
+    fun onEnhancementSelected(enhancement: CaptureEnhancement) {
+        _uiState.update { it.copy(enhancement = enhancement) }
+    }
+
+    /** User tapped a zoom preset chip. STATUS: stub; the camera engineer routes it to CameraController. */
+    fun onZoomPresetSelected(ratio: Float) {
+        _uiState.update { it.copy(zoomRatio = ratio) }
     }
 
     override fun onCleared() {
