@@ -3,7 +3,7 @@
 **For people who love photos but never learned photography.** The app takes the photo you meant to
 take, then teaches you afterwards, in your own pictures, and learns what you like.
 
-Working name stays "Composition Coach" until a name is chosen. The promise in one line: *the camera
+Name: Eyebright (see docs/BRAND.md); formerly Composition Coach. The promise in one line: *the camera
 that frames for you, and shows you why afterwards.*
 
 ## Two experiences, one shutter
