@@ -27,9 +27,25 @@ Unchanged from `COACHING_UI.md`, with these defaults:
 - Shoot-at-peak on: tap arms the auto-shutter; it fires when framing is ready and the hand is steady, or
   after 4 s. Hold the shutter to shoot instantly.
 - Auto-level, sharpest-of-burst and the best available enhancement on.
-- Intents in plain words on the strip: **Anything · A person · A group · A view · A building · Food & things**.
-- Recipes (Wave 2) as a second row behind a "Looks" chip: Silky water, Light trails, Clear the crowd,
-  Night city, Food from above. A recipe sets intent, capture pipeline and the one instruction it needs.
+- **Outcomes, not modes.** The strip above the shutter lists the photograph you want, in plain words.
+  Picking one sets everything underneath it: scene rules, capture pipeline, stacking, post-processing,
+  and the single instruction it needs. The user never meets a setting.
+
+| Outcome | What the app does underneath | The one thing it asks of you |
+|---|---|---|
+| **Anything** | Auto scene detection, best available enhancement, sharpest-of-burst, auto-level | nothing |
+| **Portrait** | face coaching (light, headroom, looking room); vendor Bokeh extension when the phone offers it, else our mask-based background blur on review | "Turn so the light is on their face" when needed |
+| **Group** | everyone in frame and eyes open before it fires; edge cuts are blocking | "Someone's cut off" / "Eyes closed" |
+| **Landscape** | horizon level and placement; HDR when available; focus stack (3 focus distances merged by local sharpness) so near and far are sharp | "Level" / "Hold still" |
+| **Night** | vendor Night extension; longer steady hold with a progress ring | "Hold still" |
+| **Light trails** | Motion stack, lighten blend, 3-4 s, gyro-aligned | "Hold still for 4 seconds" |
+| **Silky water** | Motion stack, average blend, 2-3 s | "Hold still for 3 seconds" |
+| **Clear the crowd** | Motion stack, median blend, 4-6 s; coach flags moving people first | "Hold still for 5 seconds" |
+| **Food & things** | object subject, top-down level (pitch) and shadow/light coaching, tighter crops suggested | "Tilt flatter" / "Closer" |
+
+Outcomes that need a hold show the live accumulation in the preview with a progress ring and abort
+cleanly on heavy motion ("Too shaky, try again"). Every outcome saves a normal first frame alongside
+any stacked or processed result, so an experiment never costs the shot.
 
 ## After the shot: where the coaching lives
 

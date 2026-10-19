@@ -120,12 +120,23 @@ preview frame.
 - `app`: `CoachFeedbackTracker` in the ViewModel derives the events from state transitions; persisted
   in DataStore (`adaptive_weights` as a compact string).
 
-## 9. Recipes and Motion mode
+## 9. Outcomes and the capture pipelines behind them
 
-- `app`: a "Looks" chip behind the mode strip opens a second row: Silky water, Light trails, Clear the
-  crowd, Night city, Food from above. A recipe = intent + enhancement + capture pipeline + the one
-  instruction it needs; selecting one shows that instruction as the chip until capture.
-- `vision`/`app/camera`: **Motion** capture: frames from a higher-resolution analysis stream
+- Contract (integrator): `Outcome` enum (ANYTHING, PORTRAIT, GROUP, LANDSCAPE, NIGHT, LIGHT_TRAILS,
+  SILKY_WATER, CLEAR_CROWD, FOOD) with an `OutcomeSpec` per value: `sceneIntent`, preferred
+  `CaptureEnhancement` list in order (e.g. PORTRAIT: BOKEH, AUTO, OFF), `pipeline` (SINGLE,
+  BURST_SHARPEST, MOTION_AVERAGE, MOTION_LIGHTEN, MOTION_MEDIAN, FOCUS_STACK), `holdSeconds`,
+  `postProcess` (NONE, BOKEH_MASK), `instruction` (the chip text while holding), and `coachingFocus`
+  (categories to weight up). Persisted as `outcome` in settings; the old `scene_intent` is derived
+  from it.
+- `app/ui`: the strip above the shutter lists outcomes in plain words (replaces the scene strip); a
+  selected outcome's instruction is the chip while a hold is in progress; the live accumulation
+  preview with a progress ring for Motion outcomes.
+- `app/camera`: `CaptureEnhancement.BOKEH` (additive) mapped to `ExtensionMode.BOKEH`; `FocusStacker`
+  (three captures at near/mid/far focus distances via Camera2Interop `LENS_FOCUS_DISTANCE`, merged by
+  local Laplacian energy on a downscaled guide, full-res blend) for LANDSCAPE when the lens supports
+  manual focus; falls back to single capture.
+- `vision`/`app/camera`: **Motion** capture (LIGHT_TRAILS, SILKY_WATER, CLEAR_CROWD): frames from a higher-resolution analysis stream
   (~1280×960 YUV) accumulated for 2-4 s with gyro-based alignment (rotation homography), blend
   Average (Silky water), Lighten (Light trails) or Median (Clear the crowd); live accumulation shown in
   the preview with a progress ring; abort on heavy motion ("Too shaky, try again"); save the stack plus
@@ -145,9 +156,9 @@ preview frame.
 
 | Agent | Owns | Delivers |
 |---|---|---|
-| Capture and still analysis | `vision/**`, `app/camera/**`, `app/di/**` | Foundation, 9 (Motion capture), 4 (vision part), 8 (processing) |
+| Capture and still analysis | `vision/**`, `app/camera/**`, `app/di/**` | Foundation, 9 (Motion capture, Bokeh extension, focus stack), 4 (vision part), 8 (processing) |
 | Engine | `composition/**` | 0 (AfterActionReport), 1 (CropSuggester), 2 helper, 4 (GroupReadiness), 7 (AdaptiveWeights) |
-| UI | `app/ui/**`, `app/res/**` | 0 (card), 0b (strip, settings), 1, 2, 7 ("Your eye"), 9 (Looks row), 4 (arc dots), 5, 6, 8 (chips) |
+| UI | `app/ui/**`, `app/res/**` | 0 (card), 0b (settings), 1, 2, 7 ("Your eye"), 9 (outcome strip, hold preview), 4 (arc dots), 5, 6, 8 (chips) |
 | State and persistence | `CameraViewModel.kt`, `CameraUiState.kt`, `settings/**` | 0b defaults, PhotoJournal, feedback tracker, adaptive weights persistence, recipe state, still-analysis orchestration |
 
 The integrator writes the cross-module contract (new fields with defaults) before launch, as in Wave 1.
