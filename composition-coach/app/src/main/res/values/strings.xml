@@ -8,7 +8,7 @@
     <string name="permission_allow_camera">Allow camera</string>
     <string name="permission_open_settings">Open settings</string>
 
-    <string name="settings_shooting_mode">Shooting mode</string>
+    <string name="settings_title">Settings</string>
     <string name="settings_guidance">Guidance</string>
     <string name="settings_show_score">Show score</string>
     <string name="settings_grid">Grid</string>
@@ -29,8 +29,149 @@
     <string name="settings_auto_level_subtitle">Straightens a slightly tilted horizon after the shot</string>
     <string name="settings_auto_shoot">Auto shoot when ready</string>
     <string name="settings_auto_shoot_subtitle">Every tap waits for the best moment, like holding the shutter</string>
-    <string name="settings_privacy_footer">All analysis runs on your device.</string>
+    <string name="settings_privacy_footer">Everything happens on your phone. Nothing is uploaded.</string>
 
-    <string name="onboarding_message">Point · Follow the cue · Shoot when green</string>
+    <string name="onboarding_message">Point · Follow the cue · Shoot when it turns green</string>
     <string name="onboarding_dismiss">Got it</string>
+    <!-- ===== Live chip wording (docs/COACHING_UI.md "Chip"). 1-3 words, physical actions. ===== -->
+    <string name="chip_slightly_right">Slightly right</string>
+    <string name="chip_slightly_left">Slightly left</string>
+    <string name="chip_raise">Raise</string>
+    <string name="chip_lower">Lower</string>
+    <string name="chip_closer">Closer</string>
+    <string name="chip_step_back">Step back</string>
+    <string name="chip_level">Level</string>
+    <string name="chip_clear_background">Clear background</string>
+    <string name="chip_plainer_background">Plainer background</string>
+    <string name="chip_give_looking_room">Give looking room</string>
+    <string name="chip_too_close_to_edge">Too close to edge</string>
+    <string name="chip_someones_cut_off">Someone\'s cut off</string>
+    <string name="chip_center_it">Center it</string>
+    <string name="chip_shoot">SHOOT</string>
+    <string name="chip_point_at_subject">Point at a subject</string>
+    <string name="chip_looking_for_subject">Looking for a subject</string>
+    <string name="chip_arm_out">Arm out a little</string>
+    <string name="chip_eyes_closed">Eyes closed</string>
+    <string name="chip_someones_too_small">Someone\'s too small</string>
+    <!-- What TalkBack says for the chip: the same action as a short sentence. -->
+    <string name="chip_desc_slightly_right">Move slightly right</string>
+    <string name="chip_desc_slightly_left">Move slightly left</string>
+    <string name="chip_desc_raise">Raise the camera</string>
+    <string name="chip_desc_lower">Lower the camera</string>
+    <string name="chip_desc_closer">Move closer</string>
+    <string name="chip_desc_step_back">Step back</string>
+    <string name="chip_desc_level">Level the camera</string>
+    <string name="chip_desc_shoot">Framing is ready, shoot now</string>
+    <string name="chip_desc_arm_out">Hold the phone a little further away</string>
+
+    <!-- ===== Outcome strip (docs/PRODUCT.md "Outcomes, not modes"), in plain words. ===== -->
+    <string name="outcome_strip_description">What you want to shoot</string>
+    <string name="outcome_anything">Anything</string>
+    <string name="outcome_portrait">A person</string>
+    <string name="outcome_group">A group</string>
+    <string name="outcome_landscape">A view</string>
+    <string name="outcome_night">Night</string>
+    <string name="outcome_light_trails">Light trails</string>
+    <string name="outcome_silky_water">Silky water</string>
+    <string name="outcome_clear_crowd">Clear the crowd</string>
+    <string name="outcome_food">Food &amp; things</string>
+    <string name="outcome_selfie">Selfie</string>
+
+    <!-- ===== Timer, hold, group ===== -->
+    <string name="timer_off">Timer off</string>
+    <string name="timer_seconds">%1$d s</string>
+    <string name="timer_group">when everyone\'s ready</string>
+    <string name="timer_button_description">Self-timer: %1$s</string>
+    <string name="timer_countdown_description">Taking the photo in %1$d</string>
+    <string name="group_ready_description">%1$d of %2$d ready</string>
+    <string name="ghost_description">Outline of your last photo. Tap to hide.</string>
+    <string name="gallery_your_eye">Your eye</string>
+    <string name="gallery_use_as_guide">Use as guide</string>
+    <string name="gallery_open">Open last photo</string>
+
+    <!-- ===== Settings ===== -->
+    <string name="settings_experience">Experience</string>
+    <string name="experience_easy">Easy</string>
+    <string name="experience_coach">Coach</string>
+    <string name="settings_experience_easy_subtitle">One cue at a time, no numbers. The card after each photo explains.</string>
+    <string name="settings_experience_coach_subtitle">Adds the score, a second cue and a short reason under each cue.</string>
+    <string name="settings_pro_controls">Pro controls</string>
+    <string name="settings_pro_controls_subtitle">Exposure, zoom presets, enhancement, grid, guidance level, detection and developer options</string>
+    <string name="settings_guide_vibration">Guide by vibration</string>
+    <string name="settings_guide_vibration_subtitle">Short buzzes point the way: one for left, two for right</string>
+    <string name="settings_guide_voice">Guide by voice</string>
+    <string name="settings_guide_voice_subtitle">Speaks the cue. Quiet while music plays or Do Not Disturb is on</string>
+    <string name="settings_your_eye_subtitle">What the coach has learned about your taste</string>
+    <string name="settings_reset_coaching">Reset coaching preferences</string>
+    <string name="settings_reset_coaching_subtitle">Forget what it has learned about your taste</string>
+    <string name="settings_about">About</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_licences">Open-source licences</string>
+    <string name="settings_send_feedback">Send feedback</string>
+    <string name="settings_send_feedback_subtitle">Opens the share sheet with your last photo\'s card as text</string>
+
+    <!-- ===== After-the-shot card ===== -->
+    <string name="verdict_keeper">Keeper</string>
+    <string name="verdict_good">Good</string>
+    <string name="verdict_try_again">Try again</string>
+    <string name="card_what_worked">What worked</string>
+    <string name="card_try_next_time">Try next time</string>
+    <string name="card_not_helpful">Not helpful</string>
+    <string name="card_not_helpful_thanks">Thanks. It will come up less.</string>
+    <string name="card_gain">+%1$d</string>
+    <string name="card_better_crop">Better crop?</string>
+    <string name="card_save_crop">Save crop</string>
+    <string name="card_crop_description">%1$s crop, predicted %2$d</string>
+    <string name="card_saved_copy">Saved as a copy. Your original is untouched.</string>
+    <string name="card_what_if">What if</string>
+    <string name="card_what_if_hint">Hold to see a better framing</string>
+    <string name="card_score_change">%1$d → %2$d</string>
+    <string name="card_portrait">Portrait</string>
+    <string name="card_portrait_hint">Hold to see the background softened</string>
+    <string name="card_save_copy">Save as copy</string>
+    <string name="card_details">Details</string>
+    <string name="card_details_outcome">Outcome</string>
+    <string name="card_details_metrics">Every measure</string>
+    <string name="card_keep">Keep</string>
+    <string name="card_retake">Retake</string>
+    <string name="card_share">Share</string>
+    <string name="card_share_chooser">Share photo</string>
+    <string name="card_shoot_again">Shoot again</string>
+    <string name="card_nothing_to_change">Nothing to change. Keep this one.</string>
+    <string name="card_analysing">Analysing…</string>
+    <string name="card_back_keep">Keep photo and go back</string>
+    <string name="card_photo">Captured photo</string>
+    <string name="card_no_photo">No photo to review</string>
+
+    <!-- ===== "Your eye" ===== -->
+    <string name="your_eye_title">Your eye</string>
+    <string name="your_eye_period">This month</string>
+    <plurals name="your_eye_keepers">
+        <item quantity="one">%1$d keeper</item>
+        <item quantity="other">%1$d keepers</item>
+    </plurals>
+    <string name="your_eye_tendencies">What you like</string>
+    <string name="your_eye_no_tendencies">Nothing stands out yet.</string>
+    <string name="your_eye_follow_most">Advice you take most</string>
+    <string name="your_eye_follow_least">Advice you skip most</string>
+    <string name="your_eye_skip_note">That\'s fine. It will come up less.</string>
+    <string name="your_eye_follow_rate">%1$s · %2$d in 10 times</string>
+    <string name="your_eye_best">Your best three</string>
+    <string name="your_eye_best_description">Photo scored %1$d</string>
+    <string name="your_eye_empty">Keep a few photos and this fills in.</string>
+    <string name="your_eye_private">Learned on your phone. Never uploaded.</string>
+    <string name="your_eye_reset">Start fresh</string>
+    <string name="your_eye_reset_confirm_title">Start fresh?</string>
+    <string name="your_eye_reset_confirm_body">The coach forgets what it has learned about your taste. Your photos stay where they are.</string>
+    <string name="your_eye_reset_confirm_yes">Start fresh</string>
+    <string name="your_eye_reset_confirm_no">Cancel</string>
+
+    <!-- ===== About: licences and feedback ===== -->
+    <string name="licences_title">Open-source licences</string>
+    <string name="licences_intro">Built with these open-source libraries, each used under the licence shown. Nothing here needs the internet; the links are for reference.</string>
+    <string name="licence_apache_2">Apache License 2.0</string>
+    <string name="licence_apache_2_url">apache.org/licenses/LICENSE-2.0</string>
+    <string name="feedback_subject">%1$s feedback</string>
+    <string name="feedback_no_card">No photo reviewed yet in this session.</string>
+    <string name="back">Back</string>
 </resources>

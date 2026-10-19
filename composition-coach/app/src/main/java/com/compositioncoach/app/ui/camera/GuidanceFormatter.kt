@@ -33,20 +33,27 @@ sealed interface PrimaryCue {
  * package render what this decides; they never re-derive wording or level behaviour themselves.
  *
  * The spec these implement is `docs/COACHING_UI.md`: words are a label on a spatial cue, never the cue
- * itself, so every string here is 1-3 words and sentences (`Recommendation.reason`) are left to the
+ * itself, so every chip string is 1-3 words (read from `strings.xml` through [strings]) and sentences (`Recommendation.reason`) are left to the
  * review screen. The one exception is [explanationText], which the Coach-level secondary icon row shows
  * for 3 seconds when tapped.
  */
 object GuidanceFormatter {
 
+    /**
+     * Where the chip words come from: `strings.xml` in the app ([ResourceChipStrings], installed by
+     * `AppNavGraph`), the English launch copy ([ChipStrings.English]) in JVM tests and previews.
+     */
+    @Volatile
+    var strings: ChipStrings = ChipStrings.English
+
     /** Text shown on the cue chip while framing is good enough to fire the shutter. */
-    const val SHOOT_TEXT = "SHOOT"
+    val SHOOT_TEXT: String get() = strings[ChipKey.SHOOT]
 
     /** The chip shown before the engine has classified any scene at all. */
-    const val POINT_AT_SUBJECT = "Point at a subject"
+    val POINT_AT_SUBJECT: String get() = strings[ChipKey.POINT_AT_SUBJECT]
 
     /** Fallback awaiting-subject wording when the engine's find-subject recommendation has no title. */
-    const val LOOKING_FOR_SUBJECT = "Looking for a subject"
+    val LOOKING_FOR_SUBJECT: String get() = strings[ChipKey.LOOKING_FOR_SUBJECT]
 
     /** The readiness arc dims to this while the declared mode is still waiting for its subject. */
     const val AWAITING_SUBJECT_ARC_ALPHA = 0.3f
@@ -61,25 +68,30 @@ object GuidanceFormatter {
      * trimmed to three words, so a future analyzer degrades to short text rather than to a blank chip.
      */
     fun chipText(recommendation: Recommendation): String = when (recommendation.direction) {
-        Direction.RIGHT -> "Slightly right"
-        Direction.LEFT -> "Slightly left"
-        Direction.UP -> "Raise"
-        Direction.DOWN -> "Lower"
-        Direction.CLOSER -> "Closer"
-        Direction.BACK -> "Step back"
-        Direction.ROTATE_CLOCKWISE, Direction.ROTATE_COUNTER_CLOCKWISE -> "Level"
-        Direction.NONE -> categoryChipText(recommendation.category) ?: shortTitle(recommendation.title)
+        Direction.NONE -> categoryChipKey(recommendation.category)?.let { strings[it] } ?: shortTitle(recommendation.title)
+        else -> strings[directionChipKey(recommendation.direction)]
     }
 
-    /** The chip wording for a directionless recommendation, or null when the category isn't in the table. */
-    private fun categoryChipText(category: MetricCategory): String? = when (category) {
-        MetricCategory.HORIZON -> "Level"
-        MetricCategory.BACKGROUND_DISTRACTION -> "Clear background"
-        MetricCategory.SUBJECT_SEPARATION -> "Plainer background"
-        MetricCategory.LOOKING_ROOM -> "Give looking room"
-        MetricCategory.EDGE_TENSION -> "Too close to edge"
-        MetricCategory.CROPPING -> "Someone's cut off"
-        MetricCategory.SYMMETRY -> "Center it"
+    /** The chip key for a camera move ([Direction.NONE] maps to Level only as a fallback; callers check first). */
+    fun directionChipKey(direction: Direction): ChipKey = when (direction) {
+        Direction.RIGHT -> ChipKey.SLIGHTLY_RIGHT
+        Direction.LEFT -> ChipKey.SLIGHTLY_LEFT
+        Direction.UP -> ChipKey.RAISE
+        Direction.DOWN -> ChipKey.LOWER
+        Direction.CLOSER -> ChipKey.CLOSER
+        Direction.BACK -> ChipKey.STEP_BACK
+        Direction.ROTATE_CLOCKWISE, Direction.ROTATE_COUNTER_CLOCKWISE, Direction.NONE -> ChipKey.LEVEL
+    }
+
+    /** The chip key for a directionless recommendation, or null when the category isn't in the table. */
+    private fun categoryChipKey(category: MetricCategory): ChipKey? = when (category) {
+        MetricCategory.HORIZON -> ChipKey.LEVEL
+        MetricCategory.BACKGROUND_DISTRACTION -> ChipKey.CLEAR_BACKGROUND
+        MetricCategory.SUBJECT_SEPARATION -> ChipKey.PLAINER_BACKGROUND
+        MetricCategory.LOOKING_ROOM -> ChipKey.GIVE_LOOKING_ROOM
+        MetricCategory.EDGE_TENSION -> ChipKey.TOO_CLOSE_TO_EDGE
+        MetricCategory.CROPPING -> ChipKey.SOMEONES_CUT_OFF
+        MetricCategory.SYMMETRY -> ChipKey.CENTER_IT
         else -> null
     }
 
@@ -144,15 +156,23 @@ object GuidanceFormatter {
      * right" rather than the bare "Slightly right"), per the spec's accessibility section.
      */
     fun chipDescription(recommendation: Recommendation): String = when (recommendation.direction) {
-        Direction.RIGHT -> "Move slightly right"
-        Direction.LEFT -> "Move slightly left"
-        Direction.UP -> "Raise the camera"
-        Direction.DOWN -> "Lower the camera"
-        Direction.CLOSER -> "Move closer"
-        Direction.BACK -> "Step back"
-        Direction.ROTATE_CLOCKWISE, Direction.ROTATE_COUNTER_CLOCKWISE -> "Level the camera"
+        Direction.RIGHT -> strings[ChipKey.DESC_SLIGHTLY_RIGHT]
+        Direction.LEFT -> strings[ChipKey.DESC_SLIGHTLY_LEFT]
+        Direction.UP -> strings[ChipKey.DESC_RAISE]
+        Direction.DOWN -> strings[ChipKey.DESC_LOWER]
+        Direction.CLOSER -> strings[ChipKey.DESC_CLOSER]
+        Direction.BACK -> strings[ChipKey.DESC_STEP_BACK]
+        Direction.ROTATE_CLOCKWISE, Direction.ROTATE_COUNTER_CLOCKWISE -> strings[ChipKey.DESC_LEVEL]
         Direction.NONE -> recommendation.instruction.ifBlank { chipText(recommendation) }
     }
+
+    /**
+     * Coach mode's one-line reason under the chip: the recommendation's `reason`, else its instruction, or null
+     * when neither adds anything to the chip's own words. Easy mode never shows it.
+     */
+    fun reasonLine(recommendation: Recommendation): String? =
+        (recommendation.reason ?: recommendation.instruction).trim()
+            .takeIf { it.isNotEmpty() && !it.equals(chipText(recommendation), ignoreCase = true) }
 
     /** "Composition score 82" — what the score chip announces, per the spec's accessibility section. */
     fun scoreAnnouncement(score: Int): String = "Composition score $score"

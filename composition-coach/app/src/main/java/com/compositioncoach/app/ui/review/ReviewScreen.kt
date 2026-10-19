@@ -4,130 +4,137 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Image
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.isSpecified
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import coil.compose.rememberAsyncImagePainter
-import coil.request.ImageRequest
+import com.compositioncoach.app.R
 import com.compositioncoach.app.camera.CaptureRepository
 import com.compositioncoach.app.di.ReviewEntry
+import com.compositioncoach.app.outcome.ReviewCardMode
+import com.compositioncoach.app.ui.camera.rememberAnimationsEnabled
 import com.compositioncoach.app.ui.theme.Background
 import com.compositioncoach.app.ui.theme.OnScrim
 import com.compositioncoach.app.ui.theme.OnScrimMuted
+import com.compositioncoach.composition.model.CropSuggestion
+import com.compositioncoach.composition.model.NormalizedRect
 import kotlinx.coroutines.launch
 
+/** How far the photo must be dragged down before letting go dismisses the card (= Keep). */
+private val SWIPE_TO_KEEP = 120.dp
+
 /**
- * The photo just taken, letterboxed on black, with [ReviewCard] beneath it and the three actions the spec
- * gives this screen: Retake (outlined, deletes and returns), Share (icon), Keep (filled).
+ * Where the review screen's decisions go. Keep, Retake and Shoot again all leave the screen; the rest stay.
+ * [onShootAgain] keeps the photo and returns to the camera with the subject outline as a ghost.
+ */
+data class ReviewActions(
+    val onKeep: () -> Unit,
+    val onRetakeComplete: () -> Unit,
+    val onNotHelpful: () -> Unit = {},
+    val onCropChosen: (CropSuggestion) -> Unit = {},
+    val onShootAgain: (NormalizedRect?) -> Unit = {},
+)
+
+/**
+ * The review screen: the photo just taken, letterboxed on black, the after-action card ([AfterActionCard])
+ * beneath it, and Retake / Share / Keep. **Keep is the default:** the back gesture, the top-left arrow and a
+ * downward swipe on the photo all mean Keep, so a photo is never lost by backing out.
  *
- * The image is keyed on [ReviewEntry.revision] (`"$uri#$revision"` for Coil's memory and disk caches): the
- * Uri does not change when auto-level rewrites the file, so without it the cached unlevelled bitmap would stay.
- * While [ReviewEntry.processing] is true a quiet "Levelling…" line sits under the photo. When auto-level kept
- * the capture from before its correction ([ReviewEntry.originalPhotoUri]), a hold-to-compare [CompareChip]
- * shows over the photo; without one there is nothing to compare and no chip.
- *
- * The system back gesture and the top-left arrow both mean **Keep** — a captured photo is never silently
- * lost by backing out of this screen.
+ * [cardMode] is `ReviewCardMode`: ALWAYS shows the card on every shot; ONLY_WHEN_USEFUL only once there is a
+ * Try-next-time or a crop ([AfterActionLogic.showCard]). Retake deletes through [captureRepository] first;
+ * "Save as copy" of the processed portrait writes a new gallery photo through it, never touching the original.
  */
 @Composable
 fun ReviewScreen(
     entry: ReviewEntry?,
     captureRepository: CaptureRepository,
-    onKeep: () -> Unit,
-    onRetakeComplete: () -> Unit,
+    actions: ReviewActions,
+    cardMode: ReviewCardMode = ReviewCardMode.ALWAYS,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var isDeleting by remember { mutableStateOf(false) }
-    var showingOriginal by remember { mutableStateOf(false) }
+    var view by remember(entry?.photoUri) { mutableStateOf(CardViewState()) }
+    val animationsEnabled = rememberAnimationsEnabled()
 
-    BackHandler(enabled = entry != null, onBack = onKeep)
+    BackHandler(enabled = entry != null, onBack = actions.onKeep)
 
     Scaffold(containerColor = Background) { padding ->
         if (entry == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No photo to review", color = OnScrimMuted)
+                Text(stringResource(R.string.card_no_photo), color = OnScrimMuted)
             }
             return@Scaffold
         }
+        val photo = rememberReviewPhoto(entry)
 
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                // The saved photo may be landscape as well as portrait (capture is rotation-aware), so the
-                // bounding box's aspect ratio follows the decoded image rather than a hardcoded 3:4 —
-                // otherwise a landscape photo would be letterboxed down to a sliver. Falls back to 3:4
-                // until the image reports a real size.
-                val originalPhotoUri = entry.originalPhotoUri
-                val showOriginal = showingOriginal && originalPhotoUri != null
-                val photoRequest = remember(context, entry.photoUri, entry.revision) {
-                    reviewImageRequest(context, entry.photoUri, entry.revision)
-                }
-                val painter = rememberAsyncImagePainter(if (showOriginal) originalPhotoUri else photoRequest)
-                val intrinsic = painter.intrinsicSize
-                val photoAspectRatio = if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) {
-                    intrinsic.width / intrinsic.height
-                } else {
-                    3f / 4f
-                }
-                Image(
-                    painter = painter,
-                    contentDescription = "Captured photo",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.align(Alignment.Center).fillMaxWidth().aspectRatio(photoAspectRatio),
-                )
-                IconButton(onClick = onKeep, modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
-                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Keep photo and go back", tint = OnScrim)
-                }
-                if (entry.processing) {
-                    Text(
-                        text = LEVELLING_TEXT,
-                        color = OnScrimMuted,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
-                    )
-                }
-                // Only when an uncorrected original exists to compare against.
-                if (originalPhotoUri != null) {
-                    CompareChip(
-                        showingOriginal = showingOriginal,
-                        onShowOriginalChange = { showingOriginal = it },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-                    )
-                }
+            SwipeToKeep(onKeep = actions.onKeep, modifier = Modifier.weight(1.3f).fillMaxWidth()) {
+                ReviewPhotoArea(entry = entry, photo = photo, view = view, onKeep = actions.onKeep)
             }
 
-            ReviewCard(result = entry.result, diagnostics = entry.diagnostics)
+            if (AfterActionLogic.showCard(cardMode, entry)) {
+                AfterActionCard(
+                    entry = entry,
+                    painter = photo.painter,
+                    photoAspect = photo.aspect,
+                    view = view,
+                    animationsEnabled = animationsEnabled,
+                    callbacks = CardCallbacks(
+                        onViewChange = { view = it },
+                        onSaveCrop = { crop ->
+                            actions.onCropChosen(crop)
+                            view = view.copy(selectedCrop = null, savedCopy = true)
+                        },
+                        onSaveProcessedCopy = {
+                            entry.processedPreviewUri?.let { processed ->
+                                scope.launch {
+                                    runCatching { captureRepository.saveJpeg(captureRepository.readBytes(processed), 0, false) }
+                                        .onSuccess { view = view.copy(savedCopy = true) }
+                                }
+                            }
+                        },
+                        onNotHelpful = actions.onNotHelpful,
+                        onShootAgain = { actions.onShootAgain(AfterActionLogic.resultOf(entry).primarySubject?.bounds) },
+                    ),
+                    modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                )
+            }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -137,44 +144,58 @@ fun ReviewScreen(
                         isDeleting = true
                         scope.launch {
                             captureRepository.delete(entry.photoUri)
-                            onRetakeComplete()
+                            actions.onRetakeComplete()
                         }
                     },
                     modifier = Modifier.weight(1f),
-                ) { Text("Retake") }
+                ) { Text(stringResource(R.string.card_retake)) }
 
-                IconButton(onClick = { sharePhoto(context, entry) }) {
-                    Icon(Icons.Outlined.Share, contentDescription = "Share photo", tint = OnScrim)
+                val shareLabel = stringResource(R.string.card_share_chooser)
+                IconButton(onClick = { sharePhoto(context, entry.photoUri, shareLabel) }) {
+                    Icon(Icons.Outlined.Share, contentDescription = stringResource(R.string.card_share), tint = OnScrim)
                 }
 
-                Button(onClick = onKeep, modifier = Modifier.weight(1f)) { Text("Keep") }
+                Button(onClick = actions.onKeep, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.card_keep)) }
             }
         }
     }
 }
 
-private const val LEVELLING_TEXT = "Levelling…"
-
-/**
- * The review photo's Coil request, keyed on [revision] for both caches so a file rewritten in place under the
- * same Uri (auto-level) is decoded again instead of served from cache. Pure key format in [reviewImageCacheKey].
- */
-private fun reviewImageRequest(context: Context, uri: Uri, revision: Int): ImageRequest {
-    val key = reviewImageCacheKey(uri.toString(), revision)
-    return ImageRequest.Builder(context).data(uri).memoryCacheKey(key).diskCacheKey(key).apply {
-        // Keep the previous revision on screen while the rewritten file decodes, so the swap does not blink.
-        if (revision > 0) placeholderMemoryCacheKey(reviewImageCacheKey(uri.toString(), revision - 1))
-    }.build()
+/** A downward drag that follows the finger and, past [SWIPE_TO_KEEP], dismisses the card as Keep. */
+@Composable
+private fun SwipeToKeep(onKeep: () -> Unit, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
+    val thresholdPx = with(LocalDensity.current) { SWIPE_TO_KEEP.toPx() }
+    var drag by remember { mutableFloatStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    val shown by animateFloatAsState(if (dragging) drag else 0f, tween(if (dragging) 0 else 200), label = "swipeKeep")
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                translationY = shown
+                alpha = 1f - (shown / (thresholdPx * 3f)).coerceIn(0f, 0.5f)
+            }
+            .pointerInput(onKeep) {
+                detectVerticalDragGestures(
+                    onDragStart = { dragging = true },
+                    onDragEnd = {
+                        if (drag >= thresholdPx) onKeep()
+                        dragging = false
+                        drag = 0f
+                    },
+                    onDragCancel = {
+                        dragging = false
+                        drag = 0f
+                    },
+                ) { _, amount -> drag = (drag + amount).coerceAtLeast(0f) }
+            },
+    ) { content() }
 }
 
-/** `"$uri#$revision"`: the cache key of one revision of a review photo. */
-internal fun reviewImageCacheKey(uri: String, revision: Int): String = "$uri#$revision"
-
-private fun sharePhoto(context: Context, entry: ReviewEntry) {
+internal fun sharePhoto(context: Context, uri: Uri, chooserTitle: String) {
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "image/jpeg"
-        putExtra(Intent.EXTRA_STREAM, entry.photoUri)
+        putExtra(Intent.EXTRA_STREAM, uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    runCatching { context.startActivity(Intent.createChooser(intent, "Share photo")) }
+    runCatching { context.startActivity(Intent.createChooser(intent, chooserTitle)) }
 }

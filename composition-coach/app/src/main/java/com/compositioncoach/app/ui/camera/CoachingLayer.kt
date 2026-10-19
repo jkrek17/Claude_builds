@@ -1,10 +1,15 @@
 package com.compositioncoach.app.ui.camera
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,26 +18,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.compositioncoach.app.ui.theme.CompositionCoachTheme
-import com.compositioncoach.composition.model.Direction
+import com.compositioncoach.app.ui.theme.OnScrimMuted
+import com.compositioncoach.app.ui.theme.Scrim
 import com.compositioncoach.composition.model.GuidanceLevel
-import com.compositioncoach.composition.model.MetricCategory
-import com.compositioncoach.composition.model.Priority
 import com.compositioncoach.composition.model.Recommendation
-import com.compositioncoach.composition.model.SceneClassification
-import com.compositioncoach.composition.model.SceneType
-import com.compositioncoach.composition.model.Severity
 import com.compositioncoach.composition.model.SmoothedComposition
 import kotlinx.coroutines.delay
 
 /** How long a tapped secondary icon's explanation replaces the cue chip. */
 private const val EXPLANATION_MS = 3_000L
-
-/** How long "Point at a subject" lingers after a subject actually appears, before fading for good. */
-private const val POINT_AT_SUBJECT_LINGER_MS = 3_000L
 
 /** Gap between the chevron and the chip attached to it, and the chevron's own inset from the frame edge. */
 private val CHIP_GAP = 12.dp
@@ -40,6 +40,9 @@ private val CHEVRON_EDGE_INSET = 4.dp
 
 /** How far along its edge the chrome stack slides when an edge chevron lands on that same edge. */
 private const val CHROME_STACK_SHIFT_BIAS = -0.55f
+
+/** The visible words on the cue chip and the sentence TalkBack hears for them; see [CueChip]. */
+data class LiveChip(val text: String, val description: String = text)
 
 /**
  * The whole coaching layer, laid over (and exactly the size of) the 4:3 preview: target ring and region
@@ -50,20 +53,21 @@ private const val CHROME_STACK_SHIFT_BIAS = -0.55f
  *
  * Two rules shape the layout:
  *  - The score chip, secondary icons and bubble level live at the **physical-top** edge, stacked inside one
- *    [RotatedChrome] so they rotate and re-anchor together (the same treatment the old badge/banner stack
- *    had). The cue chip joins that stack unless a chevron is showing, in which case it attaches to the
- *    chevron instead.
+ *    [RotatedChrome] so they rotate and re-anchor together. The cue chip joins that stack unless a chevron is
+ *    showing, in which case it attaches to the chevron instead.
  *  - The chevron anchors on the screen edge its *physical* direction currently points at
  *    ([CueEdge.forDirection]), which is not the same screen edge in every hold.
  *
- * [pausedText] (e.g. "Coaching paused in Night", [EnhancementCycle.pausedText]) is for an enhancement that
- * stops live analysis: it takes the cue chip's place at the physical top and every cue and icon steps
- * aside, since whatever they would say is stale.
+ * [pausedText] (an enhancement that stops live analysis) and [overrideChip] (a hold instruction, a group
+ * blocker, the selfie "Arm out a little") take the chip's place at the physical top and every spatial cue
+ * steps aside, so exactly one thing is said at a time. [cueAlpha] dims the overlay and score (a Motion/Night hold)
+ * while the chip itself stays fully legible. Easy mode passes `showScore = false`,
+ * `showSecondary = false` and `showReason = false`; Coach adds the number, the icon row and [GuidanceFormatter.reasonLine]
+ * under the chip.
  *
- * When those two collide — a `Raise` cue puts the chevron on the physical-top edge, where the chrome stack
- * already lives — the *stack* slides along that edge to make room, rather than the chevron being pushed
- * off the edge it exists to point out of. At the screen's own top edge there is nothing to do: the top bar
- * has already pushed the stack 60dp clear of it.
+ * When a `Raise` cue puts the chevron on the physical-top edge, where the chrome stack already lives, the
+ * *stack* slides along that edge to make room. At the screen's own top edge there is nothing to do: the top
+ * bar has already pushed the stack 60dp clear of it.
  */
 @Composable
 fun CoachingLayer(
@@ -75,17 +79,21 @@ fun CoachingLayer(
     animationsEnabled: Boolean,
     modifier: Modifier = Modifier,
     pausedText: String? = null,
+    showSecondary: Boolean = true,
+    showReason: Boolean = false,
+    overrideChip: LiveChip? = null,
+    cueAlpha: Float = 1f,
 ) {
     val awaitingSubject = composition.awaitingSubject
-    val paused = pausedText != null
+    val quiet = pausedText != null || overrideChip != null
     val shootReady = GuidanceFormatter.effectiveShootReady(composition.isShootReady, awaitingSubject)
-    val headline = if (paused || awaitingSubject || shootReady) {
+    val headline = if (quiet || awaitingSubject || shootReady) {
         null
     } else {
         GuidanceFormatter.headline(composition.activeRecommendations, guidanceLevel)
     }
     val cue = headline?.let { GuidanceFormatter.cueFor(it) }
-    val secondary = if (paused || awaitingSubject) {
+    val secondary = if (quiet || awaitingSubject || !showSecondary) {
         emptyList()
     } else {
         GuidanceFormatter.secondary(composition.activeRecommendations, guidanceLevel)
@@ -102,20 +110,15 @@ fun CoachingLayer(
     val pointAtSubject = rememberPointAtSubjectVisible(hasScene)
 
     val chip = when {
-        pausedText != null -> CueChipContent(pausedText, pausedText)
-        explanation != null -> CueChipContent(
-            text = GuidanceFormatter.explanationText(explanation!!),
-            description = GuidanceFormatter.explanationText(explanation!!),
-        )
-        pointAtSubject -> CueChipContent(GuidanceFormatter.POINT_AT_SUBJECT, GuidanceFormatter.POINT_AT_SUBJECT)
-        awaitingSubject -> GuidanceFormatter.awaitingSubjectChipText(composition.primaryRecommendation)
-            .let { CueChipContent(it, it) }
-        headline != null -> CueChipContent(
-            text = GuidanceFormatter.chipText(headline),
-            description = GuidanceFormatter.chipDescription(headline),
-        )
+        pausedText != null -> LiveChip(pausedText)
+        overrideChip != null -> overrideChip
+        explanation != null -> LiveChip(GuidanceFormatter.explanationText(explanation!!))
+        pointAtSubject -> LiveChip(GuidanceFormatter.POINT_AT_SUBJECT)
+        awaitingSubject -> LiveChip(GuidanceFormatter.awaitingSubjectChipText(composition.primaryRecommendation))
+        headline != null -> LiveChip(GuidanceFormatter.chipText(headline), GuidanceFormatter.chipDescription(headline))
         else -> null
     }
+    val reason = if (showReason && explanation == null && chip != null) headline?.let { GuidanceFormatter.reasonLine(it) } else null
 
     val chromeEdge = CueEdge.physicalTop(deviceRotationDegrees)
     // Matches `chromeStackEdgePadding`: the screen's top edge has to clear `CameraTopBar`; every other
@@ -137,6 +140,7 @@ fun CoachingLayer(
             composition = composition,
             deviceRotationDegrees = deviceRotationDegrees,
             animationsEnabled = animationsEnabled,
+            modifier = Modifier.alpha(cueAlpha),
         )
 
         if (cue is PrimaryCue.CornerBrackets) {
@@ -156,18 +160,13 @@ fun CoachingLayer(
                         .align(chevronEdge.toAlignment())
                         .cueEdgePadding(chevronEdge, CHEVRON_EDGE_INSET + CHEVRON_SIZE + CHIP_GAP),
                 ) {
-                    CueChip(
-                        text = chip.text,
-                        description = chip.description,
-                        maxWidth = chipMaxWidth,
-                        animationsEnabled = animationsEnabled,
-                    )
+                    ChipWithReason(chip, reason, chipMaxWidth, animationsEnabled)
                 }
             }
         }
 
-        // The physical-top stack: score chip, bubble level (when it is the cue), secondary icons, and the
-        // cue chip when no chevron is carrying it.
+        // The physical-top stack: score chip, bubble level (when it is the cue), the cue chip when no chevron
+        // is carrying it, and the secondary icons.
         RotatedChrome(
             deviceRotationDegrees = deviceRotationDegrees,
             modifier = Modifier.align(chromeAlignment).cueEdgePadding(chromeEdge, chromeInset),
@@ -183,6 +182,7 @@ fun CoachingLayer(
                     isShootReady = composition.isShootReady,
                     awaitingSubject = awaitingSubject,
                     animationsEnabled = animationsEnabled,
+                    modifier = Modifier.alpha(cueAlpha),
                 )
                 if (cue is PrimaryCue.BubbleLevel) {
                     BubbleLevel(
@@ -191,12 +191,7 @@ fun CoachingLayer(
                     )
                 }
                 if (chipInStack && chip != null) {
-                    CueChip(
-                        text = chip.text,
-                        description = chip.description,
-                        maxWidth = chipMaxWidth,
-                        animationsEnabled = animationsEnabled,
-                    )
+                    ChipWithReason(chip, reason, chipMaxWidth, animationsEnabled)
                 }
                 SecondaryAdviceRow(
                     recommendations = secondary,
@@ -208,81 +203,24 @@ fun CoachingLayer(
     }
 }
 
-/** The visible words and the sentence TalkBack hears for them; see [CueChip]. */
-private data class CueChipContent(val text: String, val description: String)
-
-/**
- * "Point at a subject" shows until the engine classifies a scene, then lingers for three seconds so the
- * hand-off into real guidance doesn't read as the chip blinking out, and never comes back until the scene
- * is lost again.
- */
+/** The cue chip, and in Coach mode the one-line reason beneath it (bodySmall, muted, never wraps). */
 @Composable
-private fun rememberPointAtSubjectVisible(hasScene: Boolean): Boolean {
-    var visible by remember { mutableStateOf(!hasScene) }
-    LaunchedEffect(hasScene) {
-        if (hasScene) {
-            delay(POINT_AT_SUBJECT_LINGER_MS)
-            visible = false
-        } else {
-            visible = true
-        }
-    }
-    return visible
-}
-
-internal fun previewRecommendation(
-    direction: Direction,
-    category: MetricCategory = MetricCategory.SUBJECT_PLACEMENT,
-    title: String = "Move slightly right",
-    severity: Severity = Severity.MEDIUM,
-) = Recommendation(
-    id = "preview.${category.name}.${direction.name}",
-    category = category,
-    priority = Priority.HIGH,
-    confidence = 0.9f,
-    severity = severity,
-    title = title,
-    instruction = title,
-    direction = direction,
-)
-
-@Preview(name = "Coaching layer (portrait, move right)", showBackground = true, backgroundColor = 0xFF303030)
-@Composable
-private fun CoachingLayerPortraitPreview() {
-    CompositionCoachTheme {
-        Box(Modifier.fillMaxSize()) {
-            CoachingLayer(
-                composition = SmoothedComposition.EMPTY.copy(
-                    displayScore = 74,
-                    activeRecommendations = listOf(previewRecommendation(Direction.RIGHT)),
-                    scene = SceneClassification(SceneType.PORTRAIT, 0.9f),
-                ),
-                guidanceLevel = GuidanceLevel.BALANCED,
-                showScore = true,
-                hasScene = true,
-                deviceRotationDegrees = 0,
-                animationsEnabled = false,
-            )
-        }
-    }
-}
-
-@Preview(name = "Coaching layer (rotation 90, move right)", showBackground = true, backgroundColor = 0xFF303030)
-@Composable
-private fun CoachingLayerRotatedPreview() {
-    CompositionCoachTheme {
-        Box(Modifier.fillMaxSize()) {
-            CoachingLayer(
-                composition = SmoothedComposition.EMPTY.copy(
-                    displayScore = 74,
-                    activeRecommendations = listOf(previewRecommendation(Direction.RIGHT)),
-                    scene = SceneClassification(SceneType.PORTRAIT, 0.9f),
-                ),
-                guidanceLevel = GuidanceLevel.COACH,
-                showScore = true,
-                hasScene = true,
-                deviceRotationDegrees = 90,
-                animationsEnabled = false,
+private fun ChipWithReason(chip: LiveChip, reason: String?, maxWidth: Dp, animationsEnabled: Boolean) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        CueChip(text = chip.text, description = chip.description, maxWidth = maxWidth, animationsEnabled = animationsEnabled)
+        if (reason != null) {
+            Text(
+                text = reason,
+                color = OnScrimMuted,
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .widthIn(max = maxWidth * 1.4f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Scrim)
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
             )
         }
     }

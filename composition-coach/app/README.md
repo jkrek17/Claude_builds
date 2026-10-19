@@ -10,63 +10,70 @@ persistence and navigation. It talks to `:composition` (`CompositionCoach`) and 
 ```
 CameraPermissionGate
   └── (granted) AppNavGraph  [navigation-compose, routes below]
-        ├── "camera"   CameraScreen     (start destination)
-        ├── "review"   ReviewScreen     (pushed on capture)
-        ├── "settings" SettingsScreen   (pushed from the camera screen's gear icon)
-        └── "privacy"  PrivacyScreen    (pushed from Settings → About → Privacy policy)
+        ├── "camera"    CameraScreen     (start destination)
+        ├── "review"    ReviewScreen     (pushed on capture: the after-action card)
+        ├── "settings"  SettingsScreen   (camera gear icon)
+        ├── "your_eye"  YourEyeScreen    (Settings → Your eye, or gallery thumbnail long-press → Your eye)
+        ├── "privacy"   PrivacyScreen    (Settings → About → Privacy)
+        └── "licences"  LicencesScreen   (Settings → About → Open-source licences)
 ```
 
-* **camera** — `CameraScreen` + `CameraViewModel`. Pixel-style **4:3 layout**: the `PreviewView` and
-  *every* overlay that does normalized-to-pixel geometry math (`ThirdsGridOverlay`, `CoachingLayer`,
-  `DebugGeometryOverlay`, `FocusRingOverlay`, `CameraTopBar`, `OnboardingCard`, `DebugOverlay`) live inside
-  one shared `Modifier.aspectRatio(3f/4f)` `Box`, full width, anchored below the status bar — that shared
-  box, plus `PreviewView` staying `FILL_CENTER`, is what keeps `OverlayMapper`'s plain normalized-to-pixel
-  multiply correct (see its class doc, and "Device rotation (Pixel style)" below for the rotation step that
-  precedes that multiply). `CameraScreen` itself holds no coaching logic: it owns camera plumbing, the
-  gestures, and the four zones `docs/APP_UX.md` specifies — top strip, preview, mode strip, bottom bar —
-  with everything below the preview in `CameraBottomZone` and everything over it in `CoachingLayer` (see
-  "Coaching layer" below).
-  `CameraTopBar` is a translucent strip over the top of the preview carrying flash (left) and the settings
-  gear (right), the `EnhancementPill` centred between them when the lens offers an enhancement, and the
-  "DEBUG" chip in developer mode — the shooting-mode chip that used to live here is gone, since the mode
-  strip above the shutter is the control for it now.
-  `CameraBottomZone` stacks, upward from the bottom edge: the shoot-ready "SHOOT" chip, `ModeStrip`
-  (`Auto · Portrait · Group · Landscape · Architecture · Object`, tap or horizontal swipe, selected mode
-  centred, white and slightly larger, light haptic tick on change — writes the *same* DataStore value as
-  Settings > Shooting mode, via `CameraViewModel.onSceneIntentSelected`), and `BottomControlBar` (gallery
-  thumbnail — shutter — lens switch). `ShutterButton` is a 72dp shutter whose outer ring is the readiness
-  arc (`ReadinessArc`/`drawReadinessArc`), with a 90%-scale press animation and a brief white capture flash;
-  a 20dp check mark blinks beside it for a second in the quiet state. `ZoomChip` (pinch-zoom ratio, fades
-  1.2s after the last pinch delta) and the "Analysis unavailable" chip sit at the top of that black area.
-  `FocusRingOverlay` (tap-to-focus ring), `OnboardingCard` (one dismissible card on first launch, see
-  "Onboarding"), and `CameraErrorOverlay` for camera init failures (`Retry` clears the error and
-  re-triggers the bind `DisposableEffect`) complete the screen. Volume-down also fires the shutter
-  (`MainActivity.onKeyDown` → `AppContainer.volumeDownEvents`, a `SharedFlow` the screen collects).
-* **privacy** — `PrivacyScreen`. A plain scrolling Compose screen showing `PrivacyPolicyText` (same
-  wording as `docs/PRIVACY_POLICY.md`) — no network fetch, since the app has none.
-* **review** — `ReviewScreen` + `ReviewCard` (+ `DiagnosticsPanel`, `CompareChip`, see "Image-quality
-  controls" below). The captured photo (Coil) letterboxed on black at its own
-  aspect ratio, with a card beneath: the shutter's readiness arc reused as a 56dp score ring with the
-  number inside (the *same* `drawReadinessArc` the shutter uses, so the two rings can never drift apart),
-  the mode chip beside it ("Auto · Portrait" when the mode was Auto, else the mode's own label), a
-  "Subject: object" line when `CompositionResult.primarySubject.kind` is `OBJECT`, and up to two strengths
-  (`Accent.Ready` dot) and two improvements (`Accent.Warn` dot) as plain sentences — `ReviewFormatter.trim`
-  caps each list at `TRIMMED_COUNT` independently of the other. This is the one screen where sentences
-  belong; the live camera says everything in three words. Three actions: **Retake** (outlined, deletes the
-  photo via `CaptureRepository` first), **Share** (icon, `ACTION_SEND`), **Keep** (filled, pops back). The
-  system back gesture and the top-left arrow both behave exactly like **Keep** (`BackHandler`) — a captured
-  photo is never silently discarded by backing out of this screen.
-* **settings** — `SettingsScreen` + `SettingsViewModel`, backed by `SettingsRepository` (DataStore). One
-  screen, four primary controls, everything else behind a collapsible **More** (progressive disclosure per
-  `docs/APP_UX.md`): **Shooting mode** (`SceneIntentSelector` chips), **Guidance** (Minimal · Balanced ·
-  Coach, `GuidanceLevelSelector`), **Show score**, **Grid**. "More" holds Composition guidance, Battery
-  saver, Detect objects, Subject mask, Body detection and Developer mode. The footer states "All analysis
-  runs on your device." with a Privacy link and the version. Every row is `SETTINGS_ROW_HEIGHT` (56dp) with
-  48dp touch targets (`SettingsComponents.kt`).
-  Two rows in "More" are **not** in the spec's table — "Composition guidance" (`guidanceEnabled`) and "Body
-  detection" (`poseDetectionEnabled`). Both are persisted settings with real behaviour behind them, and a
-  persisted toggle with no UI is a trap (someone who turned coaching off would have no way back), so they
-  are disclosed rather than dropped. No settings key was removed or changed meaning.
+Wave 2 (`docs/PRODUCT.md`, `docs/WAVE2.md`) reshaped the UI around **Easy / Coach** and **outcomes, not
+modes**. Presentation preferences that are not yet in `CoachSettings` (`experience_mode`, `pro_controls`,
+`guide_by_vibration`, `guide_by_voice`) live in `ui/settings/UiPreferences.kt` (own DataStore file
+`ui_preferences`, same key names) until the state engineer moves them; `UiPreferences.effectiveExperience`
+lets `CameraUiState.experienceMode` switch Coach on as well.
+
+* **camera** — `CameraScreen` + `CameraViewModel`. 4:3 preview box holding the `PreviewView` and every
+  overlay that maps normalized geometry (`GhostOverlay`, `ThirdsGridOverlay` (Pro), `CoachingLayer`,
+  `DebugGeometryOverlay` (Pro + developer mode), `FocusRingOverlay`, `ExposureSlider` (Pro), `CameraTopBar`,
+  `TimerCountdownOverlay`, `DegradedNoteChip`, `OnboardingCard`, `DebugOverlay`). What is drawn is derived in
+  `CameraChromeModel.of(state, uiPreferences)`:
+  * **Easy** (default): no score number, one cue chip, no secondary icons, no reasons. **Coach**: the score chip
+    (when Show score is on), the secondary icon row and a one-line reason under the chip
+    (`GuidanceFormatter.reasonLine`).
+  * **Pro controls** reveal the exposure slider, zoom presets, enhancement pill, grid and debug overlays; off,
+    they are not composed at all.
+  * The cue chip is replaced (`LiveChipRules.overrideChip`) by, in order: `holdInstruction` ("Hold still for
+    4 seconds"), the group's first blocker (`GroupCues.chip`), Selfie's "Arm out a little" (face > 45 % of the
+    height, `SelfieCues`). While `holdProgress != null` the coaching layer dims to `HOLD_DIMMED_ALPHA` and the
+    shutter's inner ring fills with the progress.
+  * `CameraTopBar`: flash, the self-timer clock (`TimerButton`, Off / 3 s / 10 s via `onTimerSelected`; in Group
+    the label reads "when everyone's ready"), the enhancement pill (Pro), settings. `timerCountdown` shows as big
+    numerals centred over the preview. Selfie arms a 3 s countdown by default (`SelfieTimerDefault`).
+  * `CameraBottomZone`, bottom up: shutter row (`GalleryThumbnail` with a long-press menu "Your eye" / "Use as
+    guide", `ShutterButton` with `GroupDots` around the arc when `groupStatus != null`, lens switch),
+    `OutcomeStrip` (all `Outcome.entries` in plain words, tap or swipe, haptic tick, `onOutcomeSelected`), zoom
+    presets (Pro), the SHOOT / Hold still chip.
+  * `GhostOverlay`: `ghostRect` as a 1dp dashed 40 % white rectangle through `OverlayMapper.toPxRect`; tap hides
+    it (`onUseAsGhost(null)`).
+  * `outcomeDegradedNote` shows once, for 3 s, each time the outcome is picked.
+  * Heads-up guidance (`HeadsUpGuidance.kt` pure table and planner, `HeadsUpOutputs.kt` `HapticGuide` /
+    `VoiceGuide`): Settings > More > Guide by vibration / Guide by voice.
+* **review** — `ReviewScreen` (photo area `ReviewPhotoArea`, `SwipeToKeep`) + `AfterActionCard`: score ring and
+  verdict (`report.verdict`, or from the live score while `report == null`), What worked (≤ 3 green), Try next
+  time (one amber line with "+N", "Not helpful" → `onNotHelpful`, "Shoot again" → `onUseAsGhost(subject
+  bounds)`), Better crop? (`CropCardsRow`: up to 3 cards clipping the same photo, tap previews the window dashed
+  on the full photo, "Save crop" → `onCropChosen`), What if (hold: `whatIf` crop with "72 → 83"), Portrait
+  (hold: `processedPreviewUri`; "Save as copy" writes a new gallery photo), Details (outcome, diagnostics,
+  every measure). Analysing: sections breathe. Keep is the default: back, the arrow and a downward swipe all
+  Keep; Keep / Retake call `onReviewDecision(kept)`. `ReviewCardMode` is honoured by `AfterActionLogic.showCard`
+  (ALWAYS until a `review_card_mode` setting exists).
+* **settings** — `SettingsScreen` + `SettingsViewModel` (`SettingsRepository` + `UiPreferencesStore`): Experience
+  (Easy · Coach; Coach adds Show score), Your eye, Pro controls (reveals Guidance level and Grid); More: capture
+  rows (Enhancement only under Pro), Guide by vibration, Guide by voice, Composition guidance, Battery saver,
+  Pro-only detection toggles and Developer mode, Reset coaching preferences; About: privacy line, Privacy,
+  Open-source licences, Send feedback (share sheet with the last card as text, `FeedbackText`), version. The
+  shooting-mode chips are gone: the outcome strip is the control.
+* **your_eye** — `YourEyeScreen` over `YourEyeData` from a `YourEyeSource` (`YourEyeViewModel`): keepers this
+  month, three tendencies, advice followed most / skipped most, best three, Start fresh (confirmed). Until the
+  journal exists, `AppNavGraph` uses an empty `FakeYourEyeSource`.
+* **privacy** — `PrivacyScreen`, the policy text, no network.
+* **licences** — `LicencesScreen`, a static list (CameraX, ML Kit, Compose/AndroidX, Coil, Kotlin), Apache 2.0.
+
+Every user-facing string of these screens is in `res/values/strings.xml`, including the live chip table
+(`ChipKey` / `ResourceChipStrings`, installed by `AppNavGraph`; `ChipStrings.English` is the JVM tests' fake and
+`ChipStringsResourceTest` keeps the two identical).
 
 ## Coaching layer (`CoachingLayer`, `docs/COACHING_UI.md`)
 

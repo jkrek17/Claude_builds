@@ -25,16 +25,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.compositioncoach.app.camera.CaptureEnhancement
 import com.compositioncoach.app.camera.FlashMode
+import com.compositioncoach.app.outcome.Outcome
 import com.compositioncoach.app.ui.theme.Accent
 import com.compositioncoach.app.ui.theme.CompositionCoachTheme
 import com.compositioncoach.app.ui.theme.OnScrim
 import com.compositioncoach.app.ui.theme.Scrim
 
 /**
- * The translucent strip over the top of the preview and, per `docs/APP_UX.md`, nothing but: flash at the
+ * The translucent strip over the top of the preview: flash and the self-timer clock ([TimerButton]) at the
  * left, settings at the right. The shooting mode used to have a chip here; the mode strip above the
  * shutter is the control for it now. Two conditional additions: the "DEBUG" chip, only while developer
- * mode is on, and the centred [EnhancementPill], only when the lens offers an enhancement beyond Off.
+ * mode is on, and the centred [EnhancementPill], only under Pro controls and when the lens offers an
+ * enhancement beyond Off (the caller passes an empty set otherwise).
  *
  * [deviceRotationDegrees] rotates each icon in place (each wrapped in its own [RotatedChrome]) so they
  * stay upright to the person holding the phone even though this strip's own position never moves.
@@ -53,6 +55,9 @@ fun CameraTopBar(
     onEnhancementSelected: (CaptureEnhancement) -> Unit = {},
     animationsEnabled: Boolean = true,
     enhancementsPausingCoaching: Set<CaptureEnhancement> = emptySet(),
+    timerSeconds: Int = 0,
+    outcome: Outcome = Outcome.DEFAULT,
+    onTimerSelected: ((Int) -> Unit)? = null,
 ) {
     Box(
         modifier = modifier.fillMaxWidth().background(Scrim).padding(horizontal = 4.dp, vertical = 4.dp),
@@ -75,6 +80,11 @@ fun CameraTopBar(
                             tint = OnScrim,
                         )
                     }
+                }
+            }
+            if (onTimerSelected != null) {
+                RotatedChrome(deviceRotationDegrees = deviceRotationDegrees) {
+                    TimerButton(seconds = timerSeconds, outcome = outcome, onSelect = onTimerSelected)
                 }
             }
             if (showDebugChip) {
@@ -117,6 +127,24 @@ private fun CameraTopBarPreview() {
             hasFlashUnit = true,
             onFlashClick = {},
             onSettingsClick = {},
+            onTimerSelected = {},
+        )
+    }
+}
+
+@Preview(name = "Top bar, group timer", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun CameraTopBarGroupTimerPreview() {
+    CompositionCoachTheme {
+        CameraTopBar(
+            showDebugChip = false,
+            flashMode = FlashMode.OFF,
+            hasFlashUnit = true,
+            onFlashClick = {},
+            onSettingsClick = {},
+            timerSeconds = 10,
+            outcome = Outcome.GROUP,
+            onTimerSelected = {},
         )
     }
 }
@@ -146,6 +174,8 @@ private fun CameraTopBarRotatedPreview() {
             onFlashClick = {},
             onSettingsClick = {},
             deviceRotationDegrees = 90,
+            timerSeconds = 3,
+            onTimerSelected = {},
         )
     }
 }

@@ -40,15 +40,17 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.camera.CameraController
+import com.compositioncoach.app.ui.settings.UiPreferences
 import com.compositioncoach.app.ui.theme.Background
 import kotlinx.coroutines.launch
 
 private const val POST_CAPTURE_FADE_ALPHA = 0.3f
 
 /**
- * The camera experience, in the four zones `docs/APP_UX.md` lays out: a translucent top strip (flash,
- * settings), the 4:3 preview with the coaching layer over it, the mode strip, and the bottom bar with the
- * gallery thumbnail, the shutter (carrying the readiness arc) and the lens switch.
+ * The camera experience, in the four zones `docs/APP_UX.md` lays out: a translucent top strip (flash, timer,
+ * settings), the 4:3 preview with the coaching layer over it, the outcome strip, and the bottom bar with the
+ * gallery thumbnail, the shutter (carrying the readiness arc) and the lens switch. [uiPreferences] picks Easy
+ * or Coach and whether Pro controls (exposure slider, zoom presets, enhancement pill, grid, debug) are drawn.
  *
  * The [PreviewView] and *every* overlay that does normalized-to-pixel geometry share one
  * `Modifier.aspectRatio(3f/4f)` box anchored below the status bar; keeping them in that one box, with
@@ -67,6 +69,8 @@ fun CameraScreen(
     onOpenSettings: () -> Unit,
     onNavigateToReview: () -> Unit,
     autoShootOnTap: Boolean = false,
+    uiPreferences: UiPreferences = UiPreferences(),
+    galleryMenu: GalleryMenuActions = GalleryMenuActions(),
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -160,7 +164,12 @@ fun CameraScreen(
         animationSpec = tween(motionDuration(300, animationsEnabled)),
         label = "postCaptureFade",
     )
-    val chrome = CameraChromeModel.of(uiState)
+    val chrome = CameraChromeModel.of(uiState, uiPreferences)
+
+    // Heads-up guidance (Settings > More): the cue as vibration and/or voice, for shooting without looking.
+    HeadsUpGuidanceEffect(chrome.headsUp, vibration = uiPreferences.guideByVibration, voice = uiPreferences.guideByVoice)
+    // Selfie defaults to a 3-second countdown through the ordinary timer path.
+    SelfieTimerDefault(uiState.outcome, uiState.timerSeconds, viewModel::onTimerSelected)
     // Shoot at the peak: hold the shutter (or tap, with "Auto shoot when ready" on) and the photo is taken
     // the first moment the framing is ready and the phone is still. Double tick on arm, medium on fire.
     val shootAtPeak = rememberShootAtPeakState(
@@ -200,7 +209,10 @@ fun CameraScreen(
 
                     focusTapOffset?.let { offset ->
                         key(focusTapId) { FocusRingOverlay(tapOffset = offset) }
-                        // The view model applies the index to the camera; a rebind resets exposureIndex to 0.
+                    }
+                    // Exposure is a Pro control: in Easy a tap only focuses. The view model applies the index to
+                    // the camera; a rebind resets exposureIndex to 0.
+                    focusTapOffset?.takeIf { chrome.pro }?.let { offset ->
                         ExposureSlider(
                             tapOffset = offset,
                             tapId = focusTapId,
@@ -212,7 +224,7 @@ fun CameraScreen(
                         )
                     }
 
-                    if (uiState.settings.showThirdsGrid) ThirdsGridOverlay()
+                    if (chrome.pro && uiState.settings.showThirdsGrid) ThirdsGridOverlay()
 
                     CameraPreviewChrome(
                         state = uiState,
@@ -223,6 +235,8 @@ fun CameraScreen(
                         onOnboardingDismissed = viewModel::onOnboardingDismissed,
                         coachingAlpha = postCaptureFadeAlpha,
                         model = chrome,
+                        onTimerSelected = viewModel::onTimerSelected,
+                        onGhostDismiss = { viewModel.onUseAsGhost(null) },
                     )
                 }
 
@@ -235,7 +249,7 @@ fun CameraScreen(
                     onShutterClick = onShutterClick,
                     onSwitchLensClick = viewModel::onSwitchLensRequested,
                     onOpenGallery = { openGallery(context, uiState.lastPhotoUri ?: lastPhotoUri) },
-                    onSceneIntentSelected = viewModel::onSceneIntentSelected,
+                    onOutcomeSelected = viewModel::onOutcomeSelected,
                     onZoomPresetSelected = { ratio ->
                         zoom.ratio = ratio
                         viewModel.onZoomPresetSelected(ratio)
@@ -243,6 +257,7 @@ fun CameraScreen(
                     modifier = Modifier.weight(1f),
                     shootAtPeak = shootAtPeak,
                     model = chrome,
+                    galleryMenu = galleryMenu,
                 )
             }
 
