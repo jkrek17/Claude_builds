@@ -36,7 +36,7 @@
     <string name="settings_auto_shoot_subtitle">Every tap waits for the best moment, like holding the shutter</string>
     <string name="settings_privacy_footer">Everything happens on your phone. Nothing is uploaded.</string>
 
-    <string name="onboarding_message">Point · Follow the cue · Shoot when it turns green</string>
+    <string name="onboarding_message">Point · Follow the cue · Tap once, and it shoots when everything lines up</string>
     <string name="onboarding_dismiss">Got it</string>
     <!-- ===== Live chip wording (docs/COACHING_UI.md "Chip"). 1-3 words, physical actions. ===== -->
     <string name="chip_slightly_right">Slightly right</string>

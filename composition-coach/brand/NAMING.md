@@ -152,3 +152,27 @@ mark is an eye either way).
 Tagline alternatives considered: "Frames for you. Shows you why." (6, kept as support line), "See it.
 Keep it." (4, too generic), "Your eye, only brighter." (4, cute, leans on the name), "Point. Tap.
 Keeper." (3, sounds like an instruction card).
+
+## Decision (19 October 2026)
+
+After the Eyebright recommendation above, the founder reviewed a "justSo photo" identity board.
+**Just So** was gated: *Just So Camera* is already on Google Play.
+
+Alternatives screened afterwards, with results:
+
+| Name | Result |
+|---|---|
+| everSo, likeSo, evenSo, ohSo | No store apps found under these names. evenSo sits near "Even Longer", an iOS long-exposure camera app. |
+| SecondEye | Only a Gemini developer-competition project uses it; no store app found. |
+| TrainedEye | Clear: nothing found in either store. |
+| ReFrame | Gated: "ReFrame: Multi-Angle Recorder" (iOS camera app, 2026) and "Reframe AI" (photo editor). |
+| Nudge | No camera app found. NudgeCam was a 2010 research project; the word is generic. |
+| **JustRight** | **Chosen.** No camera or photo app found under "JustRight" or "Just Right" in either store. Nearest names: JustSnap and Just Cam. |
+
+**JustRight** is the name. Conditions that come with it:
+
+- "just right" is a generic English phrase, so the store title carries a descriptor:
+  **JustRight: Camera Coach**.
+- Trademark clearance is still required before launch.
+- Eyebright, the earlier recommendation, is retired; the tagline and support line carry over
+  unchanged. The identity is rebuilt for the new name (`docs/BRAND.md`, `brand/identity/`).

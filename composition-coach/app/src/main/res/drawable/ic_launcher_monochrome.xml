@@ -2,8 +2,11 @@
 <!--
   JustRight adaptive icon, monochrome layer for Android 13+ themed icons. Proposed replacement for
   app/src/main/res/drawable/ic_launcher_monochrome.xml (copy as-is; same file name).
-  Same ring and catchlight as the foreground, solid white so the system tint reaches every shape.
-  Same safe-zone bounds as the foreground (everything inside r = 25 of the 108 dp canvas).
+  Same ring, pupil and catchlight as the foreground, solid white so the system tint reaches every
+  shape. With a single tint the catchlight cannot be a second colour, so it is cut out of the pupil
+  (evenOdd fill): the same circle, centre (58,50) r = 4, shows as a hole to the background.
+  Same geometry and safe-zone bounds as the foreground: ring r = 22 stroke 6, pupil r = 12, all inside
+  r = 25 of the 108 dp canvas.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
@@ -15,5 +18,6 @@
         android:pathData="M32,54 a22,22 0 1,0 44,0 a22,22 0 1,0 -44,0 Z" />
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M41,46 a5,5 0 1,0 10,0 a5,5 0 1,0 -10,0 Z" />
+        android:fillType="evenOdd"
+        android:pathData="M42,54 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0 Z M54,50 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z" />
 </vector>

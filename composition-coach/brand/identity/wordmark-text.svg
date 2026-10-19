@@ -1,12 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="480" height="120" viewBox="0 0 480 120">
-  <title>Eyebright wordmark, text only</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="140" viewBox="0 0 360 140">
+  <title>JustRight wordmark, text only</title>
   <!--
     Text-only wordmark for places where the icon already sits next to it (store listing header,
-    About screen) or where the mark would be too small. Transparent ground; the text colour is
-    OnSurface #F2F2F2 for dark grounds. For light grounds swap fill to #121212.
-    Font: Inter, else Roboto, else the platform sans. Outline the text before print.
+    About screen) or where the mark would be too small. Transparent ground; Ink #252A31 text for
+    Paper and other light grounds. On Ink or other dark grounds swap the fill to Paper #F7F3EC.
+    "justRight" (lowercase j, capital R), Semibold; "photo" descriptor, Medium, spaced, right-aligned
+    under the end of the name. The name is held to 300 px with textLength so the descriptor stays
+    aligned whatever font renders. Font: Inter, else Roboto, else the platform sans. Outline the
+    text before print.
   -->
-  <text x="16" y="82"
+  <text x="30" y="76" textLength="300" lengthAdjust="spacing"
         font-family="Inter, Roboto, 'Helvetica Neue', Arial, sans-serif"
-        font-size="80" font-weight="600" letter-spacing="-1.5" fill="#F2F2F2">eyebright</text>
+        font-size="72" font-weight="600" fill="#252A31">justRight</text>
+  <text x="330" y="114" text-anchor="end"
+        font-family="Inter, Roboto, 'Helvetica Neue', Arial, sans-serif"
+        font-size="17" font-weight="500" letter-spacing="6" fill="#252A31">phot<tspan letter-spacing="0">o</tspan></text>
 </svg>
