@@ -1,11 +1,6 @@
 package com.compositioncoach.app.ui.camera
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -41,7 +36,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.camera.view.PreviewView
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -49,11 +43,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.compositioncoach.app.camera.CameraController
 import com.compositioncoach.app.ui.theme.Background
 import com.compositioncoach.composition.model.SceneClassification
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-private const val ZOOM_CHIP_LINGER_MS = 1_200L
 private const val POST_CAPTURE_FADE_ALPHA = 0.3f
 
 /**
@@ -75,6 +66,7 @@ fun CameraScreen(
     lastPhotoUri: Uri?,
     onOpenSettings: () -> Unit,
     onNavigateToReview: () -> Unit,
+    autoShootOnTap: Boolean = false,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -93,13 +85,12 @@ fun CameraScreen(
         }
     }
 
-    // Pinch-zoom chip: shown while pinching, fades out ZOOM_CHIP_LINGER_MS after the last pinch delta.
-    var zoomRatio by remember { mutableFloatStateOf(1f) }
-    var zoomChipVisible by remember { mutableStateOf(false) }
-    var zoomChipHideJob by remember { mutableStateOf<Job?>(null) }
+    // Pinch readout and the lit preset chip; see ZoomDisplayState.
+    val zoom = rememberZoomDisplayState(uiState.zoomRatio)
+    // EV per exposure step for the slider's "+0.7", read from the bound camera; 0 until a bind succeeds.
+    var exposureStepEv by remember { mutableFloatStateOf(0f) }
 
-    // Tap-to-focus ring: a fresh id per tap so retapping the same spot restarts the animation via `key(...)`
-    // rather than being a no-op (an unchanged Offset would otherwise not recompose FocusRingOverlay).
+    // Tap-to-focus ring (and exposure slider): a fresh id per tap so retapping the same spot restarts them.
     var focusTapId by remember { mutableIntStateOf(0) }
     var focusTapOffset by remember { mutableStateOf<Offset?>(null) }
 
@@ -119,6 +110,7 @@ fun CameraScreen(
         val job = scope.launch {
             cameraController.setPreferFastCapture(uiState.preferFastCapture)
             val result = cameraController.bind(lifecycleOwner, previewView, uiState.lensFacing, viewModel.frameAnalyzer)
+            exposureStepEv = exposureStepEvOf(result)
             viewModel.onCameraBindResult(result)
         }
         onDispose {
@@ -152,20 +144,9 @@ fun CameraScreen(
         uiState.captureError?.let { snackbarHostState.showSnackbar(it) }
     }
 
-    val storagePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) viewModel.onShutterClick(cameraController.imageCapture)
-    }
-    val onShutterClick: () -> Unit = {
-        // A light tick on the shutter press itself; the capture flash and scale carry the rest.
-        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        val needsLegacyStoragePermission = Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
-        if (needsLegacyStoragePermission) {
-            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        } else {
-            viewModel.onShutterClick(cameraController.imageCapture)
-        }
-    }
+    val capture = rememberCaptureAction(viewModel, cameraController)
+    // A light tick on an ordinary shutter press; the capture flash and scale carry the rest.
+    val onShutterClick: () -> Unit = { capture(HapticFeedbackType.TextHandleMove) }
 
     // Volume-down as a hardware shutter button (MainActivity.onKeyDown -> AppContainer.volumeDownEvents).
     LaunchedEffect(viewModel) {
@@ -182,6 +163,17 @@ fun CameraScreen(
         uiState.composition.isShootReady,
         uiState.composition.awaitingSubject,
     )
+    // Shoot at the peak: hold the shutter (or tap, with "Auto shoot when ready" on) and the photo is taken
+    // the first moment the framing is ready and the phone is still. Double tick on arm, medium on fire.
+    val shootAtPeak = rememberShootAtPeakState(
+        readyToFire = SteadyHint.peakReached(shootReady, uiState.steadiness),
+        enabled = !uiState.isCapturing,
+        latchOnTap = autoShootOnTap,
+        onCapture = onShutterClick,
+        onArmed = rememberDoubleTick(),
+        onFire = { capture(HapticFeedbackType.LongPress) },
+    )
+    val holdStill = SteadyHint.showsHoldStill(uiState.steadiness, shootAtPeak.engaged || uiState.isCapturing, shootReady)
     val headline = GuidanceFormatter.headline(uiState.composition.activeRecommendations, uiState.settings.guidanceLevel)
     val quietCheck = GuidanceFormatter.showsQuietCheck(
         hasHeadline = headline != null,
@@ -208,20 +200,19 @@ fun CameraScreen(
                                 }
                             }
                             .pointerInput(cameraController) {
-                                detectTransformGestures { _, _, zoom, _ ->
-                                    val applied = cameraController.applyZoomDelta(zoom) ?: return@detectTransformGestures
-                                    zoomRatio = applied
-                                    zoomChipVisible = true
-                                    zoomChipHideJob?.cancel()
-                                    zoomChipHideJob = scope.launch {
-                                        delay(ZOOM_CHIP_LINGER_MS)
-                                        zoomChipVisible = false
-                                    }
+                                detectTransformGestures { _, _, pinch, _ ->
+                                    cameraController.applyZoomDelta(pinch)?.let(zoom::onPinch)
                                 }
                             },
                     )
 
-                    focusTapOffset?.let { offset -> key(focusTapId) { FocusRingOverlay(tapOffset = offset) } }
+                    focusTapOffset?.let { offset ->
+                        key(focusTapId) { FocusRingOverlay(tapOffset = offset) }
+                        ExposureSlider(offset, focusTapId, uiState.exposureRange, uiState.exposureIndex, exposureStepEv, { index ->
+                            cameraController.setExposureCompensation(index)
+                            viewModel.onExposureCompensationChanged(index)
+                        }, animationsEnabled)
+                    }
 
                     if (uiState.settings.showThirdsGrid) ThirdsGridOverlay()
 
@@ -233,6 +224,7 @@ fun CameraScreen(
                         deviceRotationDegrees = uiState.deviceRotationDegrees,
                         animationsEnabled = animationsEnabled,
                         modifier = Modifier.alpha(postCaptureFadeAlpha),
+                        pausedText = null, // TODO(integrator): wire `analysisPausedByEnhancement`, see app/README.md
                     )
 
                     if (uiState.settings.debugMode) {
@@ -251,6 +243,10 @@ fun CameraScreen(
                         onSettingsClick = onOpenSettings,
                         deviceRotationDegrees = uiState.deviceRotationDegrees,
                         modifier = Modifier.align(Alignment.TopCenter),
+                        enhancement = uiState.enhancement,
+                        availableEnhancements = uiState.availableEnhancements,
+                        onEnhancementSelected = viewModel::onEnhancementSelected,
+                        animationsEnabled = animationsEnabled,
                     )
 
                     if (uiState.settings.debugMode) {
@@ -280,8 +276,8 @@ fun CameraScreen(
                     awaitingSubject = uiState.composition.awaitingSubject,
                     showQuietCheck = quietCheck,
                     analysisUnavailable = uiState.analysisUnavailable,
-                    zoomRatio = zoomRatio,
-                    zoomChipVisible = zoomChipVisible,
+                    zoomRatio = zoom.ratio,
+                    zoomChipVisible = zoom.chipVisible,
                     lastPhotoUri = uiState.lastPhotoUri ?: lastPhotoUri,
                     onShutterClick = onShutterClick,
                     onSwitchLensClick = { viewModel.onSwitchLensRequested() },
@@ -289,6 +285,14 @@ fun CameraScreen(
                     deviceRotationDegrees = uiState.deviceRotationDegrees,
                     animationsEnabled = animationsEnabled,
                     modifier = Modifier.weight(1f),
+                    holdStill = holdStill,
+                    arcAlpha = SteadyHint.arcAlpha(uiState.composition.awaitingSubject, uiState.steadiness),
+                    zoomPresets = uiState.zoomPresets,
+                    onZoomPresetSelected = { ratio ->
+                        zoom.ratio = ratio
+                        viewModel.onZoomPresetSelected(ratio)
+                    },
+                    shootAtPeak = shootAtPeak,
                 )
             }
 

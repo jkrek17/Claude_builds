@@ -56,6 +56,10 @@ private const val CHROME_STACK_SHIFT_BIAS = -0.55f
  *  - The chevron anchors on the screen edge its *physical* direction currently points at
  *    ([CueEdge.forDirection]), which is not the same screen edge in every hold.
  *
+ * [pausedText] (e.g. "Coaching paused in Night", [EnhancementCycle.pausedText]) is for an enhancement that
+ * stops live analysis: it takes the cue chip's place at the physical top and every cue and icon steps
+ * aside, since whatever they would say is stale.
+ *
  * When those two collide — a `Raise` cue puts the chevron on the physical-top edge, where the chrome stack
  * already lives — the *stack* slides along that edge to make room, rather than the chevron being pushed
  * off the edge it exists to point out of. At the screen's own top edge there is nothing to do: the top bar
@@ -70,16 +74,18 @@ fun CoachingLayer(
     deviceRotationDegrees: Int,
     animationsEnabled: Boolean,
     modifier: Modifier = Modifier,
+    pausedText: String? = null,
 ) {
     val awaitingSubject = composition.awaitingSubject
+    val paused = pausedText != null
     val shootReady = GuidanceFormatter.effectiveShootReady(composition.isShootReady, awaitingSubject)
-    val headline = if (awaitingSubject || shootReady) {
+    val headline = if (paused || awaitingSubject || shootReady) {
         null
     } else {
         GuidanceFormatter.headline(composition.activeRecommendations, guidanceLevel)
     }
     val cue = headline?.let { GuidanceFormatter.cueFor(it) }
-    val secondary = if (awaitingSubject) {
+    val secondary = if (paused || awaitingSubject) {
         emptyList()
     } else {
         GuidanceFormatter.secondary(composition.activeRecommendations, guidanceLevel)
@@ -96,6 +102,7 @@ fun CoachingLayer(
     val pointAtSubject = rememberPointAtSubjectVisible(hasScene)
 
     val chip = when {
+        pausedText != null -> CueChipContent(pausedText, pausedText)
         explanation != null -> CueChipContent(
             text = GuidanceFormatter.explanationText(explanation!!),
             description = GuidanceFormatter.explanationText(explanation!!),

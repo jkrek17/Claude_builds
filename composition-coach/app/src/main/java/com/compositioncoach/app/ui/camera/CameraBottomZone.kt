@@ -22,8 +22,8 @@ import com.compositioncoach.composition.model.SceneIntent
 
 /**
  * Everything below the preview: the zoom readout and the "Analysis unavailable" chip at the top of the
- * black area, then — stacked upward from the bottom edge — the shoot-ready "SHOOT" chip, the mode strip,
- * and the shutter row. That order is the spec's ("mode strip directly above the shutter"), and none of it
+ * black area, then — stacked upward from the bottom edge — the "SHOOT" / "Hold still" chip, the zoom
+ * presets, the mode strip, and the shutter row. That order is the spec's ("mode strip directly above the shutter"), and none of it
  * ever moves when the phone rotates; only the icons inside it counter-rotate.
  */
 @Composable
@@ -45,6 +45,11 @@ fun CameraBottomZone(
     deviceRotationDegrees: Int,
     animationsEnabled: Boolean,
     modifier: Modifier = Modifier,
+    holdStill: Boolean = false,
+    arcAlpha: Float = if (awaitingSubject) GuidanceFormatter.AWAITING_SUBJECT_ARC_ALPHA else 1f,
+    zoomPresets: List<Float> = emptyList(),
+    onZoomPresetSelected: (Float) -> Unit = {},
+    shootAtPeak: ShootAtPeakState? = null,
 ) {
     Box(modifier.fillMaxWidth()) {
         if (analysisUnavailable) {
@@ -66,19 +71,29 @@ fun CameraBottomZone(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             val fadeMs = motionDuration(Motion.CROSSFADE_MS, animationsEnabled)
+            // One chip slot above the shutter: "Hold still" while movement is holding the shot back,
+            // otherwise "SHOOT" while the framing is ready. The chip crossfades its own wording.
             AnimatedVisibility(
-                visible = isShootReady,
+                visible = isShootReady || holdStill,
                 enter = fadeIn(tween(fadeMs)),
                 exit = fadeOut(tween(fadeMs)),
             ) {
                 CueChip(
-                    text = GuidanceFormatter.SHOOT_TEXT,
-                    description = "Framing is ready, shoot now",
-                    emphasized = true,
+                    text = if (holdStill) SteadyHint.TEXT else GuidanceFormatter.SHOOT_TEXT,
+                    description = if (holdStill) SteadyHint.DESCRIPTION else "Framing is ready, shoot now",
+                    emphasized = !holdStill,
                     animationsEnabled = animationsEnabled,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
+
+            ZoomPresetRow(
+                presets = zoomPresets,
+                zoomRatio = zoomRatio,
+                onSelect = onZoomPresetSelected,
+                deviceRotationDegrees = deviceRotationDegrees,
+                animationsEnabled = animationsEnabled,
+            )
 
             ModeStrip(
                 selected = sceneIntent,
@@ -98,6 +113,8 @@ fun CameraBottomZone(
                 awaitingSubject = awaitingSubject,
                 showQuietCheck = showQuietCheck,
                 animationsEnabled = animationsEnabled,
+                arcAlpha = arcAlpha,
+                shootAtPeak = shootAtPeak,
             )
         }
     }
@@ -124,6 +141,7 @@ private fun CameraBottomZonePreview() {
             onOpenGallery = {},
             deviceRotationDegrees = 0,
             animationsEnabled = false,
+            zoomPresets = listOf(0.6f, 1f, 2f, 5f),
         )
     }
 }
@@ -174,6 +192,35 @@ private fun CameraBottomZoneRotatedPreview() {
             onOpenGallery = {},
             deviceRotationDegrees = 90,
             animationsEnabled = false,
+            zoomPresets = listOf(0.6f, 1f, 2f, 5f),
+        )
+    }
+}
+
+@Preview(name = "Bottom zone, hold still", showBackground = true, backgroundColor = 0xFF000000)
+@Composable
+private fun CameraBottomZoneHoldStillPreview() {
+    CompositionCoachTheme {
+        CameraBottomZone(
+            sceneIntent = SceneIntent.AUTO,
+            onSceneIntentSelected = {},
+            isCapturing = false,
+            isShootReady = true,
+            score = 92,
+            awaitingSubject = false,
+            showQuietCheck = false,
+            analysisUnavailable = false,
+            zoomRatio = 1.4f,
+            zoomChipVisible = false,
+            lastPhotoUri = null,
+            onShutterClick = {},
+            onSwitchLensClick = {},
+            onOpenGallery = {},
+            deviceRotationDegrees = 0,
+            animationsEnabled = false,
+            holdStill = true,
+            arcAlpha = SteadyHint.MOVING_ARC_ALPHA,
+            zoomPresets = listOf(0.6f, 1f, 2f),
         )
     }
 }

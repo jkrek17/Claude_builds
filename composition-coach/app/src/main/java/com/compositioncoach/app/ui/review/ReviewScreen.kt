@@ -2,6 +2,7 @@ package com.compositioncoach.app.ui.review
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +46,9 @@ import kotlinx.coroutines.launch
  * The photo just taken, letterboxed on black, with [ReviewCard] beneath it and the three actions the spec
  * gives this screen: Retake (outlined, deletes and returns), Share (icon), Keep (filled).
  *
+ * [originalPhotoUri], when the camera kept the capture from before its own corrections (auto-level), adds
+ * a hold-to-compare [CompareChip] over the photo; without one there is nothing to compare and no chip.
+ *
  * The system back gesture and the top-left arrow both mean **Keep** — a captured photo is never silently
  * lost by backing out of this screen.
  */
@@ -54,10 +58,12 @@ fun ReviewScreen(
     captureRepository: CaptureRepository,
     onKeep: () -> Unit,
     onRetakeComplete: () -> Unit,
+    originalPhotoUri: Uri? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var isDeleting by remember { mutableStateOf(false) }
+    var showingOriginal by remember { mutableStateOf(false) }
 
     BackHandler(enabled = entry != null, onBack = onKeep)
 
@@ -75,7 +81,9 @@ fun ReviewScreen(
                 // bounding box's aspect ratio follows the decoded image rather than a hardcoded 3:4 —
                 // otherwise a landscape photo would be letterboxed down to a sliver. Falls back to 3:4
                 // until the image reports a real size.
-                val painter = rememberAsyncImagePainter(entry.photoUri)
+                val painter = rememberAsyncImagePainter(
+                    if (showingOriginal && originalPhotoUri != null) originalPhotoUri else entry.photoUri,
+                )
                 val intrinsic = painter.intrinsicSize
                 val photoAspectRatio = if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) {
                     intrinsic.width / intrinsic.height
@@ -91,9 +99,17 @@ fun ReviewScreen(
                 IconButton(onClick = onKeep, modifier = Modifier.align(Alignment.TopStart).padding(4.dp)) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Keep photo and go back", tint = OnScrim)
                 }
+                // Only when an uncorrected original exists to compare against.
+                if (originalPhotoUri != null) {
+                    CompareChip(
+                        showingOriginal = showingOriginal,
+                        onShowOriginalChange = { showingOriginal = it },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                    )
+                }
             }
 
-            ReviewCard(result = entry.result)
+            ReviewCard(result = entry.result, diagnostics = entry.diagnostics)
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),

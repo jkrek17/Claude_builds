@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -20,6 +21,7 @@ import com.compositioncoach.app.ui.privacy.PrivacyScreen
 import com.compositioncoach.app.ui.review.ReviewScreen
 import com.compositioncoach.app.ui.settings.SettingsScreen
 import com.compositioncoach.app.ui.settings.SettingsViewModel
+import com.compositioncoach.app.ui.settings.UiSettingsDraftStore
 
 /** The four screens the app has: camera (start), the post-capture review, settings, and the privacy policy. */
 object Routes {
@@ -47,12 +49,15 @@ fun AppNavGraph(container: AppContainer) {
     NavHost(navController = navController, startDestination = Routes.CAMERA) {
         composable(Routes.CAMERA) {
             val cameraViewModel: CameraViewModel = viewModel(factory = CameraViewModel.factory(container))
+            // "Auto shoot when ready" (`auto_shoot`): from the in-memory draft until the key is persisted.
+            val draft by UiSettingsDraftStore.draft.collectAsStateWithLifecycle()
             CameraPermissionGate {
                 CameraScreen(
                     viewModel = cameraViewModel,
                     lastPhotoUri = lastPhotoUri,
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToReview = { navController.navigate(Routes.REVIEW) },
+                    autoShootOnTap = draft.autoShoot,
                 )
             }
         }
@@ -61,6 +66,9 @@ fun AppNavGraph(container: AppContainer) {
             val entry by container.reviewStore.current.collectAsStateWithLifecycle()
             ReviewScreen(
                 entry = entry,
+                // No pre-edit original is kept yet (auto-level overwrites the file), so Compare stays hidden;
+                // pass the original's Uri here once `ReviewEntry` carries one.
+                originalPhotoUri = null,
                 captureRepository = container.captureRepository,
                 onKeep = {
                     container.reviewStore.clear()
@@ -73,12 +81,20 @@ fun AppNavGraph(container: AppContainer) {
             )
         }
 
-        composable(Routes.SETTINGS) {
+        composable(Routes.SETTINGS) { settingsEntry ->
             val settingsViewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(container))
+            // The Enhancement row reflects what the *bound* lens offers, which only the camera's view model
+            // knows; Settings is always pushed over the camera, so its back-stack entry is there to share.
+            val cameraEntry = remember(settingsEntry) { navController.getBackStackEntry(Routes.CAMERA) }
+            val cameraViewModel: CameraViewModel = viewModel(viewModelStoreOwner = cameraEntry, factory = CameraViewModel.factory(container))
+            val cameraState by cameraViewModel.uiState.collectAsStateWithLifecycle()
             SettingsScreen(
                 viewModel = settingsViewModel,
                 onBack = { navController.popBackStack() },
                 onOpenPrivacyPolicy = { navController.navigate(Routes.PRIVACY) },
+                enhancement = cameraState.enhancement,
+                availableEnhancements = cameraState.availableEnhancements,
+                onEnhancementChange = cameraViewModel::onEnhancementSelected,
             )
         }
 
