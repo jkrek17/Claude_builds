@@ -64,7 +64,9 @@ class OutcomeBindingRulesTest {
     fun `the notes name what is missing`() {
         assertEquals(DegradedNote.NO_NIGHT, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.NIGHT, setOf(OFF, AUTO), full)))
         assertEquals(DegradedNote.NO_PORTRAIT_BLUR, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.PORTRAIT, setOf(OFF), full)))
-        assertEquals(DegradedNote.NO_HDR, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), none)))
+        // A lens without the HDR extension still shoots HDR in its standard pipeline, so only the stack fallback is noted.
+        assertEquals(DegradedNote.NO_FOCUS_STACK, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), none)))
+        assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), full)))
         assertEquals(DegradedNote.NO_MOTION, DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.SILKY_WATER, setOf(OFF), none)))
         assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.SILKY_WATER, setOf(OFF), full)))
         assertNull(DegradedNote.of(OutcomeCapturePlanner.plan(Outcome.ANYTHING, setOf(OFF), none)))

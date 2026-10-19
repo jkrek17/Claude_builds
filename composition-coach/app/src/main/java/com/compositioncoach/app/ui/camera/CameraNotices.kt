@@ -16,7 +16,6 @@ import com.compositioncoach.app.outcome.Outcome
 enum class DegradedNote(@StringRes val resId: Int) {
     NO_PORTRAIT_BLUR(R.string.degraded_no_portrait_blur),
     NO_NIGHT(R.string.degraded_no_night),
-    NO_HDR(R.string.degraded_no_hdr),
     NO_ENHANCEMENT(R.string.degraded_no_enhancement),
     NO_FOCUS_STACK(R.string.degraded_no_focus_stack),
     NO_MOTION(R.string.degraded_no_motion),
@@ -28,7 +27,6 @@ enum class DegradedNote(@StringRes val resId: Int) {
             when (plan.missingEnhancement) {
                 CaptureEnhancement.BOKEH -> return NO_PORTRAIT_BLUR
                 CaptureEnhancement.NIGHT -> return NO_NIGHT
-                CaptureEnhancement.HDR -> return NO_HDR
                 null -> Unit
                 else -> return NO_ENHANCEMENT
             }

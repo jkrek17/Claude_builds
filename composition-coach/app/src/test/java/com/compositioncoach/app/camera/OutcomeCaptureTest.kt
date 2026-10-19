@@ -45,11 +45,14 @@ class OutcomeCaptureTest {
         assertEquals(Pipeline.SINGLE, OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, HDR), full).pipeline)
         val stacked = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), full)
         assertEquals(Pipeline.FOCUS_STACK, stacked.pipeline)
-        assertEquals(HDR, stacked.missingEnhancement)
+        // A missing HDR extension is not a degradation: the standard pipeline is HDR on such phones (Pixels).
+        assertNull(stacked.missingEnhancement)
+        assertFalse(stacked.degraded)
         val noFocus = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF), none)
         assertEquals(Pipeline.BURST_SHARPEST, noFocus.pipeline)
-        // The missing first-choice enhancement is the note the user sees (one note, not two).
-        assertEquals(OutcomeCapturePlanner.enhancementNote(HDR), noFocus.degradedNote)
+        // So the only note left is the pipeline fallback.
+        assertNull(noFocus.missingEnhancement)
+        assertEquals("This lens can't focus-stack, so this is one sharp photo", noFocus.degradedNote)
         val noFocusNoHdrWanted = OutcomeCapturePlanner.plan(Outcome.LANDSCAPE, setOf(OFF, HDR), none)
         assertEquals(Pipeline.SINGLE, noFocusNoHdrWanted.pipeline)
     }
@@ -121,5 +124,31 @@ class OutcomeCaptureTest {
         assertEquals("_silk", MotionCapture.suffixFor(com.compositioncoach.vision.StackBlend.AVERAGE))
         assertEquals("_trails", MotionCapture.suffixFor(com.compositioncoach.vision.StackBlend.LIGHTEN))
         assertEquals("_clear", MotionCapture.suffixFor(com.compositioncoach.vision.StackBlend.MEDIAN))
+    }
+
+    @Test
+    fun `a missing HDR extension is never reported for any outcome or lens`() {
+        val lenses = listOf(setOf(OFF), setOf(OFF, AUTO), setOf(OFF, NIGHT, BOKEH), setOf(OFF, AUTO, NIGHT, BOKEH))
+        for (outcome in Outcome.entries) for (available in lenses) for (support in listOf(full, none)) {
+            val plan = OutcomeCapturePlanner.plan(outcome, available, support)
+            assertFalse("$outcome on $available, $support", plan.missingEnhancement == HDR)
+            assertFalse("$outcome on $available, $support", plan.degradedNote?.contains("HDR") == true)
+        }
+    }
+
+    @Test
+    fun `a note appears only when the plan differs from what the outcome asked for`() {
+        val lenses = listOf(setOf(OFF), setOf(OFF, AUTO), setOf(OFF, HDR), setOf(OFF, AUTO, HDR, NIGHT, BOKEH))
+        for (outcome in Outcome.entries) for (available in lenses) for (support in listOf(full, none)) {
+            val plan = OutcomeCapturePlanner.plan(outcome, available, support)
+            val first = outcome.spec.enhancementPreference.firstOrNull() ?: OFF
+            val enhancementShortfall = plan.missingEnhancement != null
+            val pipelineShortfall = plan.pipeline != plan.requested && plan.enhancement == OFF
+            val label = "$outcome on $available, $support -> $plan"
+            if (plan.degraded) assertTrue(label, enhancementShortfall || pipelineShortfall)
+            // Getting the first choice, or a silent fallback (OFF, AUTO, HDR), with the requested pipeline: no note.
+            if (plan.enhancement == first && plan.pipeline == plan.requested) assertFalse(label, plan.degraded)
+            if (first in setOf(OFF, AUTO, HDR) && plan.pipeline == plan.requested) assertFalse(label, plan.degraded)
+        }
     }
 }

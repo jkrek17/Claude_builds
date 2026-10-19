@@ -27,7 +27,7 @@
     <string name="settings_developer_mode">Developer mode</string>
     <string name="settings_enhancement">Enhancement</string>
     <string name="settings_enhancement_subtitle">Auto lets the camera choose; Night and HDR merge several frames</string>
-    <string name="settings_enhancement_unavailable">Not available on this camera</string>
+    <string name="settings_enhancement_unavailable">Not offered as a separate mode on this camera</string>
     <string name="settings_burst_sharpest">Sharpest of burst</string>
     <string name="settings_burst_sharpest_subtitle">Takes a quick burst and keeps the sharpest frame</string>
     <string name="settings_auto_level">Auto-level horizon</string>
@@ -95,7 +95,6 @@
     <!-- Shown once when an outcome falls back on this phone (docs/PRODUCT.md "Graceful degradation"). -->
     <string name="degraded_no_portrait_blur">Portrait blur isn\'t built into this phone\'s camera; you can add it after the shot</string>
     <string name="degraded_no_night">Night isn\'t available on this phone, using the best we can</string>
-    <string name="degraded_no_hdr">HDR isn\'t available on this phone, using the best we can</string>
     <string name="degraded_no_enhancement">This look isn\'t available on this phone, using the best we can</string>
     <string name="degraded_no_focus_stack">This lens can\'t focus-stack, so this is one sharp photo</string>
     <string name="degraded_no_motion">Motion needs live analysis, which isn\'t running; this takes a normal photo</string>

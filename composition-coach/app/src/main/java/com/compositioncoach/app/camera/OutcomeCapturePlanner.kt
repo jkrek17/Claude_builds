@@ -34,8 +34,10 @@ data class CapturePlan(
 
 /**
  * Pure mapping from an [Outcome] plus device capabilities to a [CapturePlan]. Rules:
- *  - Enhancement: first available of the preference list wins. Missing a *named* first choice (Night, HDR,
- *    Portrait) is reported; missing AUTO is not (AUTO is "let the phone decide", OFF is a fine answer).
+ *  - Enhancement: first available of the preference list wins. Missing a *named* first choice (Night,
+ *    Portrait) is reported; missing AUTO is not (AUTO is "let the phone decide", OFF is a fine answer), and
+ *    neither is a missing HDR extension: phones without one (Pixels among them) run multi-frame HDR in the
+ *    standard pipeline anyway, so the photo is not degraded and there is nothing for the user to do.
  *  - BURST_SHARPEST and FOCUS_STACK need the plain (non-extension) session: lucky imaging and manual focus
  *    cannot run under a vendor extension, so with an extension bound they become SINGLE (the extension does
  *    its own multi-frame work, so this is not reported as degraded).
@@ -53,7 +55,7 @@ object OutcomeCapturePlanner {
         val stackWins = spec.pipeline == Pipeline.FOCUS_STACK && support.focusStacking && preferred == CaptureEnhancement.AUTO
         val enhancement = if (stackWins) CaptureEnhancement.OFF else preferred
         val first = preference.first()
-        val missing = first.takeIf { it != enhancement && it != CaptureEnhancement.OFF && it != CaptureEnhancement.AUTO }
+        val missing = first.takeIf { it != enhancement && it !in SILENT_FALLBACKS }
         val requested = spec.pipeline
         val plain = enhancement == CaptureEnhancement.OFF
         var pipelineNote: String? = null
@@ -71,6 +73,9 @@ object OutcomeCapturePlanner {
         val note = missing?.let { enhancementNote(it) } ?: pipelineNote
         return CapturePlan(enhancement, pipeline, requested, missing, note)
     }
+
+    /** First choices whose absence is never reported: OFF and AUTO by definition, HDR because the standard pipeline has it. */
+    private val SILENT_FALLBACKS = setOf(CaptureEnhancement.OFF, CaptureEnhancement.AUTO, CaptureEnhancement.HDR)
 
     /** The sentence for a missing first-choice enhancement. */
     fun enhancementNote(missing: CaptureEnhancement): String = when (missing) {
