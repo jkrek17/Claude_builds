@@ -1,6 +1,21 @@
 {
-  "enabledMcpjsonServers": ["fantasy-coach"],
   "permissions": {
-    "allow": ["mcp__fantasy-coach"]
+    "allow": [
+      "mcp__fantasy-coach"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "fantasy-coach"
+  ],
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "hostinger@claude-plugins-official": true
   }
 }
