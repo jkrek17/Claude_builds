@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import data, site, weather
+from . import data, ratings, site, weather
 from .card import BREAK_EVEN, next_week, predict_all, season_record, week_card
 
 NOTE = ("How to read this: the model was tested on 4,363 games from 2010 to 2025 without ever seeing a\n"
@@ -90,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.csv:
         pd.DataFrame(cards).to_csv(args.csv, index=False)
     if args.json:
-        site.write(args.json, preds, season, week)
+        site.write(args.json, preds, season, week, team_ratings=ratings.load(games, str(data_dir), season))
     return 0
 
 

@@ -78,6 +78,22 @@ function pickTile(label, pick, prob, push, hit, breakEven) {
   </div>`;
 }
 
+// One line on why the model leans the way it does. The four parts add up to the predicted margin.
+const signed = (v, digits = 1) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(digits);
+function whyLine(c) {
+  if (!c.why) return "";
+  const LABELS = { team: "team strength", qb: "quarterback", home: "home field", rest: "rest" };
+  const sides = { [c.home]: [], [c.away]: [] };
+  for (const key of Object.keys(LABELS)) {
+    const v = c.why[key];
+    if (v == null || Math.abs(v) < 0.05) continue;
+    sides[v > 0 ? c.home : c.away].push(`+${Math.abs(v).toFixed(1)} ${LABELS[key]}`);
+  }
+  const lead = c.pred_margin >= 0 ? c.home : c.away, other = lead === c.home ? c.away : c.home;
+  const text = [lead, other].filter((t) => sides[t].length).map((t) => `<strong>${t}</strong> ${sides[t].join(", ")}`).join(" · ");
+  return text ? `<p class="why num"><span class="eyebrow">Why</span> ${text}</p>` : "";
+}
+
 function gameCard(c, breakEven, index) {
   const homePicked = c.ml_pick === c.home;
   const awayProb = 1 - c.home_win_prob;
@@ -115,6 +131,7 @@ function gameCard(c, breakEven, index) {
         <div class="bar" style="width:${(100 * awayProb).toFixed(1)}%;background:var(--away)"></div>
         <div class="bar" style="width:${(100 * c.home_win_prob).toFixed(1)}%;background:var(--home)"></div>
       </div>
+      ${whyLine(c)}
       <div class="mt-3 grid grid-cols-2 gap-2">
         ${pickTile("Spread", c.ats_pick, c.ats_prob, c.ats_push, c.ats_hit, breakEven)}
         ${pickTile("Total", c.ou_pick, c.ou_prob, c.ou_push, c.ou_hit, breakEven)}
@@ -306,8 +323,126 @@ function renderAbout(data) {
     </div>`;
 }
 
+// Rankings tab: every team's power rating in points against an average team, and what it is made of.
+let rankSort = "power", rankOpen = null, rankVersus = false, radar = null;
+const RADAR = [["pass_off", "Pass offense"], ["rush_off", "Rush offense"], ["pass_def", "Pass defense"],
+               ["rush_def", "Rush defense"], ["qb_form", "QB form"], ["pace", "Pace"]];
+const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
+
+// A team's profile on six measures, each as its league rank turned into a 0 to 100 score so that
+// further out is always better (1st of 32 is 100).
+function teamProfile(t, teams) {
+  const next = t.next && teams.find((o) => o.team === t.next.opponent);
+  const versus = rankVersus && next;
+  const cells = RADAR.map(([key, label]) => `<tr><td>${label}</td><td class="num text-right"><b>${ordinal(t[key + "_rank"])}</b></td>${
+    versus ? `<td class="num text-right">${ordinal(next[key + "_rank"])}</td>` : ""}</tr>`).join("");
+  return `<div class="rk-profile">
+    ${next ? `<label class="rk-versus"><input type="checkbox" data-versus ${rankVersus ? "checked" : ""}>
+      <span>Compare with this week's opponent, ${TEAMS[next.team] || next.team}${t.next.home ? " (home)" : " (away)"}</span></label>` : ""}
+    <div class="rk-radar"><canvas id="rk-radar" role="img" aria-label="League ranks of ${TEAMS[t.team] || t.team} on six measures, listed in the table below"></canvas></div>
+    <table class="rk-ranks"><thead><tr><th>League rank of ${data_teams_count(teams)}</th><th class="text-right">${t.team}</th>${versus ? `<th class="text-right">${next.team}</th>` : ""}</tr></thead><tbody>${cells}</tbody></table>
+    <p class="rk-note">Further from the centre is better. Pace is plays run per game, a measure of speed and not of quality.</p>
+  </div>`;
+}
+const data_teams_count = (teams) => teams.length;
+
+function drawRadar(t, teams) {
+  if (radar) { radar.destroy(); radar = null; }
+  const canvas = document.getElementById("rk-radar");
+  if (!canvas || !window.Chart) return;
+  const score = (team) => RADAR.map(([key]) => Math.round(100 * (teams.length + 1 - team[key + "_rank"]) / teams.length));
+  const navy = css("--series-1"), gold = css("--gold"), ink = css("--ink-2"), grid = css("--color-base-300");
+  const next = rankVersus && t.next && teams.find((o) => o.team === t.next.opponent);
+  const datasets = [{ label: t.team, data: score(t), borderColor: navy, backgroundColor: "rgb(47 90 160 / 0.22)", borderWidth: 2, pointRadius: 3, pointBackgroundColor: navy }];
+  if (next) datasets.push({ label: next.team, data: score(next), borderColor: gold, backgroundColor: "rgb(201 162 39 / 0.14)", borderWidth: 2, borderDash: [5, 4], pointRadius: 3, pointStyle: "rectRot", pointBackgroundColor: gold });
+  const narrow = canvas.parentElement.clientWidth < 360;
+  radar = new Chart(canvas, {
+    type: "radar",
+    data: { labels: RADAR.map(([, label]) => (narrow ? label.split(" ") : label)), datasets },
+    options: {
+      responsive: true, maintainAspectRatio: true, aspectRatio: 1, animation: { duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400 },
+      scales: { r: { min: 0, max: 100, ticks: { display: false, stepSize: 25 }, grid: { color: grid }, angleLines: { color: grid },
+                     pointLabels: { color: ink, font: { size: 11, weight: "600" } } } },
+      plugins: { legend: { display: !!next, position: "bottom", labels: { usePointStyle: true, boxWidth: 8, color: ink } },
+                 tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${ordinal(teams.find((o) => o.team === c.dataset.label)[RADAR[c.dataIndex][0] + "_rank"])} of ${teams.length}` } } },
+    },
+  });
+}
+
+function renderRankings(data) {
+  const r = data.rankings;
+  if (!r || !r.teams.length) {
+    $("rankings").innerHTML = `<p class="lede">Team ratings are not published yet.</p>`;
+    return;
+  }
+  const SORTS = { power: "Power", pass_off: "Pass offense", rush_off: "Rush offense", pass_def: "Pass defense",
+                  rush_def: "Rush defense", qb: "Quarterback", results: "Results" };
+  const teams = [...r.teams].sort((a, b) => b[rankSort] - a[rankSort]);
+  const top = Math.max(...r.teams.map((t) => Math.abs(t[rankSort])));
+  const part = (label, v, on) => `<span class="${on ? "on" : ""}">${label} <b class="num">${signed(v)}</b></span>`;
+  const row = (t, i) => {
+    const [w, l, ties] = t.record, v = t[rankSort], width = (50 * Math.abs(v) / top).toFixed(1);
+    const isOpen = rankOpen === t.team;
+    return `<li class="rk-item ${isOpen ? "open" : ""}" style="--team:${color(t.team)};--i:${Math.min(i, 12)}">
+    <button type="button" class="rk-row" data-team="${t.team}" aria-expanded="${isOpen}">
+      <span class="rk-n display num">${i + 1}</span>
+      ${logo(t.team)}
+      <span class="rk-main">
+        <span class="rk-name"><span class="display">${TEAMS[t.team] || t.team}</span><span class="rk-rec num">${w}-${l}${ties ? "-" + ties : ""}</span></span>
+        <span class="rk-meta num">${t.qb_name ? `QB ${t.qb_name} · ` : ""}Elo ${Math.round(t.elo)}</span>
+        <span class="rk-bar" role="img" aria-label="${SORTS[rankSort]} ${signed(v)} points"><i class="${v >= 0 ? "pos" : "neg"}" style="width:${width}%"></i></span>
+        <span class="rk-parts">${part("Pass off", t.pass_off, rankSort === "pass_off")}${part("Rush off", t.rush_off, rankSort === "rush_off")}${part("Pass def", t.pass_def, rankSort === "pass_def")}${part("Rush def", t.rush_def, rankSort === "rush_def")}${part("QB", t.qb, rankSort === "qb")}${part("Results", t.results, rankSort === "results")}</span>
+      </span>
+      <span class="rk-power display num ${v >= 0 ? "" : "neg"}">${signed(v)}</span>
+    </button>${isOpen ? teamProfile(t, r.teams) : ""}</li>`;
+  };
+  let n = 0;
+  const item = (title, body, extra = "") => `<article class="panel guide ${extra}">
+    <span class="step display num">${String(++n).padStart(2, "0")}</span>
+    <div><h3>${title}</h3><p>${body}</p></div></article>`;
+  const hf = r.home_field == null ? "" : ` Home field is currently worth ${r.home_field.toFixed(1)} points.`;
+  $("rankings").innerHTML = `
+    <p class="lede">Each team's rating in points against an average team on a neutral field, as of the last game played. The gap between two teams, plus home field, is the model's predicted margin. The small numbers on each row add up to its power. Tap a team for its profile chart.</p>
+    <div class="pr-chips rk-sorts" role="group" aria-label="Rank by">${Object.entries(SORTS).map(([k, label]) =>
+      `<button type="button" class="pr-chip ${k === rankSort ? "on" : ""}" data-sort="${k}" aria-pressed="${k === rankSort}">${label}</button>`).join("")}</div>
+    <ol class="panel rk-list">${teams.map(row).join("")}</ol>
+    <h2 class="day">What goes into the rating</h2>
+    <div class="grid gap-3 md:grid-cols-2">
+    ${item("Results", `An Elo rating, the same idea used for chess and by many NFL power rankings. A team gains points for winning, more for winning big and more for beating a strong opponent, and the loser gives up the same amount. Ratings move a third of the way back to average each off-season. 1500 is average.`)}
+    ${item("Passing and rushing, offense and defense", `Four separate ratings: how much better than expected the team does passing and running, and how much its defense gives up against each, all adjusted for the opponents faced. They come from play-by-play (expected points added), so they see more than the final score. A plus on defense means a good defense. Tap a button above to rank by any one.`)}
+    ${item("Quarterback", `How the team's passing has done in the current starter's games compared with the team's usual level, plus his own recent form per dropback. A backup taking over moves this part straight away.`)}
+    ${item("In each game", `Add home field and any difference in rest days to the gap in power and you get the predicted margin. Each game card shows that sum on its "Why" line.${hf}`)}
+    ${item("How far to trust it", `These ratings come only from results and stats. Injuries other than the starting quarterback are not included. Over ${data.backtest.games.toLocaleString()} test games the betting line predicted margins better than the model did.`, "key")}
+    </div>`;
+  $("rankings").querySelector(".rk-sorts").addEventListener("click", (e) => {
+    if (!e.target.dataset.sort) return;
+    rankSort = e.target.dataset.sort;
+    renderRankings(data);
+  });
+  const list = $("rankings").querySelector(".rk-list");
+  list.addEventListener("click", (e) => {
+    const btn = e.target.closest(".rk-row");
+    if (!btn) return;
+    rankOpen = rankOpen === btn.dataset.team ? null : btn.dataset.team;
+    const y = scrollY;
+    renderRankings(data);
+    scrollTo(0, y);
+    const now = rankOpen && $("rankings").querySelector(".rk-item.open");
+    if (now && now.getBoundingClientRect().top < 0) now.scrollIntoView({ block: "start" });
+  });
+  list.addEventListener("change", (e) => {
+    if (!("versus" in e.target.dataset)) return;
+    rankVersus = e.target.checked;
+    const y = scrollY;
+    renderRankings(data);
+    scrollTo(0, y);
+  });
+  const opened = rankOpen && r.teams.find((t) => t.team === rankOpen);
+  if (opened && !$("rankings").hidden) drawRadar(opened, r.teams);
+}
+
 function showTab(name, data) {
-  for (const tab of ["picks", "props", "record", "about"]) $(tab).hidden = tab !== name;
+  for (const tab of ["picks", "props", "rankings", "record", "about"]) $(tab).hidden = tab !== name;
   for (const btn of $("tabs").children) {
     const on = btn.dataset.tab === name;
     btn.setAttribute("aria-selected", on);
@@ -315,6 +450,7 @@ function showTab(name, data) {
   }
   if (name === "record") drawChart(data);
   if (name === "props") Props.open(data);
+  if (name === "rankings") renderRankings(data);
 }
 
 function start(data) {
@@ -333,6 +469,7 @@ function start(data) {
   const b = data.backtest;
   $("notice").innerHTML = `<strong class="text-primary">No proven edge.</strong> <span class="muted">In testing on ${b.games.toLocaleString()} games the model won ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. Breaking even takes ${pct(data.break_even)}. Read these as informed predictions, not winning bets.</span>`;
   renderRecord(data);
+  renderRankings(data);
   renderAbout(data);
   $("tabs").addEventListener("click", (e) => e.target.dataset.tab && showTab(e.target.dataset.tab, data));
   show(data.week);

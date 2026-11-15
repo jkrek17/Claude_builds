@@ -39,8 +39,11 @@ def load_player_stats(data_dir: str) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True)
 
 
-def qb_form_features(games: pd.DataFrame, player_stats: pd.DataFrame) -> pd.DataFrame:
-    """One row per game_id with qb_form_diff and qb_backup_diff (home minus away)."""
+def qb_form_features(games: pd.DataFrame, player_stats: pd.DataFrame, state: dict | None = None) -> pd.DataFrame:
+    """One row per game_id with qb_form_diff and qb_backup_diff (home minus away).
+
+    If `state` is a dict it is filled with each quarterback's form after the last played game
+    (EPA per dropback relative to the league), for display; see ratings.py."""
     g = games.copy()
     g["gameday"] = g["gameday"].astype(str)
     g = g.sort_values(["gameday", "game_id"], kind="mergesort").reset_index(drop=True)
@@ -111,4 +114,7 @@ def qb_form_features(games: pd.DataFrame, player_stats: pd.DataFrame) -> pd.Data
                 total[pid] = total[pid] * DECAY + epa
                 career[pid] += db
         i = j
+    if state is not None:
+        state.update(form={q: (total[q] + PRIOR_WEIGHT * prior) / (weight[q] + PRIOR_WEIGHT) - league for q in weight},
+                     new_qb=prior - league)
     return pd.DataFrame({"game_id": gids, "qb_form_diff": form, "qb_backup_diff": backup})

@@ -5,7 +5,7 @@ import pytest
 import datetime as dt
 import json
 
-from nflmodel import margin_model, qb_form, scoredist, site, totals_model, weather
+from nflmodel import margin_model, qb_form, ratings, scoredist, site, totals_model, weather
 from nflmodel.card import (BREAK_EVEN, fit_key_factors, game_card, market_home_prob, next_week, norm_cdf,
                            predict_all, season_record, week_card)
 from nflmodel.cli import render
@@ -138,6 +138,45 @@ def test_predict_all_and_render(tmp_path):
     back = site.build(preds, season, week, backtest_first=2003)["backtest"]
     assert [s["season"] for s in back["seasons"]] == [2003, 2004]
     assert back["ats"][1] == sum(s["ats"][1] for s in back["seasons"]) and 0 < back["su_model"] < 1
+
+
+def test_ratings_split_each_predicted_margin_exactly_and_rank_strong_teams_first():
+    games, stats, players = synthetic()
+    out = ratings.build(games, stats, players, 2005)
+    teams = out["teams"]
+    assert len(teams) == len(TEAMS) and [t["rank"] for t in teams] == list(range(1, len(TEAMS) + 1))
+    assert teams[0]["power"] > 0 > teams[-1]["power"]
+    for part in ratings.PARTS:  # every part is measured against the average team
+        assert abs(sum(t[part] for t in teams)) < 1e-9
+    assert all(abs(t["power"] - sum(t[p] for p in ratings.PARTS)) < 1e-9 for t in teams)
+    assert all(abs(t["offense"] - t["pass_off"] - t["rush_off"]) < 1e-9 and abs(t["defense"] - t["pass_def"] - t["rush_def"]) < 1e-9 for t in teams)
+    assert sorted(t["pass_def_rank"] for t in teams) == list(range(1, len(TEAMS) + 1))
+    totals = {}
+    totals_model.build_features(games, stats, state=totals)
+    paced = ratings.build(games, stats, players, 2005, pace=totals["pace"])["teams"]
+    assert set(totals["pace"]) == set(TEAMS) and abs(sum(t["pace"] for t in paced)) < 1e-9
+    assert sorted(t["pace_rank"] for t in paced) == list(range(1, len(TEAMS) + 1))
+    nxt = {t["team"]: t["next"] for t in teams}
+    assert all(nxt[nxt[team]["opponent"]]["opponent"] == team and nxt[team]["home"] != nxt[nxt[team]["opponent"]]["home"] for team in nxt)
+    assert all(sum(t["record"]) == 12 for t in teams)
+
+    # The parts of a game add up to the model's own prediction, played or not.
+    margins = margin_model.predict_margins(games, stats, players).set_index("game_id")["pred_margin"]
+    ids = games.loc[games.season == 2005, "game_id"]
+    assert set(out["games"]) == set(ids)
+    assert all(abs(sum(out["games"][g].values()) - margins[g]) < 1e-9 for g in ids)
+
+    # A team's power difference plus the game's circumstances is the same number.
+    power = {t["team"]: t["power"] for t in teams}
+    upcoming = games[(games.season == 2005) & games.home_score.isna() & (games.week == 13)].iloc[0]
+    parts = out["games"][upcoming.game_id]
+    assert abs(power[upcoming.home_team] - power[upcoming.away_team] - parts["team"] - parts["qb"]) < 1e-6
+
+    preds = games.merge(margins.reset_index(), on="game_id").assign(pred_total=44.0, wind_mph=np.nan, wind_source=None, qb_assumed=False)
+    page = site.build(preds, 2005, 13, backtest_first=2003, team_ratings=out)
+    assert len(page["rankings"]["teams"]) == len(TEAMS)
+    assert set(page["weeks"]["13"][0]["why"]) == {"team", "qb", "home", "rest"}
+    assert site.build(preds, 2005, 13, backtest_first=2003)["rankings"] is None
 
 
 def test_qb_form_rates_good_quarterbacks_higher_and_flags_backups():

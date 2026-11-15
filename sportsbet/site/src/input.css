@@ -275,10 +275,55 @@ thead th { background: var(--navy); color: #fff; font-size: 0.6875rem; letter-sp
   .pr-views button:not(.on):hover { background: var(--cream); }
 }
 
+/* The "why" line on a game card. */
+.why { margin-top: 0.75rem; font-size: 0.8125rem; line-height: 1.5; color: var(--ink-2); }
+.why .eyebrow { margin-right: 0.375rem; color: var(--gold); }
+.why strong { color: var(--color-base-content); }
+
+/* Rankings tab. */
+.rk-sorts { margin: 0.75rem 0; }
+.rk-item { border-left: 3px solid var(--team); scroll-margin-top: 0.5rem; animation: rise 0.35s ease both; animation-delay: calc(var(--i) * 25ms); }
+.rk-item + .rk-item { border-top: 1px solid var(--color-base-300); }
+.rk-item.open { background: var(--cream); }
+.rk-row { display: flex; width: 100%; align-items: center; gap: 0.625rem; padding: 0.75rem; text-align: left; cursor: pointer; transition: background 0.12s ease; }
+.rk-main, .rk-meta, .rk-bar { display: block; }
+.rk-profile { padding: 0.25rem 0.75rem 1rem; }
+.rk-versus { display: flex; min-height: 2.75rem; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: var(--ink-2); cursor: pointer; }
+.rk-versus input { width: 1.125rem; height: 1.125rem; accent-color: var(--navy); }
+.rk-radar { width: 100%; max-width: 22rem; margin: 0 auto; }
+.rk-ranks { width: 100%; max-width: 22rem; margin: 0.5rem auto 0; font-size: 0.8125rem; }
+.rk-ranks th { padding: 0.25rem 0.5rem; }
+.rk-ranks td { padding: 0.25rem 0.5rem; border-top: 1px solid var(--color-base-300); background: #fff; }
+.rk-note { max-width: 22rem; margin: 0.5rem auto 0; font-size: 0.75rem; color: var(--ink-2); }
+.rk-n { width: 1.75rem; flex: none; font-size: 1.375rem; color: var(--gold); }
+.rk-item:nth-child(-n+3) .rk-n { color: var(--navy); }
+.rk-row .logo { width: 2.25rem; height: 2.25rem; }
+.rk-main { min-width: 0; flex: 1; }
+.rk-name { display: flex; align-items: baseline; gap: 0.5rem; }
+.rk-name .display { overflow: hidden; font-size: 1.25rem; text-overflow: ellipsis; white-space: nowrap; }
+.rk-rec { font-size: 0.75rem; font-weight: 600; color: var(--ink-2); }
+.rk-meta { margin-top: 0.125rem; font-size: 0.75rem; color: var(--ink-2); }
+.rk-bar { position: relative; margin-top: 0.375rem; height: 5px; background: var(--color-base-300); }
+.rk-bar::after { content: ""; position: absolute; left: 50%; top: -2px; width: 1px; height: 9px; background: var(--ink-2); }
+.rk-bar i { position: absolute; top: 0; height: 100%; }
+.rk-bar i.pos { left: 50%; background: var(--series-1); }
+.rk-bar i.neg { right: 50%; background: var(--ink-3); }
+.rk-parts { display: flex; flex-wrap: wrap; gap: 0.125rem 0.75rem; margin-top: 0.375rem; font-size: 0.6875rem; color: var(--ink-2); }
+.rk-parts b { font-weight: 600; color: var(--color-base-content); }
+.rk-parts .on { color: var(--navy); font-weight: 600; }
+.rk-power { flex: none; min-width: 3.25rem; text-align: right; font-size: 1.75rem; color: var(--navy); }
+.rk-power.neg { color: var(--ink-2); }
+@media (hover: hover) {
+  .rk-row:hover { background: var(--cream); }
+}
+@media (max-width: 480px) {
+  .tabs-flat button { font-size: 0.6875rem; letter-spacing: 0.03em; }
+}
+
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
 @keyframes grow { from { transform: scaleX(0); } }
 @media (prefers-reduced-motion: reduce) {
   .game, .split .bar, .track .fill, .gauge-track .fill { animation: none; }
   .game, .tile, .side .logo, .strip, .pr-player, .pr-bar span, .pr-bars i { transition: none; }
-  .pr-block { animation: none; }
+  .pr-block, .rk-item { animation: none; }
 }

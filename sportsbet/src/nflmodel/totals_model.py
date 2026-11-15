@@ -160,9 +160,12 @@ def _nan(x):
     return x is None or (isinstance(x, float) and math.isnan(x))
 
 
-def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict | None = None
-                   ) -> pd.DataFrame:
-    """Pre-kickoff features for every game in `games` (all seasons, played or not)."""
+def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict | None = None,
+                   state: dict | None = None) -> pd.DataFrame:
+    """Pre-kickoff features for every game in `games` (all seasons, played or not).
+
+    If `state` is a dict it is filled with each team's pace rating after the last played game
+    (offensive plays per game against the league average), for display; see ratings.py."""
     params = params or PARAMS
     g = _prep(games, team_stats)
     R = {m: _Rating(m, params[m]) for m in ("pts", "epa", "plays")}
@@ -298,6 +301,8 @@ def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict |
     f["base_pts"] = 2.0 * f["mu_pts"]
     f["struct_total"] = f["home_pts_hat"] + f["away_pts_hat"]   # ratings-only prediction
     f["actual_total"] = np.where(g["played"], g["home_score"] + g["away_score"], np.nan)
+    if state is not None:
+        state.update(pace=dict(R["plays"].O), plays_per_game=R["plays"].mu)
     return f
 
 
