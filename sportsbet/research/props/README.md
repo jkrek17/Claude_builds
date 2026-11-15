@@ -25,3 +25,18 @@ in weeks 1 to 4, and quarterback rushing bands are slightly narrow.
 How much the game line matters (`environment/exp7_line.py`): without any spread or total, passing
 yards lose about a third of their skill over the player's own average and passing TDs over half;
 receiving and rushing props barely change. The nflmodel prediction recovers a quarter to a half of that.
+
+## Two open-source tools checked, neither adopted
+
+`devig/` (penaltyblog's vig-removal methods on the saved FanDuel prices): for a two-way market only
+four distinct methods exist, they differ from the proportional one by more than a point on 1% to 6%
+of lines, and Brier, the model's blend weight and return all move by far less than their error.
+Bet returns in `prices/evaluate.py` do not depend on the de-vig at all, because edge is measured
+against the posted price. Kept: proportional.
+
+`hierarchical/` (PyMC partial pooling toward position averages): no variant clears 0.1% CRPS in
+9 of 12 seasons, overall or for players with under 8 career games. The learned shrinkage strength
+lands at 1.5 to 5.7 pseudo-games, around the hand-set 3. Kept: the current shrinkage. Leads it left:
+the 80% band holds only 76% to 78% of results in a player's first 8 games with a new team, and
+receptions run 0.24 high in the first game with a new team (10 of 12 seasons); a rule betting on a
+blend of model and book chance looked better than the model alone but is untested on its own.

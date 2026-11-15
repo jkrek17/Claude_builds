@@ -1,0 +1,118 @@
+fanduel: 28385 scored main lines; one-sided (no under price) 7774: {'any_td': 7774}
+two-sided lines 20611 by prop {'rec_yds': 7177, 'receptions': 6966, 'rush_yds': 2692, 'pass_yds': 1893, 'pass_tds': 1883}; games 982
+hold: median 0.058, 5th-95th pct 0.048-0.068
+penaltyblog methods: multiplicative, additive, power, shin, differential_margin_weighting, odds_ratio, logarithmic
+
+== 1. How much do the methods differ from multiplicative? (fair P(over), all two-sided lines)
+method   mean |diff| max |diff|  >0.5pp    >1pp    >2pp
+add           0.0016     0.0150   12.2%    1.0%    0.0%
+power         0.0025     0.0237   21.6%    5.6%    0.1%
+shin          0.0016     0.0150   12.2%    1.0%    0.0%
+dmw           0.0016     0.0150   12.2%    1.0%    0.0%
+oddsr         0.0017     0.0164   12.7%    1.4%    0.0%
+log           0.0017     0.0164   12.7%    1.4%    0.0%
+lines where ANY method is >1pp from multiplicative: 5.6% (1152 lines)
+share of lines by |mult fair - 50%|: 0%-2%: 64.4%, 2%-5%: 12.8%, 5%-10%: 16.7%, 10%-50%: 6.1%
+
+== 2. Accuracy of the book's fair P(over) (non-push lines, n=20611; over rate 0.481)
+diff = method minus multiplicative, ±1.96 game-clustered SE; negative is better
+-- all lines (n=20611)
+method      Brier         diff x1e4   logloss         diff x1e4
+mult      0.24765     +0.00 ± 0.00   0.68840     +0.00 ± 0.00
+add       0.24765     +0.01 ± 0.39   0.68840     +0.03 ± 0.82
+power     0.24766     +0.09 ± 0.60   0.68842     +0.20 ± 1.27
+shin      0.24765     +0.01 ± 0.39   0.68840     +0.03 ± 0.82
+dmw       0.24765     +0.01 ± 0.39   0.68840     +0.03 ± 0.82
+oddsr     0.24765     +0.02 ± 0.41   0.68840     +0.05 ± 0.88
+log       0.24765     +0.02 ± 0.41   0.68840     +0.05 ± 0.88
+-- only lines where some method is >1pp from multiplicative (n=1152)
+method      Brier         diff x1e4   logloss         diff x1e4
+mult      0.23117     +0.00 ± 0.00   0.65483     +0.00 ± 0.00
+add       0.23123     +0.69 ± 4.77   0.65498     +1.42 ±10.48
+power     0.23134     +1.70 ± 7.38   0.65520     +3.62 ±16.31
+shin      0.23123     +0.69 ± 4.77   0.65498     +1.42 ±10.48
+dmw       0.23123     +0.69 ± 4.77   0.65498     +1.42 ±10.48
+oddsr     0.23125     +0.80 ± 5.12   0.65500     +1.67 ±11.28
+log       0.23125     +0.80 ± 5.12   0.65500     +1.67 ±11.28
+  season 2023 (n=5834) Brier diff x1e4 vs mult: add -0.31  power -0.41  shin -0.31  dmw -0.31  oddsr -0.33  log -0.33
+  season 2024 (n=5886) Brier diff x1e4 vs mult: add +0.78  power +1.29  shin +0.78  dmw +0.78  oddsr +0.85  log +0.85
+  season 2025 (n=5943) Brier diff x1e4 vs mult: add -0.54  power -0.76  shin -0.54  dmw -0.54  oddsr -0.57  log -0.57
+  season 2026 (n=2948) Brier diff x1e4 vs mult: add +0.22  power +0.44  shin +0.22  dmw +0.22  oddsr +0.25  log +0.25
+
+== 3. Reliability by price: favourite side of each line (the side with the shorter price)
+bucket = raw implied chance of the favourite side (1/decimal, vig included); cells are fair chance minus win rate, in pp
+raw implied       n win rate     ±   mult    add  power   shin    dmw  oddsr    log
+0.00-0.54     12262    0.485  1.0p   +1.5   +1.5   +1.5   +1.5   +1.5   +1.5   +1.5
+0.54-0.56      1411    0.524  2.5p   -0.7   -0.6   -0.6   -0.6   -0.6   -0.6   -0.6
+0.56-0.60      3349    0.550  1.7p   -0.6   -0.3   -0.1   -0.3   -0.3   -0.3   -0.3
+0.60-0.65      2628    0.587  1.9p   -0.4   +0.1   +0.4   +0.1   +0.1   +0.1   +0.1
+0.65-1.00       961    0.640  3.0p   +0.1   +1.0   +1.4   +1.0   +1.0   +1.0   +1.0
+same, split by which side is the favourite (tests the general lean to unders)
+over fav  0.54-0.60  2269  0.513  2.1p   +2.2   +2.4   +2.6   +2.4   +2.4   +2.5   +2.5
+over fav  0.60-1.00  1425  0.599  2.6p   -0.4   +0.2   +0.6   +0.2   +0.2   +0.3   +0.3
+under fav 0.54-0.60  2491  0.568  2.0p   -3.2   -3.0   -2.9   -3.0   -3.0   -3.0   -3.0
+under fav 0.60-1.00  2164  0.603  2.1p   -0.2   +0.4   +0.7   +0.4   +0.4   +0.5   +0.5
+calibration slope: logistic fit of result on logit(fair P(over)); slope 1 = no favourite-longshot bias
+  mult   intercept -0.057  slope 1.007 ±0.146
+  add    intercept -0.057  slope 0.945 ±0.137
+  power  intercept -0.057  slope 0.914 ±0.133
+  shin   intercept -0.057  slope 0.945 ±0.137
+  dmw    intercept -0.057  slope 0.945 ±0.137
+  oddsr  intercept -0.057  slope 0.941 ±0.136
+  log    intercept -0.057  slope 0.941 ±0.136
+
+== 4. Blend weight on the model against each fair price (evaluate.blend_weight form; ± is 1.96 clustered SE)
+method             ALL          2023          2024          2025          2026   disagree>1pp
+mult       0.305 ±0.09   0.385 ±0.19   0.269 ±0.17   0.289 ±0.17   0.321 ±0.23   0.281 ±0.35
+add        0.306 ±0.09   0.383 ±0.19   0.275 ±0.17   0.288 ±0.17   0.324 ±0.23   0.287 ±0.35
+power      0.308 ±0.09   0.383 ±0.19   0.279 ±0.17   0.288 ±0.17   0.325 ±0.23   0.297 ±0.35
+shin       0.306 ±0.09   0.383 ±0.19   0.275 ±0.17   0.288 ±0.17   0.324 ±0.23   0.287 ±0.35
+dmw        0.306 ±0.09   0.383 ±0.19   0.275 ±0.17   0.288 ±0.17   0.324 ±0.23   0.287 ±0.35
+oddsr      0.306 ±0.09   0.383 ±0.19   0.276 ±0.17   0.288 ±0.17   0.324 ±0.23   0.288 ±0.35
+log        0.306 ±0.09   0.383 ±0.19   0.276 ±0.17   0.288 ±0.17   0.324 ±0.23   0.288 ±0.35
+Brier of the model on the same lines: 0.24997
+
+== 5. Betting. Rule A (current): model edge at the posted price. De-vig does not enter.
+  edge > 0%: all seasons 14675  +1.2% ±1.8% | seasons after 2023: 10525  +0.6% ±2.2%
+  edge > 5%: all seasons 10119  +2.5% ±2.2% | seasons after 2023:  7332  +2.2% ±2.5%
+  edge > 10%: all seasons  6713  +3.0% ±2.7% | seasons after 2023:  4956  +2.3% ±3.1%
+
+Rule B: bet on the edge of a blend of model and fair price; intercept and weight fitted on earlier seasons only
+(so no bets in 2023). Columns: bets, ROI, ±1.96 clustered SE.
+walk-forward fits (intercept, weight): mult 2024:(+0.002,0.385) 2025:(+0.001,0.319) 2026:(-0.034,0.301); power 2024:(+0.003,0.383) 2025:(+0.002,0.323) 2026:(-0.032,0.304); add 2024:(+0.002,0.383) 2025:(+0.002,0.321) 2026:(-0.033,0.302)
+-- blend edge > 0%
+method                pooled                2024                2025                2026   units vs mult (±1.96se)  bets changed
+mult       4921  +3.1% ±3.2%   2307  +2.9% ±4.6%   1698  +1.4% ±5.3%    916  +6.9% ±8.1%          +0.0 ±  0.0             0
+add        4873  +3.4% ±3.2%   2258  +3.5% ±4.7%   1698  +1.4% ±5.3%    917  +7.1% ±8.0%         +12.2 ± 30.3           226
+power      4866  +3.3% ±3.2%   2246  +3.0% ±4.7%   1703  +1.3% ±5.2%    917  +7.6% ±7.9%          +5.0 ± 37.4           345
+shin       4873  +3.4% ±3.2%   2258  +3.5% ±4.7%   1698  +1.4% ±5.3%    917  +7.1% ±8.0%         +12.2 ± 30.3           226
+dmw        4873  +3.4% ±3.2%   2258  +3.5% ±4.7%   1698  +1.4% ±5.3%    917  +7.1% ±8.0%         +12.2 ± 30.3           226
+oddsr      4864  +3.3% ±3.2%   2253  +3.3% ±4.7%   1698  +1.4% ±5.3%    913  +7.1% ±8.1%          +7.5 ± 31.8           245
+log        4864  +3.3% ±3.2%   2253  +3.3% ±4.7%   1698  +1.4% ±5.3%    913  +7.1% ±8.1%          +7.5 ± 31.8           245
+-- blend edge > 5%
+method                pooled                2024                2025                2026   units vs mult (±1.96se)  bets changed
+mult       1291  +6.1% ±6.1%    658  +7.2% ±8.2%   391  +2.4% ±11.4%   242  +9.2% ±15.5%          +0.0 ±  0.0             0
+add        1255  +6.1% ±6.3%    634  +7.7% ±8.5%   386  +2.1% ±11.5%   235  +8.5% ±15.3%          -2.3 ± 16.4            68
+power      1255  +6.4% ±6.3%    627  +7.9% ±8.5%   393  +2.6% ±11.4%   235  +8.8% ±15.5%          +1.3 ± 20.2           106
+shin       1255  +6.1% ±6.3%    634  +7.7% ±8.5%   386  +2.1% ±11.5%   235  +8.5% ±15.3%          -2.3 ± 16.4            68
+dmw        1255  +6.1% ±6.3%    634  +7.7% ±8.5%   386  +2.1% ±11.5%   235  +8.5% ±15.3%          -2.3 ± 16.4            68
+oddsr      1256  +6.0% ±6.3%    633  +7.6% ±8.5%   389  +2.2% ±11.5%   234  +8.0% ±15.4%          -4.0 ± 16.6            73
+log        1256  +6.0% ±6.3%    633  +7.6% ±8.5%   389  +2.2% ±11.5%   234  +8.0% ±15.4%          -4.0 ± 16.6            73
+-- blend edge > 10%
+method                pooled                2024                2025                2026   units vs mult (±1.96se)  bets changed
+mult       334 +10.3% ±12.1%   202 +11.2% ±15.4%    70 +15.7% ±22.3%    62  +1.6% ±31.7%          +0.0 ±  0.0             0
+add        317 +10.8% ±12.3%   192 +10.5% ±15.7%    68 +18.6% ±23.9%    57  +2.6% ±31.9%          -0.3 ±  9.9            23
+power      314 +10.4% ±12.4%   189 +10.1% ±15.8%    68 +17.7% ±23.8%    57  +2.6% ±31.9%          -1.9 ± 11.2            30
+shin       317 +10.8% ±12.3%   192 +10.5% ±15.7%    68 +18.6% ±23.9%    57  +2.6% ±31.9%          -0.3 ±  9.9            23
+dmw        317 +10.8% ±12.3%   192 +10.5% ±15.7%    68 +18.6% ±23.9%    57  +2.6% ±31.9%          -0.3 ±  9.9            23
+oddsr      317 +10.8% ±12.3%   192 +10.5% ±15.7%    68 +18.6% ±23.9%    57  +2.6% ±31.9%          -0.3 ±  9.9            23
+log        317 +10.8% ±12.3%   192 +10.5% ±15.7%    68 +18.6% ±23.9%    57  +2.6% ±31.9%          -0.3 ±  9.9            23
+
+Rule B without the fitted intercept (weight only), edge > 5%: isolates the de-vig effect from the under tilt
+  mult   1251  +4.3% ±6.2%
+  add    1214  +4.3% ±6.3%
+  power  1212  +4.4% ±6.3%
+  shin   1214  +4.3% ±6.3%
+  dmw    1214  +4.3% ±6.3%
+  oddsr  1212  +4.5% ±6.3%
+  log    1212  +4.5% ±6.3%
