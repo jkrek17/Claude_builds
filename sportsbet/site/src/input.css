@@ -295,6 +295,8 @@ thead th { background: var(--navy); color: #fff; font-size: 0.6875rem; letter-sp
 .rk-ranks th { padding: 0.25rem 0.5rem; }
 .rk-ranks td { padding: 0.25rem 0.5rem; border-top: 1px solid var(--color-base-300); background: #fff; }
 .rk-note { max-width: 22rem; margin: 0.5rem auto 0; font-size: 0.75rem; color: var(--ink-2); }
+.rk-sortnote { margin: 0.5rem 0 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--gold); background: #fff; font-size: 0.8125rem; color: var(--ink-2); }
+.rk-meta b { color: var(--navy); }
 .rk-n { width: 1.75rem; flex: none; font-size: 1.375rem; color: var(--gold); }
 .rk-item:nth-child(-n+3) .rk-n { color: var(--navy); }
 .rk-row .logo { width: 2.25rem; height: 2.25rem; }

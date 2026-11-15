@@ -183,7 +183,7 @@ python3 -m http.server -d dist                # open http://localhost:8000
 
 The Rankings tab lists all 32 teams by power rating, in points against an average team on a neutral
 field. `nflmodel/ratings.py` splits each predicted margin exactly into the two teams' power (results,
-which is an Elo rating, plus passing and rushing offense and defense, plus the quarterback), home
+which is an Elo rating, plus passing and rushing offense and defense, plus the quarterback, which the page shows inside pass offense), home
 field and rest, so the same numbers give the one-line "why" on each game card. Tapping a team opens a
 radar chart of its league ranks, with this week's opponent as an optional overlay.
 

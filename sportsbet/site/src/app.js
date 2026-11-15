@@ -78,14 +78,15 @@ function pickTile(label, pick, prob, push, hit, breakEven) {
   </div>`;
 }
 
-// One line on why the model leans the way it does. The four parts add up to the predicted margin.
+// One line on why the model leans the way it does. The three parts add up to the predicted margin.
 const signed = (v, digits = 1) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(digits);
 function whyLine(c) {
   if (!c.why) return "";
-  const LABELS = { team: "team strength", qb: "quarterback", home: "home field", rest: "rest" };
+  const LABELS = { team: "team strength", home: "home field", rest: "rest" };
+  const parts = { team: c.why.team + (c.why.qb || 0), home: c.why.home, rest: c.why.rest };  // the quarterback counts as part of the team
   const sides = { [c.home]: [], [c.away]: [] };
   for (const key of Object.keys(LABELS)) {
-    const v = c.why[key];
+    const v = parts[key];
     if (v == null || Math.abs(v) < 0.05) continue;
     sides[v > 0 ? c.home : c.away].push(`+${Math.abs(v).toFixed(1)} ${LABELS[key]}`);
   }
@@ -325,7 +326,7 @@ function renderAbout(data) {
 
 // Rankings tab: every team's power rating in points against an average team, and what it is made of.
 let rankSort = "power", rankOpen = null, rankVersus = false, radar = null;
-const RADAR = [["pass_off", "Pass offense"], ["rush_off", "Rush offense"], ["pass_def", "Pass defense"],
+const RADAR = [["passing", "Pass offense"], ["rush_off", "Rush offense"], ["pass_def", "Pass defense"],
                ["rush_def", "Rush defense"], ["qb_form", "QB form"], ["pace", "Pace"]];
 const ordinal = (n) => n + (n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] || "th");
 
@@ -375,8 +376,12 @@ function renderRankings(data) {
     $("rankings").innerHTML = `<p class="lede">Team ratings are not published yet.</p>`;
     return;
   }
-  const SORTS = { power: "Power", pass_off: "Pass offense", rush_off: "Rush offense", pass_def: "Pass defense",
-                  rush_def: "Rush defense", qb: "Quarterback", results: "Results" };
+  // One passing number: the team's pass offense rating with the starting quarterback's adjustment folded in.
+  for (const t of r.teams) t.passing = t.pass_off + t.qb;
+  [...r.teams].sort((a, b) => b.passing - a.passing).forEach((t, i) => { t.passing_rank = i + 1; });
+  const SORTS = { power: "Power", passing: "Pass offense", rush_off: "Rush offense", pass_def: "Pass defense",
+                  rush_def: "Rush defense", results: "Results", qb_form: "QB form" };
+  const isForm = rankSort === "qb_form", show = (v) => signed(v, isForm ? 2 : 1);
   const teams = [...r.teams].sort((a, b) => b[rankSort] - a[rankSort]);
   const top = Math.max(...r.teams.map((t) => Math.abs(t[rankSort])));
   const part = (label, v, on) => `<span class="${on ? "on" : ""}">${label} <b class="num">${signed(v)}</b></span>`;
@@ -389,11 +394,11 @@ function renderRankings(data) {
       ${logo(t.team)}
       <span class="rk-main">
         <span class="rk-name"><span class="display">${TEAMS[t.team] || t.team}</span><span class="rk-rec num">${w}-${l}${ties ? "-" + ties : ""}</span></span>
-        <span class="rk-meta num">${t.qb_name ? `QB ${t.qb_name} · ` : ""}Elo ${Math.round(t.elo)}</span>
-        <span class="rk-bar" role="img" aria-label="${SORTS[rankSort]} ${signed(v)} points"><i class="${v >= 0 ? "pos" : "neg"}" style="width:${width}%"></i></span>
-        <span class="rk-parts">${part("Pass off", t.pass_off, rankSort === "pass_off")}${part("Rush off", t.rush_off, rankSort === "rush_off")}${part("Pass def", t.pass_def, rankSort === "pass_def")}${part("Rush def", t.rush_def, rankSort === "rush_def")}${part("QB", t.qb, rankSort === "qb")}${part("Results", t.results, rankSort === "results")}</span>
+        <span class="rk-meta num">${rankSort === "power" ? "" : `<b>Power #${t.rank}</b> · `}${t.qb_name ? `QB ${t.qb_name} · ` : ""}Elo ${Math.round(t.elo)}</span>
+        <span class="rk-bar" role="img" aria-label="${SORTS[rankSort]} ${show(v)}"><i class="${v >= 0 ? "pos" : "neg"}" style="width:${width}%"></i></span>
+        <span class="rk-parts">${part("Pass off", t.passing, rankSort === "passing")}${part("Rush off", t.rush_off, rankSort === "rush_off")}${part("Pass def", t.pass_def, rankSort === "pass_def")}${part("Rush def", t.rush_def, rankSort === "rush_def")}${part("Results", t.results, rankSort === "results")}</span>
       </span>
-      <span class="rk-power display num ${v >= 0 ? "" : "neg"}">${signed(v)}</span>
+      <span class="rk-power display num ${v >= 0 ? "" : "neg"}">${show(v)}</span>
     </button>${isOpen ? teamProfile(t, r.teams) : ""}</li>`;
   };
   let n = 0;
@@ -402,15 +407,16 @@ function renderRankings(data) {
     <div><h3>${title}</h3><p>${body}</p></div></article>`;
   const hf = r.home_field == null ? "" : ` Home field is currently worth ${r.home_field.toFixed(1)} points.`;
   $("rankings").innerHTML = `
-    <p class="lede">Each team's rating in points against an average team on a neutral field, as of the last game played. The gap between two teams, plus home field, is the model's predicted margin. The small numbers on each row add up to its power. Tap a team for its profile chart.</p>
+    <p class="lede">Each team's rating in points against an average team on a neutral field, as of the last game played. The gap between two teams, plus home field, is the model's predicted margin. The five small numbers on each row add up to its power. Tap a team for its profile chart.</p>
     <div class="pr-chips rk-sorts" role="group" aria-label="Rank by">${Object.entries(SORTS).map(([k, label]) =>
       `<button type="button" class="pr-chip ${k === rankSort ? "on" : ""}" data-sort="${k}" aria-pressed="${k === rankSort}">${label}</button>`).join("")}</div>
+    ${rankSort === "power" ? "" : `<p class="rk-sortnote">${isForm ? "Ordered by how well each starting quarterback has been playing lately: his expected points added per dropback against the league average. This is not in spread points and is not overall strength." : `Ordered by ${SORTS[rankSort].toLowerCase()} only, not by overall strength.`} Each team's power rank is shown under its name.</p>`}
     <ol class="panel rk-list">${teams.map(row).join("")}</ol>
     <h2 class="day">What goes into the rating</h2>
     <div class="grid gap-3 md:grid-cols-2">
     ${item("Results", `An Elo rating, the same idea used for chess and by many NFL power rankings. A team gains points for winning, more for winning big and more for beating a strong opponent, and the loser gives up the same amount. Ratings move a third of the way back to average each off-season. 1500 is average.`)}
-    ${item("Passing and rushing, offense and defense", `Four separate ratings: how much better than expected the team does passing and running, and how much its defense gives up against each, all adjusted for the opponents faced. They come from play-by-play (expected points added), so they see more than the final score. A plus on defense means a good defense. Tap a button above to rank by any one.`)}
-    ${item("Quarterback", `How the team's passing has done in the current starter's games compared with the team's usual level, plus his own recent form per dropback. A backup taking over moves this part straight away.`)}
+    ${item("Passing and rushing, offense and defense", `Four separate ratings: how much better than expected the team does passing and running, and how much its defense gives up against each, all adjusted for the opponents faced. Pass offense is rated with the current starting quarterback, so it drops straight away when a backup takes over. They come from play-by-play (expected points added), so they see more than the final score. A plus on defense means a good defense. Tap a button above to rank by any one.`)}
+    ${item("QB form", `How well the starting quarterback himself has been playing lately, per dropback, against the league average. It already feeds the pass offense number, so it is not added again. Use the QB form button to rank the quarterbacks, or open a team to see where its quarterback stands.`)}
     ${item("In each game", `Add home field and any difference in rest days to the gap in power and you get the predicted margin. Each game card shows that sum on its "Why" line.${hf}`)}
     ${item("How far to trust it", `These ratings come only from results and stats. Injuries other than the starting quarterback are not included. Over ${data.backtest.games.toLocaleString()} test games the betting line predicted margins better than the model did.`, "key")}
     </div>`;
