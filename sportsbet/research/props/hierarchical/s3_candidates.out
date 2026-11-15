@@ -1,0 +1,47 @@
+rec_yds    c1 fixed k=1                  CRPS 16.7135  MAE 24.014  2s
+rec_yds    c1 fixed k=2                  CRPS 16.7135  MAE 24.016  2s
+rec_yds    c1 fixed k=4.5                CRPS 16.7148  MAE 24.019  2s
+rec_yds    c1 fixed k=7                  CRPS 16.7161  MAE 24.021  2s
+rec_yds    c1 fixed k=10                 CRPS 16.7175  MAE 24.023  2s
+rec_yds    c1 k chosen on train          CRPS 16.7158  MAE 24.019  16s
+rec_yds    a  PyMC k per stat+pos        CRPS 16.7154  MAE 24.019  3s
+rec_yds    b  ridge + PyMC mean, sd      CRPS 16.7151  MAE 24.019  2s
+rec_yds    a  Kalman level only          CRPS 17.0041  MAE 24.456  34s
+rec_yds    a  Kalman replaces own avgs   CRPS 16.7242  MAE 24.004  3s
+rec_yds    b  ridge + Kalman mean, sd    CRPS 16.7293  MAE 24.023  3s
+rec_yds    c2 weight varies w/ career    CRPS 16.7189  MAE 24.026  2s
+rec_yds    c2 small/rookie terms         CRPS 16.7251  MAE 24.040  2s
+receptions c1 fixed k=1                  CRPS 1.1816  MAE 1.704  4s
+receptions c1 fixed k=2                  CRPS 1.1814  MAE 1.704  4s
+receptions c1 fixed k=4.5                CRPS 1.1812  MAE 1.704  4s
+receptions c1 fixed k=7                  CRPS 1.1811  MAE 1.703  4s
+receptions c1 fixed k=10                 CRPS 1.1810  MAE 1.703  4s
+receptions c1 k chosen on train          CRPS 1.1811  MAE 1.704  36s
+receptions a  PyMC k per stat+pos        CRPS 1.1814  MAE 1.704  6s
+receptions b  ridge + PyMC mean, sd      CRPS 1.1812  MAE 1.704  5s
+receptions a  Kalman level only          CRPS 1.2006  MAE 1.731  20s
+receptions a  Kalman replaces own avgs   CRPS 1.1830  MAE 1.704  6s
+receptions b  ridge + Kalman mean, sd    CRPS 1.1820  MAE 1.704  5s
+receptions c2 weight varies w/ career    CRPS 1.1816  MAE 1.703  4s
+receptions c2 small/rookie terms         CRPS 1.1817  MAE 1.704  4s
+rush_yds   c1 fixed k=1                  CRPS 17.7278  MAE 25.266  1s
+rush_yds   c1 fixed k=2                  CRPS 17.7252  MAE 25.256  1s
+rush_yds   c1 fixed k=4.5                CRPS 17.7215  MAE 25.248  1s
+rush_yds   c1 fixed k=7                  CRPS 17.7181  MAE 25.243  1s
+rush_yds   c1 fixed k=10                 CRPS 17.7138  MAE 25.241  1s
+rush_yds   c1 k chosen on train          CRPS 17.7245  MAE 25.258  13s
+rush_yds   a  PyMC k per stat+pos        CRPS 17.7140  MAE 25.244  3s
+rush_yds   b  ridge + PyMC mean, sd      CRPS 17.7328  MAE 25.264  2s
+rush_yds   a  Kalman level only          CRPS 18.2653  MAE 26.030  16s
+rush_yds   a  Kalman replaces own avgs   CRPS 17.7194  MAE 25.275  3s
+rush_yds   b  ridge + Kalman mean, sd    CRPS 17.7404  MAE 25.260  3s
+rush_yds   c2 weight varies w/ career    CRPS 17.7633  MAE 25.281  1s
+rush_yds   c2 small/rookie terms         CRPS 17.7448  MAE 25.274  1s
+Traceback (most recent call last):
+  File "/home/user/Claude_builds/sportsbet/research/props/hierarchical/s3_candidates.py", line 276, in <module>
+    test_no_leak(panel)
+    ~~~~~~~~~~~~^^^^^^^
+  File "/home/user/Claude_builds/sportsbet/research/props/hierarchical/s3_candidates.py", line 258, in test_no_leak
+    assert np.allclose(a[col][ok], b[col][ok]), (key, col)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('rec_yds', 'kf_receiving_yards')
