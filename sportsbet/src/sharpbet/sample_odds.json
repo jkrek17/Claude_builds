@@ -1,0 +1,585 @@
+{
+ "now": "2026-11-15T15:00:00Z",
+ "events": [
+  {
+   "id": "sample1",
+   "sport_key": "americanfootball_nfl",
+   "sport_title": "NFL",
+   "commence_time": "2026-11-15T18:00:00Z",
+   "home_team": "Harbor City Admirals",
+   "away_team": "Granite Peak Rams",
+   "bookmakers": [
+    {
+     "key": "pinnacle",
+     "title": "Pinnacle",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Harbor City Admirals",
+         "price": 1.67
+        },
+        {
+         "name": "Granite Peak Rams",
+         "price": 2.32
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Harbor City Admirals",
+         "price": 1.95,
+         "point": -3.0
+        },
+        {
+         "name": "Granite Peak Rams",
+         "price": 1.95,
+         "point": 3.0
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 1.93,
+         "point": 44.5
+        },
+        {
+         "name": "Under",
+         "price": 1.97,
+         "point": 44.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "draftkings",
+     "title": "DraftKings",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Harbor City Admirals",
+         "price": 1.62
+        },
+        {
+         "name": "Granite Peak Rams",
+         "price": 2.48
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Harbor City Admirals",
+         "price": 1.91,
+         "point": -3.0
+        },
+        {
+         "name": "Granite Peak Rams",
+         "price": 1.91,
+         "point": 3.0
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 1.91,
+         "point": 44.5
+        },
+        {
+         "name": "Under",
+         "price": 1.91,
+         "point": 44.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "fanduel",
+     "title": "FanDuel",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Harbor City Admirals",
+         "price": 1.65
+        },
+        {
+         "name": "Granite Peak Rams",
+         "price": 2.36
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Harbor City Admirals",
+         "price": 1.87,
+         "point": -3.0
+        },
+        {
+         "name": "Granite Peak Rams",
+         "price": 2.02,
+         "point": 3.0
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 1.91,
+         "point": 45.5
+        },
+        {
+         "name": "Under",
+         "price": 1.91,
+         "point": 45.5
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sample2",
+   "sport_key": "basketball_nba",
+   "sport_title": "NBA",
+   "commence_time": "2026-11-16T00:30:00Z",
+   "home_team": "Lakeshore Comets",
+   "away_team": "Prairie Wolves",
+   "bookmakers": [
+    {
+     "key": "pinnacle",
+     "title": "Pinnacle",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Lakeshore Comets",
+         "price": 1.45
+        },
+        {
+         "name": "Prairie Wolves",
+         "price": 2.95
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Lakeshore Comets",
+         "price": 1.94,
+         "point": -5.5
+        },
+        {
+         "name": "Prairie Wolves",
+         "price": 1.96,
+         "point": 5.5
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 1.95,
+         "point": 224.5
+        },
+        {
+         "name": "Under",
+         "price": 1.95,
+         "point": 224.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "betmgm",
+     "title": "BetMGM",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Lakeshore Comets",
+         "price": 1.44
+        },
+        {
+         "name": "Prairie Wolves",
+         "price": 2.85
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Lakeshore Comets",
+         "price": 1.91,
+         "point": -5.5
+        },
+        {
+         "name": "Prairie Wolves",
+         "price": 1.91,
+         "point": 5.5
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 2.05,
+         "point": 224.5
+        },
+        {
+         "name": "Under",
+         "price": 1.8,
+         "point": 224.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "draftkings",
+     "title": "DraftKings",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Lakeshore Comets",
+         "price": 1.43
+        },
+        {
+         "name": "Prairie Wolves",
+         "price": 2.9
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Lakeshore Comets",
+         "price": 1.91,
+         "point": -5.5
+        },
+        {
+         "name": "Prairie Wolves",
+         "price": 1.91,
+         "point": 5.5
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 1.91,
+         "point": 224.5
+        },
+        {
+         "name": "Under",
+         "price": 1.91,
+         "point": 224.5
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sample3",
+   "sport_key": "icehockey_nhl",
+   "sport_title": "NHL",
+   "commence_time": "2026-11-16T00:00:00Z",
+   "home_team": "Iron Bay Foxes",
+   "away_team": "Northgate Owls",
+   "bookmakers": [
+    {
+     "key": "pinnacle",
+     "title": "Pinnacle",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Iron Bay Foxes",
+         "price": 1.87
+        },
+        {
+         "name": "Northgate Owls",
+         "price": 2.04
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 2.02,
+         "point": 6.0
+        },
+        {
+         "name": "Under",
+         "price": 1.88,
+         "point": 6.0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "fanduel",
+     "title": "FanDuel",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Iron Bay Foxes",
+         "price": 1.83
+        },
+        {
+         "name": "Northgate Owls",
+         "price": 2.14
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 1.95,
+         "point": 6.0
+        },
+        {
+         "name": "Under",
+         "price": 1.87,
+         "point": 6.0
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "betrivers",
+     "title": "BetRivers",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Iron Bay Foxes",
+         "price": 1.85
+        },
+        {
+         "name": "Northgate Owls",
+         "price": 2.0
+        }
+       ]
+      },
+      {
+       "key": "totals",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Over",
+         "price": 1.98,
+         "point": 6.0
+        },
+        {
+         "name": "Under",
+         "price": 1.85,
+         "point": 6.0
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sample4",
+   "sport_key": "basketball_ncaab",
+   "sport_title": "NCAAB",
+   "commence_time": "2026-11-15T22:00:00Z",
+   "home_team": "Cedar Valley State",
+   "away_team": "Mesa Tech",
+   "bookmakers": [
+    {
+     "key": "pinnacle",
+     "title": "Pinnacle",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Cedar Valley State",
+         "price": 1.25
+        },
+        {
+         "name": "Mesa Tech",
+         "price": 4.3
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Cedar Valley State",
+         "price": 1.95,
+         "point": -8.5
+        },
+        {
+         "name": "Mesa Tech",
+         "price": 1.95,
+         "point": 8.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "williamhill_us",
+     "title": "Caesars",
+     "last_update": "2026-11-15T14:55:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Cedar Valley State",
+         "price": 1.24
+        },
+        {
+         "name": "Mesa Tech",
+         "price": 4.2
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T14:55:00Z",
+       "outcomes": [
+        {
+         "name": "Cedar Valley State",
+         "price": 1.91,
+         "point": -8.5
+        },
+        {
+         "name": "Mesa Tech",
+         "price": 1.98,
+         "point": 8.5
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "key": "betmgm",
+     "title": "BetMGM",
+     "last_update": "2026-11-15T13:10:00Z",
+     "markets": [
+      {
+       "key": "h2h",
+       "last_update": "2026-11-15T13:10:00Z",
+       "outcomes": [
+        {
+         "name": "Cedar Valley State",
+         "price": 1.22
+        },
+        {
+         "name": "Mesa Tech",
+         "price": 6.5
+        }
+       ]
+      },
+      {
+       "key": "spreads",
+       "last_update": "2026-11-15T13:10:00Z",
+       "outcomes": [
+        {
+         "name": "Cedar Valley State",
+         "price": 1.91,
+         "point": -9.0
+        },
+        {
+         "name": "Mesa Tech",
+         "price": 1.91,
+         "point": 9.0
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
