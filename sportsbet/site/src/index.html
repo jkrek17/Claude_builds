@@ -10,37 +10,36 @@
 </head>
 <body class="bg-base-200 text-base-content min-h-screen">
   <main class="mx-auto max-w-4xl px-4 pb-16 pt-4">
-    <header class="hero flex items-end justify-between gap-4 px-5 py-7 text-white">
+    <header class="hero flex items-end justify-between gap-4 text-white">
       <div>
-        <p class="eyebrow">NFL model <span id="season"></span></p>
-        <h1 class="display mt-1 text-6xl" id="title">Loading</h1>
-        <p class="mt-1 text-sm text-white/80" id="updated"></p>
+        <p class="eyebrow"><span class="kick">NFL <span id="season"></span> · </span><span id="updated"></span></p>
+        <h1 class="display mt-1" id="title">Loading</h1>
       </div>
       <label class="shrink-0">
         <span class="sr-only">Week</span>
-        <select id="week" class="select select-sm w-28 border-0 bg-white text-base-content"></select>
+        <select id="week" class="select h-11 w-28 border-0 bg-white text-base-content"></select>
       </label>
     </header>
 
-    <p class="panel notice mt-4 px-4 py-3 text-sm leading-relaxed" id="notice"></p>
+    <details class="panel notice mt-3 text-sm leading-relaxed" id="notice"></details>
 
-    <nav class="tabs-flat mt-5 grid grid-cols-5" role="tablist" id="tabs">
-      <button role="tab" data-tab="picks">Picks</button>
-      <button role="tab" data-tab="props">Props</button>
-      <button role="tab" data-tab="rankings">Rankings</button>
-      <button role="tab" data-tab="record">Record</button>
-      <button role="tab" data-tab="about">Guide</button>
+    <nav class="tabs-flat mt-3 grid grid-cols-5" role="tablist" id="tabs">
+      <button role="tab" id="tab-picks" aria-controls="picks" data-tab="picks">Picks</button>
+      <button role="tab" id="tab-props" aria-controls="props" data-tab="props">Props</button>
+      <button role="tab" id="tab-rankings" aria-controls="rankings" data-tab="rankings">Rankings</button>
+      <button role="tab" id="tab-record" aria-controls="record" data-tab="record">Record</button>
+      <button role="tab" id="tab-about" aria-controls="about" data-tab="about">Guide</button>
     </nav>
 
-    <section id="picks" class="mt-6" role="tabpanel"></section>
-    <section id="props" class="mt-6" role="tabpanel" hidden></section>
-    <section id="rankings" class="mt-6" role="tabpanel" hidden></section>
-    <section id="record" class="mt-6" role="tabpanel" hidden></section>
-    <section id="about" class="mt-6" role="tabpanel" hidden></section>
+    <section id="picks" class="mt-4" role="tabpanel" aria-labelledby="tab-picks"></section>
+    <section id="props" class="mt-4" role="tabpanel" aria-labelledby="tab-props" hidden></section>
+    <section id="rankings" class="mt-4" role="tabpanel" aria-labelledby="tab-rankings" hidden></section>
+    <section id="record" class="mt-4" role="tabpanel" aria-labelledby="tab-record" hidden></section>
+    <section id="about" class="mt-4" role="tabpanel" aria-labelledby="tab-about" hidden></section>
 
     <footer class="mt-10 text-center text-xs faint leading-relaxed">
       Predictions, not betting advice. Bet only what you can afford to lose.<br>
-      If gambling stops being fun, call <a class="underline" href="tel:18004262537">1-800-GAMBLER</a>.
+      If gambling stops being fun, call <a class="underline tap" href="tel:18004262537">1-800-GAMBLER</a>.
     </footer>
   </main>
   <script src="chart.js"></script>

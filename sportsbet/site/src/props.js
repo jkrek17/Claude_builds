@@ -7,11 +7,15 @@ const Props = (() => {
   const ORDER = ["pass_yds", "pass_tds", "pass_att", "pass_cmp", "rush_yds", "rec_yds", "receptions", "any_td"];
   const SHORT = { pass_yds: "Pass", pass_tds: "Pass TD", pass_att: "Att", pass_cmp: "Cmp", rush_yds: "Rush",
                   rec_yds: "Rec", receptions: "Catches", any_td: "TD" };
+  const CHIP = { pass_yds: "Pass yds", pass_tds: "Pass TDs", pass_att: "Attempts", pass_cmp: "Completions", rush_yds: "Rush yds",
+                 rec_yds: "Rec yds", receptions: "Catches", any_td: "TD" };
   const HEADLINE = { QB: "pass_yds", RB: "rush_yds", WR: "rec_yds", TE: "rec_yds" };
   const POSITIONS = ["QB", "RB", "WR", "TE"];
   const STORE = "nflmodel-props-lines";
 
   let data, site, players = new Map(), saved = { lines: {} }, game = "all", query = "", open = null;
+  let market = null;  // which prop of the open player is showing
+  let unfolded = new Set();  // games whose players are showing; the rest are folded to a heading
   let view = "players", rankAll = false;  // "players" lists every prop by game, "td" ranks anytime touchdown chances
   const RANK_SHOWN = 25;
 
@@ -143,16 +147,22 @@ const Props = (() => {
     }
     const H = Math.max(34, tallest * STEP + 8), base = H - 6;
     const marks = dots.map((d) => `<circle cx="${d.bin * STEP}" cy="${base - R - (d.level - 1) * STEP}" r="${R - 0.5}" class="${d.over ? "over" : "under"}"/>`).join("");
-    const lx = x(line);
+    const lx = x(line), mx = x(row.median);
     const count = dots.filter((d) => d.over).length;
-    return `<svg viewBox="0 0 ${W} ${H + 14}" class="pr-dots" role="img" aria-label="${count} of 20 model outcomes are over ${fmt(line)}">
-      <line x1="${PAD}" x2="${W - PAD}" y1="${base}" y2="${base}" class="axis"/>${marks}
-      <line x1="${lx}" x2="${lx}" y1="0" y2="${base + 3}" class="mark"/>
-      <text x="${PAD}" y="${H + 11}" class="tick">${Math.round(lo)}</text>
-      <text x="${x(row.median)}" y="${H + 11}" text-anchor="middle" class="tick">median ${Math.round(row.median)}</text>
-      <text x="${W - PAD}" y="${H + 11}" text-anchor="end" class="tick">${Math.round(hi)}</text>
+    // Round axis numbers, a small mark for the median, and the line labelled as the line.
+    const span = hi - lo, unit = [5, 10, 20, 25, 50, 100, 200].find((u) => span / u <= 5) || 500;
+    let ticks = "";
+    for (let v = Math.ceil(lo / unit) * unit; v <= hi; v += unit) {
+      ticks += `<line x1="${x(v)}" x2="${x(v)}" y1="${base}" y2="${base + 3}" class="axis"/><text x="${x(v)}" y="${H + 17}" text-anchor="middle" class="tick">${v}</text>`;
+    }
+    const anchor = lx < 46 ? "start" : lx > W - 46 ? "end" : "middle";
+    return `<svg viewBox="0 -14 ${W} ${H + 34}" class="pr-dots" role="img" aria-label="${count} of 20 model outcomes are over ${fmt(line)}. The median is ${Math.round(row.median)}.">
+      <line x1="${PAD}" x2="${W - PAD}" y1="${base}" y2="${base}" class="axis"/>${ticks}${marks}
+      <path d="M${mx - 4} ${base + 9}h8l-4 -6z" class="med"/>
+      <line x1="${lx}" x2="${lx}" y1="-2" y2="${base + 3}" class="mark"/>
+      <text x="${lx}" y="-5" text-anchor="${anchor}" class="tick lab">line ${fmt(line)}</text>
     </svg>
-    <p class="pr-cap">Each dot is 5% of the model's outcomes. ${count} of 20 land over ${fmt(line)}.</p>`;
+    <p class="pr-cap">Each dot is 5% of the model's outcomes: filled dots are over the line, hollow dots under. ${count} of 20 land over ${fmt(line)}. The small triangle under the axis marks the median, ${Math.round(row.median)}.</p>`;
   }
 
   // One bar per whole number, coloured by which side of the line it falls on.
@@ -194,7 +204,7 @@ const Props = (() => {
     if (row.prop === "any_td") {
       const p = row.chance != null ? row.chance : 1 - row.pmf[0], pct = Math.round(p * 100), lit = Math.round(p * 10);
       return `<section class="pr-block" data-key="${k}">
-        <div class="pr-head"><h4>${esc(label(row.prop))}</h4></div>
+        <div class="pr-head"><h3>${esc(label(row.prop))}</h3></div>
         <div class="pr-td"><span class="display num pr-pct">${show(pct)}</span>
           <span class="pr-ten" aria-hidden="true">${Array.from({ length: 10 }, (_, i) => `<i class="${i < lit ? "on" : ""}"></i>`).join("")}</span></div>
         <p class="pr-cap">Scores in about ${lit} of 10 games like this one, when active.</p>
@@ -204,20 +214,20 @@ const Props = (() => {
     // The props model marks players whose results spread less or more than usual for their workload.
     const NOTE = { steady: "Results bunch closer to the median than usual", "boom or bust": "Results spread wider than usual" };
     const tag = NOTE[row.consistency] ? ` <span class="chip ${row.consistency === "steady" ? "" : "chip-gold"}" title="${NOTE[row.consistency]}">${esc(row.consistency)}</span>` : "";
-    const presets = isCount(row) ? "" : `<div class="pr-presets">${[0.25, 0.5, 0.75].map((p) => {
+    const presets = isCount(row) ? "" : `<div class="pr-presets" role="group" aria-label="Quick lines"><span class="eyebrow">Try</span>${[0.25, 0.5, 0.75].map((p) => {
       const v = Math.floor(quantile(p, row.q, data.probs)) + 0.5;
       return `<button type="button" data-act="preset" data-value="${v}">${fmt(v)}</button>`;
     }).join("")}</div>`;
     return `<section class="pr-block" data-key="${k}">
       <div class="pr-head">
-        <h4>${esc(label(row.prop))}${tag}</h4>
-        <p class="num">median ${Math.round(row.median)} · most games ${Math.round(Math.max(0, row.low))} to ${Math.round(row.high)}</p>
+        <h3>${esc(label(row.prop))}${tag}</h3>
+        <p class="num">median ${Math.round(row.median)} · 8 in 10 games land ${Math.round(Math.max(0, row.low))} to ${Math.round(row.high)}</p>
       </div>
       <div class="pr-entry">
         <button type="button" class="pr-step" data-act="step" data-by="-1" aria-label="Lower the line">−</button>
         <input type="text" inputmode="decimal" autocomplete="off" class="pr-line num" value="${fmt(line)}" aria-label="${esc(label(row.prop))} line for ${esc(row.player)}">
         <button type="button" class="pr-step" data-act="step" data-by="1" aria-label="Raise the line">+</button>
-        <button type="button" class="pr-pin ${e.pinned ? "on" : ""}" data-act="pin" aria-pressed="${!!e.pinned}">${e.pinned ? "Saved" : "Save"}</button>
+        <button type="button" class="pr-pin ${e.pinned ? "on" : ""}" data-act="pin" aria-pressed="${!!e.pinned}">${e.pinned ? "Saved" : "Save line"}</button>
       </div>
       ${presets}
       <div data-role="result" aria-live="polite">${result(row, line)}</div>
@@ -251,7 +261,15 @@ const Props = (() => {
       <div class="pr-body">${isOpen ? body(p) : ""}</div>
     </article>`;
   }
-  const body = (p) => ORDER.filter((prop) => p.rows[prop]).map((prop) => propBlock(p.rows[prop])).join("");
+  // One prop at a time, with a row of buttons to switch, so an open player is one screen and not five.
+  function body(p) {
+    const props = ORDER.filter((prop) => p.rows[prop]);
+    const head = HEADLINE[p.position];
+    if (!props.includes(market)) market = props.includes(head) ? head : props[0];
+    const chips = props.length < 2 ? "" : `<div class="pr-chips pr-markets" role="group" aria-label="Prop">${props.map((prop) =>
+      `<button type="button" class="pr-chip ${prop === market ? "on" : ""}" data-act="market" data-prop="${prop}" aria-pressed="${prop === market}">${esc(CHIP[prop] || SHORT[prop] || label(prop))}${entry(p.rows[prop]).pinned ? " ✓" : ""}</button>`).join("")}</div>`;
+    return chips + propBlock(p.rows[market]);
+  }
 
   function checked() {
     const rows = Object.entries(saved.lines).filter(([, e]) => e.pinned).map(([k]) => {
@@ -310,28 +328,31 @@ const Props = (() => {
     const root = document.getElementById("props"), list = games();
     const made = new Date(data.generated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
     const chip = (id, text, dim) => `<button type="button" class="pr-chip ${game === id ? "on" : ""} ${dim ? "dim" : ""}" data-act="game" data-game="${id}">${text}</button>`;
+    if (!unfolded.size && list.length) unfolded.add((list.find((g) => !g.final) || list[0]).id);  // start with the next game open
     root.innerHTML = `
-      <p class="panel notice px-4 py-3 text-sm leading-relaxed"><strong class="text-primary">Model only, no sportsbook lines.</strong>
-        <span class="muted">Type the line your book shows and the page gives the model's chance. A book's line usually sits near the model's median, so expect numbers close to 50%. This is not proof of an edge. Players may be inactive: check before you bet.</span></p>
       <div data-role="checked">${checked()}</div>
       <div class="pr-tools">
         <label class="sr-only" for="pr-search">Search for a player or team</label>
         <input id="pr-search" type="search" class="pr-search" placeholder="Player or team" autocomplete="off" value="${esc(query)}">
+      </div>
+      <div class="pr-filters">
         <div class="pr-views" role="group" aria-label="View">
           <button type="button" class="${view === "players" ? "on" : ""}" data-act="view" data-view="players" aria-pressed="${view === "players"}">All props</button>
           <button type="button" class="${view === "td" ? "on" : ""}" data-act="view" data-view="td" aria-pressed="${view === "td"}">Touchdown ranking</button>
         </div>
         <div class="pr-chips" role="group" aria-label="Game">${chip("all", "All games")}${list.map((g) => chip(g.id, `${g.away} @ ${g.home}`, g.final)).join("")}</div>
       </div>
-      <p class="lede mt-3">Week ${data.week} props, updated ${made}. <span data-role="hint">Tap a player, then set the line. Players marked steady or boom or bust have results that spread less or more than usual; search "steady" or "boom" to list them.</span></p>
+      <details class="panel notice pr-notice text-sm leading-relaxed"><summary><span><strong class="text-primary">Model only, no sportsbook lines.</strong> <span class="muted" data-role="hint">Tap a game, then a player, then set the line.</span></span></summary>
+        <p class="muted">Week ${data.week} props, updated ${made}. Type the line your book shows and the page gives the model's chance. A book's line usually sits near the model's median, so expect numbers close to 50%. This is not proof of an edge. Players may be inactive: check before you bet. Players marked steady or boom or bust have results that spread less or more than usual; search "steady" or "boom" to list them.</p></details>
       <div data-role="rank" hidden></div>
       ${list.map((g) => {
         const day = window.dayLabel ? window.dayLabel(g.day) : g.day, time = g.time && window.kickoff ? " · " + window.kickoff(g.time) : "";
         const group = [...players.values()].filter((p) => p.game === g.id)
           .sort((a, b) => POSITIONS.indexOf(a.position) - POSITIONS.indexOf(b.position) || (a.team === g.away ? -1 : 1) - (b.team === g.away ? -1 : 1) || b.weight - a.weight);
         return `<section class="pr-game" data-game="${g.id}">
-          <h2 class="day">${g.away} @ ${g.home}<span class="pr-when">${day}${time}</span></h2>
-          <div class="grid grid-cols-1 gap-2 md:grid-cols-2">${group.map(playerRow).join("")}</div>
+          <h2 class="day"><button type="button" class="pr-fold" data-act="fold" data-game="${g.id}" aria-expanded="false">
+            <span class="pr-match">${g.away} @ ${g.home}</span><span class="pr-when">${day}${time}${g.final ? " · final" : ""} · <span class="pr-count num"></span></span></button></h2>
+          <div class="pr-gbody grid grid-cols-1 gap-2 md:grid-cols-2">${group.map(playerRow).join("")}</div>
         </section>`;
       }).join("")}
       <p class="lede pr-empty" hidden>No player matches that search.</p>
@@ -351,8 +372,8 @@ const Props = (() => {
     }).join("");
     return `<h2 class="day">How reliable is it?</h2>
       <p class="lede">Tested on ${data.backtest_seasons ? `the ${data.backtest_seasons[0]} to ${data.backtest_seasons[1]} seasons` : "past seasons"} without looking ahead. The "most games" range should hold about 80% of results.</p>
-      <div class="panel overflow-x-auto"><table class="table table-sm num"><thead><tr><th>Prop</th><th class="text-right">Games</th>
-        <th class="text-right">Average miss</th><th class="text-right">Player's own average</th><th class="text-right">Range held</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      <div class="panel overflow-x-auto" tabindex="0" role="region" aria-label="How reliable each prop is"><table class="table table-sm num"><thead><tr><th scope="col">Prop</th><th scope="col" class="text-right">Games</th>
+        <th scope="col" class="text-right">Model's miss</th><th scope="col" class="text-right">Miss using his average</th><th scope="col" class="text-right">Range held</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   function filter() {
@@ -374,6 +395,12 @@ const Props = (() => {
       });
       section.hidden = !shown;
       any = any || shown > 0;
+      // Folded unless picked: a search or a single game always shows its players.
+      const openNow = words.length > 0 || game !== "all" || unfolded.has(section.dataset.game);
+      section.querySelector(".pr-gbody").hidden = !openNow;
+      const fold = section.querySelector(".pr-fold");
+      fold.setAttribute("aria-expanded", String(openNow));
+      fold.querySelector(".pr-count").textContent = `${shown} player${shown === 1 ? "" : "s"}`;
     });
     root.querySelector(".pr-empty").hidden = any || td;
   }
@@ -403,6 +430,7 @@ const Props = (() => {
     const root = document.getElementById("props");
     const was = open && root.querySelector(`.pr-player[data-player="${CSS.escape(open)}"]`);
     open = open === id ? null : id;
+    market = null;
     if (was) was.outerHTML = playerRow(players.get(was.dataset.player));
     const el = open && root.querySelector(`.pr-player[data-player="${CSS.escape(open)}"]`);
     if (el) {
@@ -411,6 +439,8 @@ const Props = (() => {
       if (scroll && now) now.scrollIntoView({ block: "start", behavior: "smooth" });
     }
     filter();
+    const btn = root.querySelector(`.pr-player[data-player="${CSS.escape(id)}"] .pr-row`);
+    if (btn && !scroll && document.activeElement === document.body) btn.focus({ preventScroll: true });
   }
 
   function onClick(event) {
@@ -420,20 +450,38 @@ const Props = (() => {
     if (act === "toggle") return toggle(el.closest(".pr-player").dataset.player);
     if (act === "game") { game = el.dataset.game; document.querySelectorAll(".pr-chip").forEach((c) => c.classList.toggle("on", c.dataset.game === game)); return filter(); }
     if (act === "view") { view = el.dataset.view; rankAll = false; return filter(); }
+    if (act === "market") {
+      market = el.dataset.prop;
+      const card = el.closest(".pr-player");
+      card.querySelector(".pr-body").innerHTML = body(players.get(card.dataset.player));
+      const on = card.querySelector(".pr-markets .on");
+      on.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return on.focus({ preventScroll: true });
+    }
+    if (act === "fold") {
+      const id = el.dataset.game;
+      if (game !== "all" || query.trim()) return;  // already showing everything that matches
+      unfolded.has(id) ? unfolded.delete(id) : unfolded.add(id);
+      return filter();
+    }
     if (act === "rankall") { rankAll = true; return filter(); }
     if (act === "goto") {
       game = "all"; query = ""; view = "players";
       document.getElementById("pr-search").value = "";
       document.querySelectorAll(".pr-chip").forEach((c) => c.classList.toggle("on", c.dataset.game === "all"));
       if (open === el.dataset.player) open = null;
+      unfolded.add(players.get(el.dataset.player).game);
       return toggle(el.dataset.player, true);
     }
     if (act === "unpin") {
       const [id, prop] = el.dataset.key.split("|"), row = players.get(id).rows[prop];
       setEntry(row, { pinned: false });
       const block = document.querySelector(`.pr-block[data-key="${CSS.escape(el.dataset.key)}"]`);
-      if (block) { const pin = block.querySelector(".pr-pin"); pin.classList.remove("on"); pin.textContent = "Save"; pin.setAttribute("aria-pressed", "false"); }
-      document.querySelector('#props [data-role="checked"]').innerHTML = checked();
+      if (block) { const pin = block.querySelector(".pr-pin"); pin.classList.remove("on"); pin.textContent = "Save line"; pin.setAttribute("aria-pressed", "false"); }
+      const box = document.querySelector('#props [data-role="checked"]');
+      box.innerHTML = checked();
+      // Keep keyboard focus: the next saved line, or the search box when none are left.
+      (box.querySelector('[data-act="unpin"]') || document.getElementById("pr-search")).focus({ preventScroll: true });
       return;
     }
     const { block, row } = rowOf(el);
@@ -445,7 +493,7 @@ const Props = (() => {
     } else if (act === "pin") {
       const pinned = !entry(row).pinned;
       setEntry(row, { pinned, line: lineFor(row) });
-      el.classList.toggle("on", pinned); el.textContent = pinned ? "Saved" : "Save"; el.setAttribute("aria-pressed", String(pinned));
+      el.classList.toggle("on", pinned); el.textContent = pinned ? "Saved" : "Save line"; el.setAttribute("aria-pressed", String(pinned));
       document.querySelector('#props [data-role="checked"]').innerHTML = checked();
     }
   }
@@ -455,7 +503,19 @@ const Props = (() => {
     const el = event.target;
     if (el.id === "pr-search") {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => { query = el.value; filter(); }, 120);
+      searchTimer = setTimeout(() => {
+        query = el.value;
+        const root = document.getElementById("props"), searching = !!query.trim();
+        root.classList.toggle("searching", searching);
+        filter();
+        if (!searching) return;
+        // Bring the results right under the search box, and open the player if only one matches.
+        const hits = [...root.querySelectorAll(".pr-player")].filter((p) => !p.hidden);
+        if (view === "players" && hits.length === 1 && open !== hits[0].dataset.player) toggle(hits[0].dataset.player);
+        const tools = root.querySelector(".pr-tools"), first = [...root.querySelectorAll(".pr-game")].find((g) => !g.hidden) || root.querySelector(".pr-empty");
+        const under = document.getElementById("tabs").offsetHeight + tools.offsetHeight + 8;
+        scrollTo(0, Math.max(0, first.getBoundingClientRect().top + scrollY - under));
+      }, 160);
       return;
     }
     const { block, row } = rowOf(el);

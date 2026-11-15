@@ -71,10 +71,11 @@ function side(abbr, picked, align) {
 function pickTile(label, pick, prob, push, hit, breakEven) {
   if (!pick) return `<div class="pick empty"><p class="eyebrow">${label}</p><p class="pick-main faint">No line yet</p></div>`;
   const clears = prob > breakEven;
-  return `<div class="pick ${clears ? "clears" : ""}">
+  return `<div class="pick ${clears ? "clears" : "tossup"}">
     <p class="eyebrow flex items-center justify-between"><span>${label}</span>${mark(hit)}</p>
     <p class="pick-main">${pick}</p>
-    <p class="num text-xs muted">${pct(prob)} chance${push >= 0.005 ? ` · push ${pct(push)}` : ""}</p>
+    <p class="num text-xs muted">${pct(prob)} chance${push >= 0.005 ? `<br>push ${pct(push)}` : ""}</p>
+    <p class="pick-tag">${clears ? "Model lean" : "Toss-up"}</p>
   </div>`;
 }
 
@@ -83,16 +84,21 @@ const signed = (v, digits = 1) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d
 function whyLine(c) {
   if (!c.why) return "";
   const LABELS = { team: "team strength", home: "home field", rest: "rest" };
-  const parts = { team: c.why.team + (c.why.qb || 0), home: c.why.home, rest: c.why.rest };  // the quarterback counts as part of the team
+  // The quarterback counts as part of the team. Team strength is shown as what is left after the
+  // rounded home field and rest, so the numbers on the line add up to the margin shown.
+  const r1 = (v) => Math.round((v || 0) * 10) / 10;
+  const parts = { home: r1(c.why.home), rest: r1(c.why.rest) };
+  parts.team = r1(r1(c.pred_margin) - parts.home - parts.rest);
   const sides = { [c.home]: [], [c.away]: [] };
   for (const key of Object.keys(LABELS)) {
     const v = parts[key];
     if (v == null || Math.abs(v) < 0.05) continue;
-    sides[v > 0 ? c.home : c.away].push(`+${Math.abs(v).toFixed(1)} ${LABELS[key]}`);
+    sides[v > 0 ? c.home : c.away].push(`+${Math.abs(v).toFixed(1)} pts ${LABELS[key]}`);
   }
   const lead = c.pred_margin >= 0 ? c.home : c.away, other = lead === c.home ? c.away : c.home;
   const text = [lead, other].filter((t) => sides[t].length).map((t) => `<strong>${t}</strong> ${sides[t].join(", ")}`).join(" · ");
-  return text ? `<p class="why num"><span class="eyebrow">Why</span> ${text}</p>` : "";
+  const sum = `<span class="why-sum">= ${lead} by ${Math.abs(r1(c.pred_margin)).toFixed(1)}</span>`;
+  return text ? `<p class="why num"><span class="eyebrow">Why</span> ${text} ${sum}</p>` : "";
 }
 
 function gameCard(c, breakEven, index) {
@@ -109,7 +115,7 @@ function gameCard(c, breakEven, index) {
   const score = (away, home, digits) => `<span class="${homePicked ? "dim" : ""}">${away.toFixed(digits)}</span><span class="dash">–</span><span class="${homePicked ? "" : "dim"}">${home.toFixed(digits)}</span>`;
   const center = c.final
     ? `<p class="big num"><span>${c.away_score}</span><span class="dash">–</span><span>${c.home_score}</span></p>
-       <p class="num text-xs muted">model ${c.pred_away_score.toFixed(1)}–${c.pred_home_score.toFixed(1)}</p>`
+       <p class="eyebrow num">Model ${c.pred_away_score.toFixed(1)}–${c.pred_home_score.toFixed(1)}</p>`
     : `<p class="big num">${score(c.pred_away_score, c.pred_home_score, 1)}</p>
        <p class="eyebrow">Predicted</p>`;
   const lead = c.pred_margin >= 0 ? c.home : c.away;
@@ -117,17 +123,10 @@ function gameCard(c, breakEven, index) {
     `Model margin: ${lead} by ${Math.abs(c.pred_margin).toFixed(1)}` + (c.spread_line == null ? "" : `, ${c.ats_gap.toFixed(1)} pts from the line`),
     `Model total: ${c.pred_total.toFixed(1)}` + (c.total_line == null ? "" : `, ${c.ou_gap.toFixed(1)} pts from the line of ${c.total_line}`),
     market == null ? "" : `Market gives ${c.ml_pick} a ${pct(market, 0)} chance; the model says ${pct(c.ml_pick_prob, 0)}`,
+    c.spread_line == null ? "" : `In testing, a gap between the model and the line did not pick winners more than half the time. That is why a spread or total chance stays near 50% even when the model's score looks far from the line`,
   ].filter(Boolean);
-  return `<article class="panel game" style="--away:${color(c.away)};--home:${color(c.home)};--i:${index}" tabindex="0">
-    <div class="strip"></div>
-    <div class="p-4">
-      <div class="flex items-center justify-between eyebrow"><span>${c.final ? "Final" : kickoff(c.gametime)}</span><span>${c.ml_pick} to win ${mark(c.ml_hit)}</span></div>
-      <div class="matchup">
-        ${side(c.away, !homePicked, "left")}
-        <div class="center">${center}</div>
-        ${side(c.home, homePicked, "right")}
-      </div>
-      <div class="odds num"><span class="${homePicked ? "muted" : "font-semibold"}">${100 - Math.round(100 * c.home_win_prob)}%</span><span class="eyebrow">Model win chance</span><span class="${homePicked ? "font-semibold" : "muted"}">${pct(c.home_win_prob, 0)}</span></div>
+  const graded = (label, pick, hit) => (pick ? `<span>${label} ${pick} ${mark(hit)}</span>` : "");
+  const inner = `<div class="odds num"><span class="${homePicked ? "muted" : "font-semibold"}">${100 - Math.round(100 * c.home_win_prob)}%</span><span class="eyebrow">Model win chance</span><span class="${homePicked ? "font-semibold" : "muted"}">${pct(c.home_win_prob, 0)}</span></div>
       <div class="split" role="img" aria-label="Model win chance: ${c.away} ${100 - Math.round(100 * c.home_win_prob)}%, ${c.home} ${pct(c.home_win_prob, 0)}">
         <div class="bar" style="width:${(100 * awayProb).toFixed(1)}%;background:var(--away)"></div>
         <div class="bar" style="width:${(100 * c.home_win_prob).toFixed(1)}%;background:var(--home)"></div>
@@ -137,20 +136,29 @@ function gameCard(c, breakEven, index) {
         ${pickTile("Spread", c.ats_pick, c.ats_prob, c.ats_push, c.ats_hit, breakEven)}
         ${pickTile("Total", c.ou_pick, c.ou_prob, c.ou_push, c.ou_hit, breakEven)}
       </div>
-      ${chips.length ? `<div class="mt-3 flex flex-wrap gap-2">${chips.join("")}</div>` : ""}
-      <details class="more">
-        <summary>The numbers behind it</summary>
-        <ul>${detail.map((d) => `<li>${d}</li>`).join("")}</ul>
-      </details>
+      ${chips.length ? `<div class="mt-3 flex flex-wrap gap-2">${chips.join("")}</div>` : ""}`;
+  const list = `<ul>${detail.map((d) => `<li>${d}</li>`).join("")}</ul>`;
+  return `<article class="panel game ${c.final ? "final" : ""}" id="g-${c.game_id}" style="--away:${color(c.away)};--home:${color(c.home)};--i:${index}">
+    <div class="strip"></div>
+    <div class="p-4">
+      <div class="flex items-center justify-between eyebrow"><span>${c.final ? "Final" : kickoff(c.gametime)}</span><span>${c.ml_pick} to win ${mark(c.ml_hit)}</span></div>
+      <div class="matchup">
+        ${side(c.away, !homePicked, "left")}
+        <div class="center">${center}</div>
+        ${side(c.home, homePicked, "right")}
+      </div>
+      ${c.final ? `<p class="graded num">${graded("Spread", c.ats_pick, c.ats_hit)}${graded("Total", c.ou_pick, c.ou_hit)}</p>
+      <details class="more"><summary>The picks and the numbers</summary>${inner}${list}</details>`
+      : `${inner}<details class="more"><summary>The numbers behind it</summary>${list}</details>`}
     </div>
   </article>`;
 }
 
 function tile(label, pair, accent) {
-  return `<div class="panel tile px-3 py-3 text-center" style="--accent:var(${accent})">
-    <p class="eyebrow">${label}</p>
-    <p class="num display mt-1 text-3xl">${pair[1] ? rec(pair) : "0-0"}</p>
-    <p class="num text-xs muted">${pair[1] ? pct(rate(pair)) : "no games yet"}</p>
+  return `<div class="tile" style="--accent:var(${accent})">
+    <span class="eyebrow">${label}</span>
+    <span class="num display">${pair[1] ? rec(pair) : "0-0"}</span>
+    <span class="num rate">${pair[1] ? pct(rate(pair), 0) : ""}</span>
   </div>`;
 }
 
@@ -159,21 +167,24 @@ function renderPicks(data, week) {
   const days = [...new Set(cards.map((c) => c.gameday))];
   const noLines = cards.length && cards.every((c) => !c.ats_pick && !c.ou_pick);
   $("picks").innerHTML = `
-    <p class="eyebrow mb-2">${data.season} season so far</p>
-    <div class="grid grid-cols-3 gap-2">
+    <p class="eyebrow mb-1">The model's ${data.season} record</p>
+    <div class="panel season" role="group" aria-label="${data.season} season so far: record on winners, against the spread and on totals">
       ${tile("Winners", data.record.su, "--series-3")}${tile("Spread", data.record.ats, "--series-1")}${tile("Totals", data.record.ou, "--series-2")}
     </div>
+    ${cards.length > 3 ? `<div class="jumpbar"><div class="pr-chips" role="group" aria-label="Jump to a game">${cards.map((c) =>
+      `<button type="button" class="pr-chip ${c.final ? "dim" : ""}" data-jump="g-${c.game_id}">${c.away} @ ${c.home}</button>`).join("")}</div></div>` : ""}
+    ${noLines ? "" : `<p class="lede picks-note">Why near 50%? In testing, the model's gap from the line did no better than a coin flip.</p>`}
     ${noLines ? `<p class="mt-6 text-sm muted">No betting lines are posted for this week yet, so only scores and winners are shown.</p>` : ""}
     ${days.map((day) => `
       <h2 class="day">${dayLabel(day)}</h2>
       <div class="grid gap-4 md:grid-cols-2">${cards.filter((c) => c.gameday === day).map((c, i) => gameCard(c, data.break_even, i)).join("")}</div>`).join("")}
-    <p class="mt-6 text-xs faint leading-relaxed">The percentage beside a spread or total pick is the estimated chance it wins if it does not push.
-      It is shown in bold only when it clears the ${pct(data.break_even)} needed to break even at -110.</p>`;
+    <p class="mt-6 text-xs faint leading-relaxed">The percentage under a spread or total pick is the estimated chance it wins if it does not push.
+      A pick is greyed out as a toss-up unless that chance clears the ${pct(data.break_even)} needed to break even when you bet $110 to win $100, the usual price. A model lean is still not a proven edge.</p>`;
 }
 
 function recordTable(head, rows) {
   return `<div class="panel overflow-x-auto"><table class="table table-sm num">
-    <thead><tr>${head.map((h, i) => `<th class="${i ? "text-right" : ""}">${h}</th>`).join("")}</tr></thead>
+    <thead><tr>${head.map((h, i) => `<th scope="col" class="${i ? "text-right" : ""}">${h}</th>`).join("")}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${r.map((v, i) => `<td class="${i ? "text-right" : ""}">${v}</td>`).join("")}</tr>`).join("")}</tbody>
   </table></div>`;
 }
@@ -191,7 +202,7 @@ function meter(pair, accent) {
 function duel(label, note, model, line, format, lowerWins) {
   const modelWins = lowerWins ? model < line : model > line;
   const cell = (name, value, wins) => `<div class="duel-cell ${wins ? "wins" : ""}">
-    <p class="eyebrow">${name}</p><p class="display num text-3xl">${format(value)}</p>${wins ? `<p class="tag">Closer</p>` : ""}</div>`;
+    <p class="eyebrow">${name}</p><p class="display num text-3xl">${format(value)}</p>${wins ? `<p class="tag">${lowerWins ? "Smaller miss" : "More right"}</p>` : ""}</div>`;
   return `<div class="panel duel">
     <div class="duel-head"><h3>${label}</h3><p>${note}</p></div>
     <div class="grid grid-cols-2">${cell("Model", model, modelWins)}${cell("Closing line", line, !modelWins)}</div>
@@ -207,8 +218,8 @@ function gauge(label, pair, breakEven, accent) {
       <p class="num text-sm muted">${rec(pair)}</p>
     </div>
     <div class="gauge-track" role="img" aria-label="${label}: ${pct(r)}, break-even ${pct(breakEven)}">
-      <span class="fill" style="width:${pos(r)}%;background:var(${accent})"></span>
       <span class="mark" style="left:${pos(breakEven)}%"><i>needs ${pct(breakEven)}</i></span>
+      <span class="val" style="left:${pos(r)}%;background:var(${accent})"></span>
     </div>
     <div class="flex justify-between text-xs faint num"><span>40%</span><span>60%</span></div>
   </div>`;
@@ -221,15 +232,15 @@ function renderRecord(data) {
     <span class="wk display">${label}</span>${meter(w.su, "--series-3")}${meter(w.ats, "--series-1")}${meter(w.ou, "--series-2")}</div>`;
   $("record").innerHTML = `
     <h2 class="day">${data.season} by week</h2>
-    <p class="lede">Picks on every game, graded against the closing line. Each bar is the share won, and the tick marks 50%.</p>
+    <p class="lede">Picks on every game, graded against the last line before kickoff. Each bar is the share won, and the tick marks 50%.</p>
     <div class="panel weeks">
       <div class="week head"><span></span><span>Winners</span><span>Spread</span><span>Totals</span></div>
       ${data.by_week.map((w) => weekRow(`Wk ${w.week}`, w)).join("")}
       ${weekRow("Season", data.record, "total")}
     </div>
 
-    <h2 class="day">Backtest, ${b.first} to ${b.last}</h2>
-    <p class="lede">${b.games.toLocaleString()} games. Each one was predicted using only earlier games, and never a betting line.</p>
+    <h2 class="day">Test on past seasons, ${b.first} to ${b.last}</h2>
+    <p class="lede">A test on ${b.games.toLocaleString()} past games. Each one was predicted using only earlier games, and never a betting line. The dot is the model's win rate on a 40% to 60% scale.</p>
     <div class="grid gap-3 md:grid-cols-2">
       ${gauge("Against the spread", b.ats, data.break_even, "--series-1")}
       ${gauge("Over/under", b.ou, data.break_even, "--series-2")}
@@ -241,7 +252,7 @@ function renderRecord(data) {
     </div>
 
     <h2 class="day">Win rate by season</h2>
-    <p class="lede">The dashed line is the ${pct(data.break_even)} needed to break even at -110. Neither series stays above it.</p>
+    <p class="lede">The dashed line is the ${pct(data.break_even)} needed to break even when you bet $110 to win $100. Neither series stays above it.</p>
     <div class="panel p-3">
       <div class="mb-1 flex gap-4 text-xs muted">
         <span><span class="swatch" style="background:var(--series-1)"></span> Spread picks</span>
@@ -337,12 +348,22 @@ function teamProfile(t, teams) {
   const versus = rankVersus && next;
   const cells = RADAR.map(([key, label]) => `<tr><td>${label}</td><td class="num text-right"><b>${ordinal(t[key + "_rank"])}</b></td>${
     versus ? `<td class="num text-right">${ordinal(next[key + "_rank"])}</td>` : ""}</tr>`).join("");
+  const part = (label, v, key) => `<div class="${key === rankSort ? "sorted" : ""}"><dt>${label}</dt><dd class="num">${signed(v)}</dd></div>`;
+  // Round the five parts so the tiles add up to the power shown, moving each as little as possible:
+  // round all down, then give the spare tenths to the parts that were closest to rounding up.
+  const raw = [t.passing, t.rush_off, t.pass_def, t.rush_def, t.power - t.passing - t.rush_off - t.pass_def - t.rush_def];
+  const tenths = raw.map((v) => Math.floor(v * 10 + 1e-9));
+  const spare = Math.round(t.power * 10) - tenths.reduce((x, y) => x + y, 0);
+  raw.map((v, i) => [v * 10 - tenths[i], i]).sort((x, y) => y[0] - x[0]).slice(0, Math.max(0, spare)).forEach(([, i]) => tenths[i]++);
+  const [pPass, pRush, pPassD, pRushD, results] = tenths.map((v) => v / 10);
   return `<div class="rk-profile">
+    <dl class="rk-parts" aria-label="Parts of the power rating, in points">${part("Pass off", pPass, "passing")}${part("Rush off", pRush, "rush_off")}${part("Pass def", pPassD, "pass_def")}${part("Rush def", pRushD, "rush_def")}${part("Results", results, "results")}<div class="sum"><dt>Power</dt><dd class="num">${signed(t.power)}</dd></div></dl>
     ${next ? `<label class="rk-versus"><input type="checkbox" data-versus ${rankVersus ? "checked" : ""}>
       <span>Compare with this week's opponent, ${TEAMS[next.team] || next.team}${t.next.home ? " (home)" : " (away)"}</span></label>` : ""}
+    <p class="rk-note">Points against an average team. Pass offense includes the quarterback. Results is what the team's wins, losses and scores add beyond those four parts.</p>
     <div class="rk-radar"><canvas id="rk-radar" role="img" aria-label="League ranks of ${TEAMS[t.team] || t.team} on six measures, listed in the table below"></canvas></div>
-    <table class="rk-ranks"><thead><tr><th>League rank of ${data_teams_count(teams)}</th><th class="text-right">${t.team}</th>${versus ? `<th class="text-right">${next.team}</th>` : ""}</tr></thead><tbody>${cells}</tbody></table>
-    <p class="rk-note">Further from the centre is better. Pace is plays run per game, a measure of speed and not of quality.</p>
+    <p class="rk-note">League rank on each measure, not points. Further out is better: the outer ring is 1st and the middle ring 17th. Pace is plays per game: speed, not quality.</p>
+    <table class="rk-ranks"><thead><tr><th scope="col">League rank of ${data_teams_count(teams)}</th><th scope="col" class="text-right">${t.team}</th>${versus ? `<th scope="col" class="text-right">${next.team}</th>` : ""}</tr></thead><tbody>${cells}</tbody></table>
   </div>`;
 }
 const data_teams_count = (teams) => teams.length;
@@ -357,14 +378,26 @@ function drawRadar(t, teams) {
   const datasets = [{ label: t.team, data: score(t), borderColor: navy, backgroundColor: "rgb(47 90 160 / 0.22)", borderWidth: 2, pointRadius: 3, pointBackgroundColor: navy }];
   if (next) datasets.push({ label: next.team, data: score(next), borderColor: gold, backgroundColor: "rgb(201 162 39 / 0.14)", borderWidth: 2, borderDash: [5, 4], pointRadius: 3, pointStyle: "rectRot", pointBackgroundColor: gold });
   const narrow = canvas.parentElement.clientWidth < 360;
+  // Two ring labels in the empty gap between the Pace and Pass offense spokes, where no point can sit.
+  const rings = { id: "rings", afterDraw(chart) {
+    const r = chart.scales.r, ctx = chart.ctx, angle = -Math.PI / 2 - Math.PI / 6;
+    ctx.save(); ctx.fillStyle = ink; ctx.font = "600 10px ui-sans-serif, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (const [value, text] of [[100, "1st"], [50, "17th"]]) {
+      const d = r.getDistanceFromCenterForValue(value) * Math.cos(Math.PI / 6) - 7;
+      const x = r.xCenter + d * Math.cos(angle), y = r.yCenter + d * Math.sin(angle);
+      ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.strokeStyle = "#fbf8f0"; ctx.strokeText(text, x, y);
+      ctx.fillText(text, x, y);
+    }
+    ctx.restore();
+  } };
   radar = new Chart(canvas, {
-    type: "radar",
+    type: "radar", plugins: [rings],
     data: { labels: RADAR.map(([, label]) => (narrow ? label.split(" ") : label)), datasets },
     options: {
       responsive: true, maintainAspectRatio: true, aspectRatio: 1, animation: { duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400 },
       scales: { r: { min: 0, max: 100, ticks: { display: false, stepSize: 25 }, grid: { color: grid }, angleLines: { color: grid },
                      pointLabels: { color: ink, font: { size: 11, weight: "600" } } } },
-      plugins: { legend: { display: !!next, position: "bottom", labels: { usePointStyle: true, boxWidth: 8, color: ink } },
+      plugins: { legend: { display: !!next, position: "bottom", labels: { usePointStyle: true, pointStyleWidth: 8, boxHeight: 6, padding: 16, color: ink } },
                  tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${ordinal(teams.find((o) => o.team === c.dataset.label)[RADAR[c.dataIndex][0] + "_rank"])} of ${teams.length}` } } },
     },
   });
@@ -381,10 +414,10 @@ function renderRankings(data) {
   [...r.teams].sort((a, b) => b.passing - a.passing).forEach((t, i) => { t.passing_rank = i + 1; });
   const SORTS = { power: "Power", passing: "Pass offense", rush_off: "Rush offense", pass_def: "Pass defense",
                   rush_def: "Rush defense", results: "Results", qb_form: "QB form" };
-  const isForm = rankSort === "qb_form", show = (v) => signed(v, isForm ? 2 : 1);
+  const SHORT_SORT = { passing: "Pass off", rush_off: "Rush off", pass_def: "Pass def", rush_def: "Rush def" };
+  const isForm = rankSort === "qb_form", show = (v) => signed(v, rankSort === "power" ? 1 : 2);
   const teams = [...r.teams].sort((a, b) => b[rankSort] - a[rankSort]);
   const top = Math.max(...r.teams.map((t) => Math.abs(t[rankSort])));
-  const part = (label, v, on) => `<span class="${on ? "on" : ""}">${label} <b class="num">${signed(v)}</b></span>`;
   const row = (t, i) => {
     const [w, l, ties] = t.record, v = t[rankSort], width = (50 * Math.abs(v) / top).toFixed(1);
     const isOpen = rankOpen === t.team;
@@ -394,9 +427,8 @@ function renderRankings(data) {
       ${logo(t.team)}
       <span class="rk-main">
         <span class="rk-name"><span class="display">${TEAMS[t.team] || t.team}</span><span class="rk-rec num">${w}-${l}${ties ? "-" + ties : ""}</span></span>
-        <span class="rk-meta num">${rankSort === "power" ? "" : `<b>Power #${t.rank}</b> · `}${t.qb_name ? `QB ${t.qb_name} · ` : ""}Elo ${Math.round(t.elo)}</span>
+        <span class="rk-meta num">${rankSort === "power" ? "" : `<b>Power #${t.rank}</b>`}${rankSort === "power" || isForm || rankSort === "passing" ? `${rankSort === "power" ? "" : " · "}${t.qb_name ? `QB ${t.qb_name}` : ""}` : ""}</span>
         <span class="rk-bar" role="img" aria-label="${SORTS[rankSort]} ${show(v)}"><i class="${v >= 0 ? "pos" : "neg"}" style="width:${width}%"></i></span>
-        <span class="rk-parts">${part("Pass off", t.passing, rankSort === "passing")}${part("Rush off", t.rush_off, rankSort === "rush_off")}${part("Pass def", t.pass_def, rankSort === "pass_def")}${part("Rush def", t.rush_def, rankSort === "rush_def")}${part("Results", t.results, rankSort === "results")}</span>
       </span>
       <span class="rk-power display num ${v >= 0 ? "" : "neg"}">${show(v)}</span>
     </button>${isOpen ? teamProfile(t, r.teams) : ""}</li>`;
@@ -407,10 +439,11 @@ function renderRankings(data) {
     <div><h3>${title}</h3><p>${body}</p></div></article>`;
   const hf = r.home_field == null ? "" : ` Home field is currently worth ${r.home_field.toFixed(1)} points.`;
   $("rankings").innerHTML = `
-    <p class="lede">Each team's rating in points against an average team on a neutral field, as of the last game played. The gap between two teams, plus home field, is the model's predicted margin. The five small numbers on each row add up to its power. Tap a team for its profile chart.</p>
+    <p class="lede">Points against an average team. The gap between two teams, plus home field, is the predicted margin. Tap a team for its parts.</p>
     <div class="pr-chips rk-sorts" role="group" aria-label="Rank by">${Object.entries(SORTS).map(([k, label]) =>
-      `<button type="button" class="pr-chip ${k === rankSort ? "on" : ""}" data-sort="${k}" aria-pressed="${k === rankSort}">${label}</button>`).join("")}</div>
-    ${rankSort === "power" ? "" : `<p class="rk-sortnote">${isForm ? "Ordered by how well each starting quarterback has been playing lately: his expected points added per dropback against the league average. This is not in spread points and is not overall strength." : `Ordered by ${SORTS[rankSort].toLowerCase()} only, not by overall strength.`} Each team's power rank is shown under its name.</p>`}
+      `<button type="button" class="pr-chip ${k === rankSort ? "on" : ""}" data-sort="${k}" aria-pressed="${k === rankSort}" aria-label="${label}">${SHORT_SORT[k] || label}</button>`).join("")}</div>
+    ${rankSort === "power" ? "" : `<p class="rk-sortnote">${isForm ? "How well each starting quarterback has played lately, per dropback against the league average. Not overall strength." : `${SORTS[rankSort]} only, not overall strength.${rankSort === "results" ? " Built from wins, losses and margins." : rankSort === "passing" ? " Includes the quarterback." : ""}`} Power rank is under each name.${isForm ? "" : " Two decimals split ties."}</p>`}
+    <p class="rk-head eyebrow"><span>Rank and team</span><span>${isForm ? "Per dropback" : "Points"}</span></p>
     <ol class="panel rk-list">${teams.map(row).join("")}</ol>
     <h2 class="day">What goes into the rating</h2>
     <div class="grid gap-3 md:grid-cols-2">
@@ -423,18 +456,25 @@ function renderRankings(data) {
   $("rankings").querySelector(".rk-sorts").addEventListener("click", (e) => {
     if (!e.target.dataset.sort) return;
     rankSort = e.target.dataset.sort;
+    const left = e.currentTarget.scrollLeft;
     renderRankings(data);
+    const bar = $("rankings").querySelector(".rk-sorts"), chip = bar.querySelector(".pr-chip.on");
+    bar.scrollLeft = left;
+    chip.scrollIntoView({ block: "nearest", inline: "nearest" });
+    chip.focus({ preventScroll: true });
   });
   const list = $("rankings").querySelector(".rk-list");
   list.addEventListener("click", (e) => {
     const btn = e.target.closest(".rk-row");
     if (!btn) return;
-    rankOpen = rankOpen === btn.dataset.team ? null : btn.dataset.team;
+    const team = btn.dataset.team;
+    rankOpen = rankOpen === team ? null : team;
     const y = scrollY;
     renderRankings(data);
     scrollTo(0, y);
-    const now = rankOpen && $("rankings").querySelector(".rk-item.open");
-    if (now && now.getBoundingClientRect().top < 0) now.scrollIntoView({ block: "start" });
+    // Closing another team above moves this one, so bring the tapped row back under the tab bar.
+    const again = $("rankings").querySelector(`.rk-row[data-team="${team}"]`);
+    if (again) { if (rankOpen) again.closest(".rk-item").scrollIntoView({ block: "start" }); again.focus({ preventScroll: true }); }
   });
   list.addEventListener("change", (e) => {
     if (!("versus" in e.target.dataset)) return;
@@ -442,21 +482,34 @@ function renderRankings(data) {
     const y = scrollY;
     renderRankings(data);
     scrollTo(0, y);
+    const box = $("rankings").querySelector("[data-versus]");
+    if (box) box.focus({ preventScroll: true });
   });
   const opened = rankOpen && r.teams.find((t) => t.team === rankOpen);
   if (opened && !$("rankings").hidden) drawRadar(opened, r.teams);
 }
 
-function showTab(name, data) {
-  for (const tab of ["picks", "props", "rankings", "record", "about"]) $(tab).hidden = tab !== name;
+const TABS = ["picks", "props", "rankings", "record", "about"];
+const tabFromHash = () => { const h = location.hash.slice(1).toLowerCase(); return h === "guide" ? "about" : TABS.includes(h) ? h : null; };
+
+function showTab(name, data, fromClick) {
+  for (const tab of TABS) $(tab).hidden = tab !== name;
+  const hash = "#" + (name === "about" ? "guide" : name);
+  if (location.hash !== hash && (fromClick || location.hash)) history.replaceState(null, "", hash);
+
   for (const btn of $("tabs").children) {
     const on = btn.dataset.tab === name;
     btn.setAttribute("aria-selected", on);
+    btn.tabIndex = on ? 0 : -1;
     btn.className = on ? "tab-on text-primary" : "muted";
   }
   if (name === "record") drawChart(data);
   if (name === "props") Props.open(data);
   if (name === "rankings") renderRankings(data);
+  // The tab bar stays pinned, so start the new tab at its top instead of part-way down. The bar's own
+  // offset moves while it is pinned, so measure from the notice above it.
+  const top = Math.round($("notice").getBoundingClientRect().bottom + scrollY + 12);
+  if (fromClick && scrollY > top) scrollTo(0, top);
 }
 
 function start(data) {
@@ -473,13 +526,43 @@ function start(data) {
   const made = new Date(data.generated_at);
   $("updated").textContent = "Updated " + made.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const b = data.backtest;
-  $("notice").innerHTML = `<strong class="text-primary">No proven edge.</strong> <span class="muted">In testing on ${b.games.toLocaleString()} games the model won ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. Breaking even takes ${pct(data.break_even)}. Read these as informed predictions, not winning bets.</span>`;
+  $("notice").innerHTML = `<summary><span><strong class="text-primary">No proven edge.</strong> <span class="muted">Predictions, not winning bets.</span></span></summary>
+    <p class="muted">In testing on ${b.games.toLocaleString()} games the model won ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. Breaking even takes ${pct(data.break_even)}. Read these as informed predictions, not winning bets.</p>`;
   renderRecord(data);
   renderRankings(data);
   renderAbout(data);
-  $("tabs").addEventListener("click", (e) => e.target.dataset.tab && showTab(e.target.dataset.tab, data));
+  $("tabs").addEventListener("click", (e) => e.target.dataset.tab && showTab(e.target.dataset.tab, data, true));
+  $("picks").addEventListener("click", (e) => {
+    const card = e.target.dataset.jump && $(e.target.dataset.jump);
+    if (card) card.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  });
+  $("tabs").addEventListener("keydown", (e) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!step || !e.target.dataset.tab) return;
+    const next = TABS[(TABS.indexOf(e.target.dataset.tab) + step + TABS.length) % TABS.length];
+    showTab(next, data, true);
+    $("tab-" + next).focus();
+  });
+  // Mark the game chip for the card now at the top of the screen.
+  let ticking = false;
+  addEventListener("scroll", () => {
+    if (ticking || $("picks").hidden) return;
+    ticking = true;
+    requestAnimationFrame(() => {
+      ticking = false;
+      const chips = [...$("picks").querySelectorAll("[data-jump]")];
+      if (!chips.length) return;
+      let current = null;
+      for (const chip of chips) { const card = $(chip.dataset.jump); if (card && card.getBoundingClientRect().top < 160) current = chip; }
+      for (const chip of chips) {
+        const on = chip === current;
+        if (chip.classList.contains("on") !== on) { chip.classList.toggle("on", on); if (on) chip.parentElement.scrollTo({ left: chip.offsetLeft - 16 }); }
+      }
+    });
+  }, { passive: true });
+  addEventListener("hashchange", () => { const tab = tabFromHash(); if (tab && $(tab).hidden) showTab(tab, data); });
   show(data.week);
-  showTab("picks", data);
+  showTab(tabFromHash() || "picks", data);
 }
 
 fetch("data/site.json", { cache: "no-store" })
@@ -487,5 +570,5 @@ fetch("data/site.json", { cache: "no-store" })
   .then(start)
   .catch(() => {
     $("title").textContent = "No data yet";
-    $("notice").textContent = "The predictions file could not be loaded. It is rebuilt on a schedule, so try again later.";
+    $("notice").innerHTML = "<summary>The predictions file could not be loaded. It is rebuilt on a schedule, so try again later.</summary>";
   });
