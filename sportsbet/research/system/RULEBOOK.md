@@ -95,4 +95,12 @@ not approved the spend.
 
 ## Verdicts
 
-(added after the backtest)
+Added 2026-11-15 after the backtest (details in `README.md`).
+
+- Adopted on the design seasons: C2 (edge at least 10%), C4 (rank by blended edge, weight 0.34), C6 (one
+  per player, two per game). Rejected: C1, C3, C5, C7.
+- W-live score cut: blended edge of at least 3.1%.
+- Judging seasons: 272 bets, +16.9% (95% range +4.6% to +29.2%), ahead of every blind-under draw.
+  Success test passed. The size is not believable as a forecast; plan on +3% to +7%.
+- C2 did slightly worse than the base rule on the judging seasons. It stays, as fixed in advance.
+- Line shopping at Fanatics: not shown to help. Staking: flat $5 stays.

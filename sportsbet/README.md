@@ -324,6 +324,22 @@ What this does and does not show:
 - Not modelled yet: weather for passing props, how props move together within a game (needed for
   same-game parlays), first touchdown scorer, kickers and defences.
 
+## A rules-based betting system
+
+`nflbets` turns the props predictions and live FanDuel prices into a short list of $5 bets under fixed
+rules: receiving yards and receptions unders, model edge of at least 10%, at most one bet per player
+and two per game, ten a week.
+
+```
+nflprops --json props.json
+ODDS_API_KEY=... nflbets props.json --placed 3      # 3 bets already placed this week
+```
+
+The rules were written down before testing, chosen on 2023 and 2024 and scored once on 2025 and 2026:
+272 bets returned +16.9% (95% range +4.6% to +29.2%). That figure is flattered by luck; +3% to +7% is
+the sensible expectation, and one season in three or four would still lose money. The rulebook, every
+rule that was dropped and the luck tables are in [research/system](research/system/README.md).
+
 # Tests
 
 ```
