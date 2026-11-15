@@ -86,9 +86,13 @@ def norm_cdf(x):
 
 
 def compute_features(games: pd.DataFrame, team_stats: pd.DataFrame,
-                     params: dict | None = None) -> pd.DataFrame:
+                     params: dict | None = None, state: dict | None = None) -> pd.DataFrame:
     """Pre-game features for every game in `games` (all seasons), one row per
-    game_id.  Row i only depends on games played on earlier calendar dates."""
+    game_id.  Row i only depends on games played on earlier calendar dates.
+
+    If `state` is a dict it is filled with the ratings as they stand after the
+    last played game (Elo, EPA ratings, each quarterback's value, home field),
+    for display; see ratings.py."""
     p = dict(PARAMS)
     if params:
         p.update(params)
@@ -235,6 +239,11 @@ def compute_features(games: pd.DataFrame, team_stats: pd.DataFrame,
             if isinstance(aq, str):
                 last_qb[a] = aq
         i = j
+
+    if state is not None:
+        state.update(elo=elo, pass_off=op, rush_off=orr, pass_def=dp, rush_def=dr, last_qb=last_qb,
+                     qb_value={q: qb_value(q) for q in qb_sw}, qb_prior=qb_prior, hfa=hfa,
+                     elo_per_pt=p["elo_per_pt"])
 
     f = pd.DataFrame({"game_id": gid_a, "season": season_a, "gameday": day_a,
                       "result": res_a})

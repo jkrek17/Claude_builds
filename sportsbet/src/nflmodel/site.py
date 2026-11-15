@@ -76,13 +76,19 @@ def backtest(preds: pd.DataFrame, last_season: int, first_season: int = BACKTEST
 
 
 def build(preds: pd.DataFrame, season: int, week: int, generated_at: dt.datetime | None = None,
-          backtest_first: int = BACKTEST_FIRST) -> dict:
-    """Everything the page shows. `preds` is card.predict_all output; `week` is the week shown first."""
+          backtest_first: int = BACKTEST_FIRST, team_ratings: dict | None = None) -> dict:
+    """Everything the page shows. `preds` is card.predict_all output; `week` is the week shown first.
+
+    With `team_ratings` from ratings.build, the page also gets the team rankings, and each game card
+    gets `why`: the parts of its predicted margin."""
+    why = (team_ratings or {}).get("games", {})
     this = preds[preds["season"] == season]
     rows = this.set_index("game_id")
     weeks, by_week = {}, []
     for wk in sorted(int(w) for w in this["week"].unique()):
         cards = [_with_result(c, rows.loc[c["game_id"]]) for c in week_card(preds, season, wk)]
+        for c in cards:
+            c["why"] = why.get(c["game_id"])
         if not cards:
             continue
         weeks[str(wk)] = cards
@@ -95,10 +101,11 @@ def build(preds: pd.DataFrame, season: int, week: int, generated_at: dt.datetime
         "season": season, "week": week, "break_even": BREAK_EVEN, "windy_mph": WINDY_MPH,
         "weeks": weeks, "record": season_record(preds, season), "by_week": by_week,
         "backtest": backtest(preds, season - 1, backtest_first),
+        "rankings": {"teams": team_ratings["teams"], "home_field": team_ratings.get("home_field")} if team_ratings else None,
     })
 
 
-def write(path: str | Path, preds: pd.DataFrame, season: int, week: int) -> None:
+def write(path: str | Path, preds: pd.DataFrame, season: int, week: int, team_ratings: dict | None = None) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(build(preds, season, week), allow_nan=False, separators=(",", ":")))
+    path.write_text(json.dumps(build(preds, season, week, team_ratings=team_ratings), allow_nan=False, separators=(",", ":")))

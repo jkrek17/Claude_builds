@@ -181,6 +181,12 @@ cd site && npm ci && npm run build            # writes the page into site/dist
 python3 -m http.server -d dist                # open http://localhost:8000
 ```
 
+The Rankings tab lists all 32 teams by power rating, in points against an average team on a neutral
+field. `nflmodel/ratings.py` splits each predicted margin exactly into the two teams' power (results,
+which is an Elo rating, plus passing and rushing offense and defense, plus the quarterback), home
+field and rest, so the same numbers give the one-line "why" on each game card. Tapping a team opens a
+radar chart of its league ranks, with this week's opponent as an optional overlay.
+
 The Props tab reads `data/props.json` (written by `nflprops --json site/dist/data/props.json`) the first
 time it is opened. Each row carries the model's full distribution for one player and prop, so the page works
 out the chance of over, under and push for any line typed in, in the browser. There are no sportsbook prop
