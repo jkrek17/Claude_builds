@@ -8,3 +8,8 @@ execFileSync("npx", ["@tailwindcss/cli", "-i", "src/input.css", "-o", "dist/app.
 copyFileSync("src/index.html", "dist/index.html");
 copyFileSync("src/app.js", "dist/app.js");
 copyFileSync("node_modules/chart.js/dist/chart.umd.min.js", "dist/chart.js");
+mkdirSync("dist/fonts", { recursive: true });
+for (const weight of [600, 700]) {
+  copyFileSync(`node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-${weight}-normal.woff2`,
+    `dist/fonts/barlow-condensed-${weight}.woff2`);
+}

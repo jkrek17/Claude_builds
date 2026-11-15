@@ -56,70 +56,78 @@ function mark(hit) {
     : `<span class="pill pill-lost">✕ Lost</span>`;
 }
 
-function teamRow(abbr, predicted, actual, picked) {
-  const weight = picked ? "font-semibold" : "";
-  const final = actual == null ? "" : `<span class="num score w-12 text-right">${actual}</span>`;
-  return `<div class="flex items-center gap-3 py-1">
+function side(abbr, picked, align) {
+  return `<div class="side ${align} ${picked ? "picked" : ""}">
     ${logo(abbr)}
-    <span class="w-11 text-base ${weight}">${abbr}</span>
-    <span class="flex-1 truncate text-sm muted">${TEAMS[abbr] || ""}</span>
-    <span class="num ${actual == null ? "score" : "text-sm faint"} ${actual == null && !picked ? "!font-normal muted" : ""}">${predicted.toFixed(1)}</span>${final}
+    <span class="abbr">${abbr}</span>
+    <span class="name">${TEAMS[abbr] || ""}</span>
   </div>`;
 }
 
-function pickRow(label, pick, prob, push, hit, breakEven) {
-  if (!pick) return "";
+function pickTile(label, pick, prob, push, hit, breakEven) {
+  if (!pick) return `<div class="pick empty"><p class="eyebrow">${label}</p><p class="pick-main faint">No line yet</p></div>`;
   const clears = prob > breakEven;
-  const pushNote = push >= 0.005 ? ` · push ${pct(push)}` : "";
-  return `<div class="flex items-center gap-3 py-2">
-    <span class="w-16 text-xs faint">${label}</span>
-    <span class="flex-1 text-sm font-medium">${pick}</span>
-    ${mark(hit)}
-    <span class="num text-right text-xs muted">${clears ? "<strong>" : ""}${pct(prob)}${clears ? "</strong>" : ""}${pushNote}</span>
+  return `<div class="pick ${clears ? "clears" : ""}">
+    <p class="eyebrow flex items-center justify-between"><span>${label}</span>${mark(hit)}</p>
+    <p class="pick-main">${pick}</p>
+    <p class="num text-xs muted">${pct(prob)} chance${push >= 0.005 ? ` · push ${pct(push)}` : ""}</p>
   </div>`;
 }
 
-function gameCard(c, breakEven) {
+function gameCard(c, breakEven, index) {
   const homePicked = c.ml_pick === c.home;
+  const awayProb = 1 - c.home_win_prob;
   const market = c.market_home_prob == null ? null : homePicked ? c.market_home_prob : 1 - c.market_home_prob;
   const chips = [];
   if (c.wind_source === "forecast") {
     chips.push(c.windy
-      ? `<span class="badge badge-sm badge-warning badge-soft">Windy: ${Math.round(c.wind_mph)} mph</span>`
-      : `<span class="badge badge-sm badge-ghost">Wind ${Math.round(c.wind_mph)} mph</span>`);
+      ? `<span class="chip chip-gold">Windy · ${Math.round(c.wind_mph)} mph</span>`
+      : `<span class="chip">Wind ${Math.round(c.wind_mph)} mph</span>`);
   }
-  if (c.qb_assumed) chips.push(`<span class="badge badge-sm badge-ghost">QB not announced</span>`);
-  const head = c.final ? "Final" : kickoff(c.gametime);
-  const scoreHead = c.final
-    ? `<span>Model</span><span class="w-12 text-right">Final</span>`
-    : `<span>Predicted</span>`;
-  return `<article class="panel game p-4" style="--team:${color(c.ml_pick)}">
-    <div class="flex items-center justify-between eyebrow"><span>${head}</span><span class="flex gap-0">${scoreHead}</span></div>
-    <div class="mt-1">
-      ${teamRow(c.away, c.pred_away_score, c.away_score, !homePicked)}
-      ${teamRow(c.home, c.pred_home_score, c.home_score, homePicked)}
-    </div>
-    <div class="mt-3">
-      <div class="flex items-baseline justify-between text-sm">
-        <span><span class="font-medium">${c.ml_pick} to win</span> ${mark(c.ml_hit)}</span>
-        <span class="num text-xs muted">model ${pct(c.ml_pick_prob, 0)} · market ${pct(market, 0)}</span>
+  if (c.qb_assumed) chips.push(`<span class="chip">QB not announced</span>`);
+  const score = (away, home, digits) => `<span class="${homePicked ? "dim" : ""}">${away.toFixed(digits)}</span><span class="dash">–</span><span class="${homePicked ? "" : "dim"}">${home.toFixed(digits)}</span>`;
+  const center = c.final
+    ? `<p class="big num"><span>${c.away_score}</span><span class="dash">–</span><span>${c.home_score}</span></p>
+       <p class="num text-xs muted">model ${c.pred_away_score.toFixed(1)}–${c.pred_home_score.toFixed(1)}</p>`
+    : `<p class="big num">${score(c.pred_away_score, c.pred_home_score, 1)}</p>
+       <p class="eyebrow">Predicted</p>`;
+  const lead = c.pred_margin >= 0 ? c.home : c.away;
+  const detail = [
+    `Model margin: ${lead} by ${Math.abs(c.pred_margin).toFixed(1)}` + (c.spread_line == null ? "" : `, ${c.ats_gap.toFixed(1)} pts from the line`),
+    `Model total: ${c.pred_total.toFixed(1)}` + (c.total_line == null ? "" : `, ${c.ou_gap.toFixed(1)} pts from the line of ${c.total_line}`),
+    market == null ? "" : `Market gives ${c.ml_pick} a ${pct(market, 0)} chance; the model says ${pct(c.ml_pick_prob, 0)}`,
+  ].filter(Boolean);
+  return `<article class="panel game" style="--away:${color(c.away)};--home:${color(c.home)};--i:${index}" tabindex="0">
+    <div class="strip"></div>
+    <div class="p-4">
+      <div class="flex items-center justify-between eyebrow"><span>${c.final ? "Final" : kickoff(c.gametime)}</span><span>${c.ml_pick} to win ${mark(c.ml_hit)}</span></div>
+      <div class="matchup">
+        ${side(c.away, !homePicked, "left")}
+        <div class="center">${center}</div>
+        ${side(c.home, homePicked, "right")}
       </div>
-      <div class="mt-1.5 h-1 bg-base-300" role="img" aria-label="Model win chance ${pct(c.ml_pick_prob, 0)}">
-        <div class="h-1" style="width:${(100 * c.ml_pick_prob).toFixed(1)}%;background:${color(c.ml_pick)}"></div>
+      <div class="odds num"><span class="${homePicked ? "muted" : "font-semibold"}">${100 - Math.round(100 * c.home_win_prob)}%</span><span class="eyebrow">Model win chance</span><span class="${homePicked ? "font-semibold" : "muted"}">${pct(c.home_win_prob, 0)}</span></div>
+      <div class="split" role="img" aria-label="Model win chance: ${c.away} ${100 - Math.round(100 * c.home_win_prob)}%, ${c.home} ${pct(c.home_win_prob, 0)}">
+        <div class="bar" style="width:${(100 * awayProb).toFixed(1)}%;background:var(--away)"></div>
+        <div class="bar" style="width:${(100 * c.home_win_prob).toFixed(1)}%;background:var(--home)"></div>
       </div>
+      <div class="mt-3 grid grid-cols-2 gap-2">
+        ${pickTile("Spread", c.ats_pick, c.ats_prob, c.ats_push, c.ats_hit, breakEven)}
+        ${pickTile("Total", c.ou_pick, c.ou_prob, c.ou_push, c.ou_hit, breakEven)}
+      </div>
+      ${chips.length ? `<div class="mt-3 flex flex-wrap gap-2">${chips.join("")}</div>` : ""}
+      <details class="more">
+        <summary>The numbers behind it</summary>
+        <ul>${detail.map((d) => `<li>${d}</li>`).join("")}</ul>
+      </details>
     </div>
-    <div class="mt-3 divide-y divide-base-300 border-t border-base-300">
-      ${pickRow("Spread", c.ats_pick, c.ats_prob, c.ats_push, c.ats_hit, breakEven)}
-      ${pickRow("Total", c.ou_pick, c.ou_prob, c.ou_push, c.ou_hit, breakEven)}
-    </div>
-    ${chips.length ? `<div class="mt-2 flex flex-wrap gap-2">${chips.join("")}</div>` : ""}
   </article>`;
 }
 
 function tile(label, pair, accent) {
   return `<div class="panel tile px-3 py-3 text-center" style="--accent:var(${accent})">
     <p class="eyebrow">${label}</p>
-    <p class="num mt-1 text-2xl font-bold tracking-tight">${pair[1] ? rec(pair) : "0-0"}</p>
+    <p class="num display mt-1 text-3xl">${pair[1] ? rec(pair) : "0-0"}</p>
     <p class="num text-xs muted">${pair[1] ? pct(rate(pair)) : "no games yet"}</p>
   </div>`;
 }
@@ -135,8 +143,8 @@ function renderPicks(data, week) {
     </div>
     ${noLines ? `<p class="mt-6 text-sm muted">No betting lines are posted for this week yet, so only scores and winners are shown.</p>` : ""}
     ${days.map((day) => `
-      <h2 class="mb-2 mt-7 text-sm font-semibold">${dayLabel(day)}</h2>
-      <div class="space-y-3">${cards.filter((c) => c.gameday === day).map((c) => gameCard(c, data.break_even)).join("")}</div>`).join("")}
+      <h2 class="day">${dayLabel(day)}</h2>
+      <div class="grid gap-4 md:grid-cols-2">${cards.filter((c) => c.gameday === day).map((c, i) => gameCard(c, data.break_even, i)).join("")}</div>`).join("")}
     <p class="mt-6 text-xs faint leading-relaxed">The percentage beside a spread or total pick is the estimated chance it wins if it does not push.
       It is shown in bold only when it clears the ${pct(data.break_even)} needed to break even at -110.</p>`;
 }
