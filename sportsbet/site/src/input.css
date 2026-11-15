@@ -10,10 +10,10 @@
   default: true;
   color-scheme: light;
   --color-base-100: #ffffff;
-  --color-base-200: #f7f4f1;
-  --color-base-300: #e8e1dc;
-  --color-base-content: #141212;
-  --color-primary: #6e1423;
+  --color-base-200: #f8f4ea;
+  --color-base-300: #e7e0d2;
+  --color-base-content: #14181f;
+  --color-primary: #34558b;
   --color-primary-content: #ffffff;
   --color-success: #0f7b3f;
   --color-error: #c0362c;
@@ -23,16 +23,16 @@
   --radius-selector: 0;
 }
 
-/* Page palette: oxblood and gold on warm paper. Text stays near-black so it remains readable. */
+/* Page palette: a lighter navy and gold on cream. Text stays near-black so it remains readable. */
 :root {
-  --oxblood: #6e1423;
+  --navy: #34558b;
   --gold: #c9a227;
-  --paper: #f7f4f1;
-  --ink-2: #5c5552;      /* secondary text */
-  --ink-3: #8f8783;      /* muted text */
-  --series-1: #a12a3c;   /* spread picks */
+  --cream: #f8f4ea;
+  --ink-2: #565b66;      /* secondary text */
+  --ink-3: #8a8d94;      /* muted text */
+  --series-1: #2f5aa0;   /* spread picks */
   --series-2: #c9a227;   /* total picks */
-  --series-3: #4a0d18;   /* straight-up winners (tile accent only, not a chart series) */
+  --series-3: #1f3558;   /* straight-up winners (tile accent only, not a chart series) */
 }
 
 body {
@@ -47,12 +47,12 @@ body {
 .panel { background: var(--color-base-100); border: 1px solid var(--color-base-300); }
 .swatch { display: inline-block; width: 0.625rem; height: 0.625rem; border-radius: 9999px; }
 
-.hero { background: linear-gradient(135deg, #4a0d18 0%, #6e1423 60%, #8a1c2e 100%); border-bottom: 4px solid var(--gold); }
+.hero { background: linear-gradient(135deg, #2b4674 0%, #34558b 60%, #4268a6 100%); border-bottom: 4px solid var(--gold); }
 .hero .eyebrow { color: var(--gold); }
 .tabs-flat { border-bottom: 1px solid var(--color-base-300); }
 .tabs-flat button { margin-bottom: -1px; border-bottom: 2px solid transparent; padding: 0.75rem 0; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 .tab-on { border-bottom-color: var(--gold) !important; }
-.notice { border-left: 4px solid var(--color-primary); background: #fbf2f2; }
+.notice { border-left: 4px solid var(--color-primary); background: #eef2f8; }
 .logo { display: inline-flex; width: 1.75rem; height: 1.75rem; flex: none; align-items: center; justify-content: center; }
 .logo img { width: 100%; height: 100%; object-fit: contain; }
 .tile { border-top: 2px solid var(--accent); }
