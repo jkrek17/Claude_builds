@@ -12,6 +12,8 @@ const Props = (() => {
   const STORE = "nflmodel-props-lines";
 
   let data, site, players = new Map(), saved = { lines: {} }, game = "all", query = "", open = null;
+  let view = "players", rankAll = false;  // "players" lists every prop by game, "td" ranks anytime touchdown chances
+  const RANK_SHOWN = 25;
 
   // ---- Probability ----------------------------------------------------------------------------
 
@@ -71,6 +73,12 @@ const Props = (() => {
     const share = c.push < 1 ? p / (1 - c.push) : 0.5;  // chance among results that do not push
     if (share < 0.54) return "Toss-up, no lean";
     return (share < 0.6 ? "Slight lean " : share < 0.7 ? "Lean " : "Strong lean ") + side;
+  }
+
+  // The no-margin American price for a chance: what a bet would pay if the book took no cut.
+  function fairPrice(p) {
+    if (!(p > 0.005 && p < 0.995)) return "–";
+    return p >= 0.5 ? "-" + Math.round(100 * p / (1 - p)) : "+" + Math.round(100 * (1 - p) / p);
   }
 
   const implied = (american) => (american > 0 ? 100 / (american + 100) : -american / (-american + 100));
@@ -248,6 +256,32 @@ const Props = (() => {
     return rows ? `<div class="panel pr-checked"><p class="eyebrow">Checked lines</p><ul>${rows}</ul></div>` : "";
   }
 
+  // Anytime touchdown chances for the games still to be played, most likely first. It follows the
+  // search box and the game filter. Games already played are listed after, with what happened.
+  function ranking() {
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const rows = [...players.values()].filter((p) => p.rows.any_td && (game === "all" || p.game === game) && words.every((w) => p.search.includes(w)))
+      .map((p) => ({ p, row: p.rows.any_td, chance: p.rows.any_td.chance != null ? p.rows.any_td.chance : 1 - p.rows.any_td.pmf[0] }))
+      .sort((a, b) => b.chance - a.chance || a.p.name.localeCompare(b.p.name));
+    const line = ({ p, row, chance }, i, played) => `<li class="${played ? "played" : ""}">
+      <button type="button" class="pr-rankrow" data-act="goto" data-player="${esc(p.id)}">
+        <span class="pr-rank-n display num">${played ? "" : i + 1}</span>
+        ${window.teamLogo ? window.teamLogo(p.team) : ""}
+        <span class="pr-name"><span class="display">${esc(p.name)}</span><span class="pr-meta">${p.position} · ${p.team} vs ${p.opponent}${p.status ? ` · <strong class="pr-status">${esc(p.status)}</strong>` : ""}</span>
+          <span class="pr-rank-bar"><i style="width:${Math.round(chance * 100)}%"></i></span></span>
+        <span class="pr-rank-num"><span class="display num">${show(Math.round(chance * 100))}</span>
+          <span class="pr-meta num">${played ? (row.actual > 0 ? "scored" : "no TD") : "fair " + fairPrice(chance)}</span></span>
+      </button></li>`;
+    const upcoming = rows.filter((r) => r.row.actual == null), played = rows.filter((r) => r.row.actual != null);
+    if (!rows.length) return `<p class="lede">No player matches that search.</p>`;
+    const shown = rankAll ? upcoming : upcoming.slice(0, RANK_SHOWN);
+    return `<h2 class="day">Anytime touchdown ranking</h2>
+      <p class="lede">The model's chance each player scores a rushing or receiving touchdown, most likely first. Fair is the price with no bookmaker margin. Books pay less than fair on most players, and the model has no proven edge. Tap a player for all their props.</p>
+      ${upcoming.length ? `<ol class="panel pr-ranklist">${shown.map((r, i) => line(r, i, false)).join("")}</ol>` : `<p class="lede">Every game in this view has been played.</p>`}
+      ${upcoming.length > shown.length ? `<button type="button" class="pr-chip mt-3" data-act="rankall">Show all ${upcoming.length}</button>` : ""}
+      ${played.length ? `<h2 class="day">Already played</h2><ol class="panel pr-ranklist">${played.map((r, i) => line(r, i, true)).join("")}</ol>` : ""}`;
+  }
+
   // ---- Page ------------------------------------------------------------------------------------
 
   function games() {
@@ -272,9 +306,14 @@ const Props = (() => {
       <div class="pr-tools">
         <label class="sr-only" for="pr-search">Search for a player or team</label>
         <input id="pr-search" type="search" class="pr-search" placeholder="Player or team" autocomplete="off" value="${esc(query)}">
+        <div class="pr-views" role="group" aria-label="View">
+          <button type="button" class="${view === "players" ? "on" : ""}" data-act="view" data-view="players" aria-pressed="${view === "players"}">All props</button>
+          <button type="button" class="${view === "td" ? "on" : ""}" data-act="view" data-view="td" aria-pressed="${view === "td"}">Touchdown ranking</button>
+        </div>
         <div class="pr-chips" role="group" aria-label="Game">${chip("all", "All games")}${list.map((g) => chip(g.id, `${g.away} @ ${g.home}`, g.final)).join("")}</div>
       </div>
-      <p class="lede mt-3">Week ${data.week} props, updated ${made}. Tap a player, then set the line.</p>
+      <p class="lede mt-3">Week ${data.week} props, updated ${made}. <span data-role="hint">Tap a player, then set the line.</span></p>
+      <div data-role="rank" hidden></div>
       ${list.map((g) => {
         const day = window.dayLabel ? window.dayLabel(g.day) : g.day, time = g.time && window.kickoff ? " · " + window.kickoff(g.time) : "";
         const group = [...players.values()].filter((p) => p.game === g.id)
@@ -307,8 +346,14 @@ const Props = (() => {
 
   function filter() {
     const root = document.getElementById("props"), words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const rank = root.querySelector('[data-role="rank"]'), td = view === "td";
+    rank.hidden = !td;
+    rank.innerHTML = td ? ranking() : "";
+    root.querySelector('[data-role="hint"]').hidden = td;
+    root.querySelectorAll(".pr-views button").forEach((b) => { const on = b.dataset.view === view; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
     let any = false;
     root.querySelectorAll(".pr-game").forEach((section) => {
+      if (td) { section.hidden = true; return; }
       let shown = 0;
       const inGame = game === "all" || section.dataset.game === game;
       section.querySelectorAll(".pr-player").forEach((el) => {
@@ -319,7 +364,7 @@ const Props = (() => {
       section.hidden = !shown;
       any = any || shown > 0;
     });
-    root.querySelector(".pr-empty").hidden = any;
+    root.querySelector(".pr-empty").hidden = any || td;
   }
 
   function parseLine(text) {
@@ -363,8 +408,10 @@ const Props = (() => {
     const act = el.dataset.act;
     if (act === "toggle") return toggle(el.closest(".pr-player").dataset.player);
     if (act === "game") { game = el.dataset.game; document.querySelectorAll(".pr-chip").forEach((c) => c.classList.toggle("on", c.dataset.game === game)); return filter(); }
+    if (act === "view") { view = el.dataset.view; rankAll = false; return filter(); }
+    if (act === "rankall") { rankAll = true; return filter(); }
     if (act === "goto") {
-      game = "all"; query = "";
+      game = "all"; query = ""; view = "players";
       document.getElementById("pr-search").value = "";
       document.querySelectorAll(".pr-chip").forEach((c) => c.classList.toggle("on", c.dataset.game === "all"));
       if (open === el.dataset.player) open = null;
@@ -461,7 +508,7 @@ const Props = (() => {
       });
   }
 
-  return { open: openTab, _test: { cdf, quantile, chances, wholePercents, implied, setData: (d) => { data = d; } } };
+  return { open: openTab, _test: { cdf, quantile, chances, wholePercents, implied, fairPrice, setData: (d) => { data = d; } } };
 })();
 
 if (typeof module !== "undefined") module.exports = Props;
