@@ -201,13 +201,16 @@ const Props = (() => {
       </section>`;
     }
     const line = lineFor(row), e = entry(row);
+    // The props model marks players whose results spread less or more than usual for their workload.
+    const NOTE = { steady: "Results bunch closer to the median than usual", "boom or bust": "Results spread wider than usual" };
+    const tag = NOTE[row.consistency] ? ` <span class="chip ${row.consistency === "steady" ? "" : "chip-gold"}" title="${NOTE[row.consistency]}">${esc(row.consistency)}</span>` : "";
     const presets = isCount(row) ? "" : `<div class="pr-presets">${[0.25, 0.5, 0.75].map((p) => {
       const v = Math.floor(quantile(p, row.q, data.probs)) + 0.5;
       return `<button type="button" data-act="preset" data-value="${v}">${fmt(v)}</button>`;
     }).join("")}</div>`;
     return `<section class="pr-block" data-key="${k}">
       <div class="pr-head">
-        <h4>${esc(label(row.prop))}</h4>
+        <h4>${esc(label(row.prop))}${tag}</h4>
         <p class="num">median ${Math.round(row.median)} · most games ${Math.round(Math.max(0, row.low))} to ${Math.round(row.high)}</p>
       </div>
       <div class="pr-entry">
