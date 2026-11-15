@@ -229,6 +229,14 @@ const Props = (() => {
     </section>`;
   }
 
+  // Steady and boom-or-bust labels for a player's row, so they show without opening the player.
+  const TRAIT_PROPS = { rush_yds: "rushing", rec_yds: "receiving" };
+  function traits(p) {
+    const chips = Object.keys(TRAIT_PROPS).filter((prop) => p.rows[prop] && ["steady", "boom or bust"].includes(p.rows[prop].consistency))
+      .map((prop) => `<span class="chip ${p.rows[prop].consistency === "steady" ? "" : "chip-gold"}">${esc(p.rows[prop].consistency)} · ${TRAIT_PROPS[prop]}</span>`);
+    return chips.length ? `<span class="pr-traits">${chips.join("")}</span>` : "";
+  }
+
   function playerRow(p) {
     const head = p.rows[HEADLINE[p.position]] || Object.values(p.rows)[0];
     const headline = head.prop === "any_td" ? `TD ${Math.round(100 * (head.chance || 0))}%` : `${SHORT[head.prop]} ${Math.round(head.median)}`;
@@ -236,7 +244,7 @@ const Props = (() => {
     return `<article class="panel pr-player ${isOpen ? "open" : ""}" data-player="${esc(p.id)}" data-search="${esc(p.search)}">
       <button type="button" class="pr-row" data-act="toggle" aria-expanded="${isOpen}">
         ${window.teamLogo ? window.teamLogo(p.team) : ""}
-        <span class="pr-name"><span class="display">${esc(p.name)}</span><span class="pr-meta">${p.position} · ${p.team} vs ${p.opponent}${p.status ? ` · <strong class="pr-status">${esc(p.status)}</strong>` : ""}</span></span>
+        <span class="pr-name"><span class="display">${esc(p.name)}</span><span class="pr-meta">${p.position} · ${p.team} vs ${p.opponent}${p.status ? ` · <strong class="pr-status">${esc(p.status)}</strong>` : ""}</span>${traits(p)}</span>
         <span class="pr-headline num">${headline}</span>
         <span class="pr-chev" aria-hidden="true">${isOpen ? "−" : "+"}</span>
       </button>
@@ -315,7 +323,7 @@ const Props = (() => {
         </div>
         <div class="pr-chips" role="group" aria-label="Game">${chip("all", "All games")}${list.map((g) => chip(g.id, `${g.away} @ ${g.home}`, g.final)).join("")}</div>
       </div>
-      <p class="lede mt-3">Week ${data.week} props, updated ${made}. <span data-role="hint">Tap a player, then set the line.</span></p>
+      <p class="lede mt-3">Week ${data.week} props, updated ${made}. <span data-role="hint">Tap a player, then set the line. Players marked steady or boom or bust have results that spread less or more than usual; search "steady" or "boom" to list them.</span></p>
       <div data-role="rank" hidden></div>
       ${list.map((g) => {
         const day = window.dayLabel ? window.dayLabel(g.day) : g.day, time = g.time && window.kickoff ? " · " + window.kickoff(g.time) : "";
@@ -477,6 +485,7 @@ const Props = (() => {
         players.set(row.player_id, p);
       }
       p.rows[row.prop] = row;
+      if (row.consistency && row.consistency !== "typical") p.search += " " + row.consistency;
       if (row.prop === HEADLINE[p.position]) p.weight = row.median;
     }
   }
