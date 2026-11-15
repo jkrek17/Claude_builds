@@ -11,12 +11,14 @@ import pandas as pd
 from . import data
 from .card import BREAK_EVEN, next_week, predict_all, season_record, week_card
 
-NOTE = ("How to read this: the model has been tested on 4,363 games from 2010 to 2025 without ever seeing a\n"
-        "betting line. It picked 49.4% against the spread and 51.1% on totals, below the 52.4% needed to\n"
-        "break even at -110, and the closing line was the more accurate forecast in 15 of 16 seasons. Treat\n"
-        "these as informed predictions, not bets with an edge. 'Chance' is the estimated chance the pick\n"
-        "wins after allowing for how much more accurate the betting line is. Bet only what you can afford\n"
-        "to lose. If gambling stops being fun, call 1-800-GAMBLER.")
+NOTE = ("How to read this: the model was tested on 4,363 games from 2010 to 2025 without ever seeing a\n"
+        "betting line. It picked 49.4% against the spread and 51.4% on totals, below the 52.4% needed to\n"
+        "break even at -110. The closing spread was the better forecast in 15 of 16 seasons and the closing\n"
+        "total in 12 of 16. The market's win chance is also more accurate than the model's, so a gap between\n"
+        "them is not an edge. 'Chance' on a spread or total pick allows for the line being the better\n"
+        "forecast; values this close to 50% are not statistically different from a coin flip. Treat these\n"
+        "as informed predictions, not bets with an edge. Bet only what you can afford to lose. If gambling\n"
+        "stops being fun, call 1-800-GAMBLER.")
 
 
 def _pct(x: float | None) -> str:
@@ -29,7 +31,7 @@ def render(cards: list[dict], season: int, week: int, record: dict) -> str:
         day = dt.date.fromisoformat(c["gameday"]).strftime("%a %b %d")
         out.append(f"{c['away']} @ {c['home']}  ({day})"
                    + ("   [starting QB not announced; last starter assumed]" if c["qb_assumed"] else ""))
-        out.append(f"  Predicted score   {c['away']} {c['pred_away_score']:.0f}, {c['home']} {c['pred_home_score']:.0f}"
+        out.append(f"  Predicted score   {c['away']} {c['pred_away_score']:.1f}, {c['home']} {c['pred_home_score']:.1f}"
                    f"   (margin {c['home']} {c['pred_margin']:+.1f}, total {c['pred_total']:.1f})")
         market = c["market_home_prob"]
         if market is not None and c["ml_pick"] != c["home"]:

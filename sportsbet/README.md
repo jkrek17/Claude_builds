@@ -119,15 +119,18 @@ Walk-forward test on 4,363 games, 2010 to 2025. The model never saw a result bef
 |---|---|---|
 | Margin, average miss (points) | 10.30 | 10.05 |
 | Total, average miss (points) | 10.59 | 10.47 |
+| Straight-up winners picked | 64.9% | 66.4% |
 | Home win probability, Brier score (lower is better) | 0.2174 | 0.2111 |
 | Against the spread, every game | 2100-2154 (49.4%) | break-even is 52.4% |
-| Over/under, every game | 2208-2110 (51.1%) | break-even is 52.4% |
+| Over/under, every game | 2219-2099 (51.4%) | break-even is 52.4% |
 
-The model picks winners nearly as well as the market, but it does not beat the closing line. No
+The model picks winners a little worse than the market, and it does not beat the closing line. No
 threshold of disagreement with the line produced a win rate that clears 52.4% beyond what luck
-explains, and betting every game at -110 loses about 4.5% of everything staked. When the model and
+explains, and betting every spread and total at -110 would have lost about 4% of everything staked. When the model and
 the line are combined to predict the result, the model gets a weight of about 0.1 and the line 0.9,
-which is why the "chance" shown on each spread and total pick stays close to 50%.
+which is why the "chance" shown on each spread and total pick stays close to 50%. The same holds for
+moneylines: the market's win probability is the more accurate one, so a gap between the model and the
+market is not an edge.
 
 Use the predictions as an informed opinion on each game. They are not evidence of a betting edge.
 
@@ -140,7 +143,12 @@ The research write-ups and the scripts that reproduce every number are in `resea
   team's last starter is assumed and the card says so. Other injuries are not modeled.
 - Lines in nflverse are closing lines for past games and current lines for upcoming games. They may
   differ from your sportsbook's.
-- Weather on game day is not used, only each stadium's typical wind by month.
+- Weather on game day is not used, only each stadium's typical wind by month. Retractable-roof
+  stadiums are always treated as closed.
+
+An independent audit reproduced every number above with its own scoring code and found no look-ahead
+leakage: predictions do not change when later games are removed or scrambled, and betting lines have
+no influence on them.
 
 ## Tests
 

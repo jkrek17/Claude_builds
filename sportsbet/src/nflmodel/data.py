@@ -1,6 +1,7 @@
 """Download and cache the nflverse files the models read."""
 from __future__ import annotations
 
+import datetime as dt
 import time
 import urllib.request
 from pathlib import Path
@@ -30,7 +31,9 @@ def refresh(data_dir: Path, season: int, max_age_hours: float = 3.0) -> None:
     for path, url in live.items():
         if not path.exists() or path.stat().st_mtime < cutoff:
             _fetch(url, path)
+    # A finished season's file is final once its playoffs are over; a copy cached before then is stale.
+    final_after = dt.datetime(season, 3, 1).timestamp()
     for year in range(FIRST_SEASON, season):
         path = data_dir / f"stats_team_week_{year}.csv"
-        if not path.exists():
+        if not path.exists() or (year == season - 1 and path.stat().st_mtime < final_after):
             _fetch(STATS_URL.format(season=year), path)

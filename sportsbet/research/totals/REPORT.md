@@ -52,3 +52,12 @@ No threshold clears break-even beyond noise; the >3 row sits between two losing 
 
 ## Conclusion
 **The model does not beat the closing total.** It is 0.12 points worse in MAE, wins 51.1% of bets against a 52.4% break-even, and carries no weight once the line is known. It is a market-free prior, not a betting signal.
+
+## Update after the independent audit
+
+The audit found that the model read the observed roof status (`closed` or `open`) of retractable-roof
+stadiums, which is blank for unplayed games, so live totals in those stadiums came out 2.2 points low.
+Retractable-roof stadiums are now always treated as closed, in training and in live use. The tables
+above were produced before that change. With it, 2010 to 2025 reads: model MAE 10.590 (line 10.471),
+RMSE 13.423, over/under 2219-2099 (51.4%) on all games and 505-432 (53.9%, z +0.93 against 52.4%) at a
+gap above 3. The conclusion is unchanged. `backtest_output.txt` is from the current code.

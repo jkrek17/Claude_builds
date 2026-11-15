@@ -94,6 +94,12 @@ def _prep(games: pd.DataFrame, team_stats: pd.DataFrame) -> pd.DataFrame:
     g = g.sort_values(["gameday", "game_id"], kind="mergesort").reset_index(drop=True)
     played = g["home_score"].notna() & g["away_score"].notna()
 
+    # A retractable roof is recorded as "closed" or "open" only after the game, and is blank for
+    # unplayed games. Treat every game in a retractable-roof stadium as closed, so past and future
+    # games are handled the same way and no game-day observation is used.
+    retractable = set(g.loc[g["roof"].isin(["closed", "open"]), "stadium_id"].dropna())
+    g.loc[g["stadium_id"].isin(retractable), "roof"] = "closed"
+
     s = team_stats[["game_id", "team", "passing_epa", "rushing_epa",
                     "attempts", "carries", "sacks_suffered"]].copy()
     s = s[s["team"].notna()]

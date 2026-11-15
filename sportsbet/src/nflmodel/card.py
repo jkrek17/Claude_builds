@@ -8,8 +8,10 @@ import pandas as pd
 from . import margin_model, totals_model
 
 # How much of the gap between model and betting line survives when both are used to predict the result.
-# From the 2010-2025 backtest: regressing (result - line) on (model - line) gives 0.107 (SE 0.073) for
-# margins and about 0.08 (SE 0.09) for totals. Neither is statistically different from zero.
+# From the 2010-2025 backtest, regressing (result - line) on (model - line) gives 0.107 (SE 0.073) for
+# margins and 0.094 (SE 0.081) for totals. Neither is statistically different from zero, both were fit
+# on the test window, and both were near or below zero in 2018-2025, so the resulting chances are, if
+# anything, optimistic.
 MARGIN_WEIGHT = 0.10
 TOTAL_WEIGHT = 0.08
 LINE_SD_MARGIN = 13.0   # SD of the result around the closing spread
