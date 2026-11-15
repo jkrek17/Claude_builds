@@ -8,7 +8,7 @@ const Props = (() => {
   const SHORT = { pass_yds: "Pass", pass_tds: "Pass TD", pass_att: "Att", pass_cmp: "Cmp", rush_yds: "Rush",
                   rec_yds: "Rec", receptions: "Catches", any_td: "TD" };
   const CHIP = { pass_yds: "Pass yds", pass_tds: "Pass TDs", pass_att: "Attempts", pass_cmp: "Completions", rush_yds: "Rush yds",
-                 rec_yds: "Rec yds", receptions: "Catches", any_td: "Touchdown" };
+                 rec_yds: "Rec yds", receptions: "Catches", any_td: "TD" };
   const HEADLINE = { QB: "pass_yds", RB: "rush_yds", WR: "rec_yds", TE: "rec_yds" };
   const POSITIONS = ["QB", "RB", "WR", "TE"];
   const STORE = "nflmodel-props-lines";

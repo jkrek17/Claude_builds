@@ -167,18 +167,19 @@ function renderPicks(data, week) {
   const days = [...new Set(cards.map((c) => c.gameday))];
   const noLines = cards.length && cards.every((c) => !c.ats_pick && !c.ou_pick);
   $("picks").innerHTML = `
+    <p class="eyebrow mb-1">The model's ${data.season} record</p>
     <div class="panel season" role="group" aria-label="${data.season} season so far: record on winners, against the spread and on totals">
       ${tile("Winners", data.record.su, "--series-3")}${tile("Spread", data.record.ats, "--series-1")}${tile("Totals", data.record.ou, "--series-2")}
     </div>
     ${cards.length > 3 ? `<div class="jumpbar"><div class="pr-chips" role="group" aria-label="Jump to a game">${cards.map((c) =>
       `<button type="button" class="pr-chip ${c.final ? "dim" : ""}" data-jump="g-${c.game_id}">${c.away} @ ${c.home}</button>`).join("")}</div></div>` : ""}
-    ${noLines ? "" : `<p class="lede picks-note">Spread and total picks sit near 50% because, in testing, the model's gap from the line did no better than a coin flip.</p>`}
+    ${noLines ? "" : `<p class="lede picks-note">Why near 50%? In testing, the model's gap from the line did no better than a coin flip.</p>`}
     ${noLines ? `<p class="mt-6 text-sm muted">No betting lines are posted for this week yet, so only scores and winners are shown.</p>` : ""}
     ${days.map((day) => `
       <h2 class="day">${dayLabel(day)}</h2>
       <div class="grid gap-4 md:grid-cols-2">${cards.filter((c) => c.gameday === day).map((c, i) => gameCard(c, data.break_even, i)).join("")}</div>`).join("")}
     <p class="mt-6 text-xs faint leading-relaxed">The percentage under a spread or total pick is the estimated chance it wins if it does not push.
-      A pick is greyed out as a toss-up unless that chance clears the ${pct(data.break_even)} needed to break even at -110. A model lean is still not a proven edge.</p>`;
+      A pick is greyed out as a toss-up unless that chance clears the ${pct(data.break_even)} needed to break even at the usual -110 price (bet 110 to win 100). A model lean is still not a proven edge.</p>`;
 }
 
 function recordTable(head, rows) {
@@ -251,7 +252,7 @@ function renderRecord(data) {
     </div>
 
     <h2 class="day">Win rate by season</h2>
-    <p class="lede">The dashed line is the ${pct(data.break_even)} needed to break even at -110. Neither series stays above it.</p>
+    <p class="lede">The dashed line is the ${pct(data.break_even)} needed to break even at the usual -110 price. Neither series stays above it.</p>
     <div class="panel p-3">
       <div class="mb-1 flex gap-4 text-xs muted">
         <span><span class="swatch" style="background:var(--series-1)"></span> Spread picks</span>
@@ -348,13 +349,16 @@ function teamProfile(t, teams) {
   const cells = RADAR.map(([key, label]) => `<tr><td>${label}</td><td class="num text-right"><b>${ordinal(t[key + "_rank"])}</b></td>${
     versus ? `<td class="num text-right">${ordinal(next[key + "_rank"])}</td>` : ""}</tr>`).join("");
   const part = (label, v) => `<div><dt>${label}</dt><dd class="num">${signed(v)}</dd></div>`;
+  // Results is shown as what is left after the other rounded parts, so the tiles add up to the power shown.
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const results = r1(r1(t.power) - r1(t.passing) - r1(t.rush_off) - r1(t.pass_def) - r1(t.rush_def));
   return `<div class="rk-profile">
-    <dl class="rk-parts" aria-label="Parts of the power rating, in points">${part("Pass off", t.passing)}${part("Rush off", t.rush_off)}${part("Pass def", t.pass_def)}${part("Rush def", t.rush_def)}${part("Results", t.results)}<div class="sum"><dt>Power</dt><dd class="num">${signed(t.power)}</dd></div></dl>
+    <dl class="rk-parts" aria-label="Parts of the power rating, in points">${part("Pass off", t.passing)}${part("Rush off", t.rush_off)}${part("Pass def", t.pass_def)}${part("Rush def", t.rush_def)}${part("Results", results)}<div class="sum"><dt>Power</dt><dd class="num">${signed(t.power)}</dd></div></dl>
     ${next ? `<label class="rk-versus"><input type="checkbox" data-versus ${rankVersus ? "checked" : ""}>
       <span>Compare with this week's opponent, ${TEAMS[next.team] || next.team}${t.next.home ? " (home)" : " (away)"}</span></label>` : ""}
-    <p class="rk-note">Points against an average team. Pass offense includes the quarterback. Results is the team's Elo rating (${Math.round(t.elo)}, where 1500 is average) turned into points.</p>
+    <p class="rk-note">Points against an average team. Pass offense includes the quarterback. Results is what the team's wins, losses and scores add beyond those four parts.</p>
     <div class="rk-radar"><canvas id="rk-radar" role="img" aria-label="League ranks of ${TEAMS[t.team] || t.team} on six measures, listed in the table below"></canvas></div>
-    <p class="rk-note">League rank on each measure, not points. Further out is better: the rings mark 25th, 17th, 9th and 1st from the centre. Pace is plays per game: speed, not quality.</p>
+    <p class="rk-note">League rank on each measure, not points. Further out is better: the outer ring is 1st and the middle ring 17th. Pace is plays per game: speed, not quality.</p>
     <table class="rk-ranks"><thead><tr><th>League rank of ${data_teams_count(teams)}</th><th class="text-right">${t.team}</th>${versus ? `<th class="text-right">${next.team}</th>` : ""}</tr></thead><tbody>${cells}</tbody></table>
   </div>`;
 }
@@ -370,8 +374,18 @@ function drawRadar(t, teams) {
   const datasets = [{ label: t.team, data: score(t), borderColor: navy, backgroundColor: "rgb(47 90 160 / 0.22)", borderWidth: 2, pointRadius: 3, pointBackgroundColor: navy }];
   if (next) datasets.push({ label: next.team, data: score(next), borderColor: gold, backgroundColor: "rgb(201 162 39 / 0.14)", borderWidth: 2, borderDash: [5, 4], pointRadius: 3, pointStyle: "rectRot", pointBackgroundColor: gold });
   const narrow = canvas.parentElement.clientWidth < 360;
+  // Two ring labels in the empty gap between the Pace and Pass offense spokes, where no point can sit.
+  const rings = { id: "rings", afterDraw(chart) {
+    const r = chart.scales.r, ctx = chart.ctx, angle = -Math.PI / 2 - Math.PI / 6;
+    ctx.save(); ctx.fillStyle = ink; ctx.font = "600 10px ui-sans-serif, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (const [value, text] of [[100, "1st"], [50, "17th"]]) {
+      const d = r.getDistanceFromCenterForValue(value) * Math.cos(Math.PI / 6) - 7;
+      ctx.fillText(text, r.xCenter + d * Math.cos(angle), r.yCenter + d * Math.sin(angle));
+    }
+    ctx.restore();
+  } };
   radar = new Chart(canvas, {
-    type: "radar",
+    type: "radar", plugins: [rings],
     data: { labels: RADAR.map(([, label]) => (narrow ? label.split(" ") : label)), datasets },
     options: {
       responsive: true, maintainAspectRatio: true, aspectRatio: 1, animation: { duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 400 },
@@ -394,6 +408,7 @@ function renderRankings(data) {
   [...r.teams].sort((a, b) => b.passing - a.passing).forEach((t, i) => { t.passing_rank = i + 1; });
   const SORTS = { power: "Power", passing: "Pass offense", rush_off: "Rush offense", pass_def: "Pass defense",
                   rush_def: "Rush defense", results: "Results", qb_form: "QB form" };
+  const SHORT_SORT = { passing: "Pass off", rush_off: "Rush off", pass_def: "Pass def", rush_def: "Rush def" };
   const isForm = rankSort === "qb_form", show = (v) => signed(v, rankSort === "power" ? 1 : 2);
   const teams = [...r.teams].sort((a, b) => b[rankSort] - a[rankSort]);
   const top = Math.max(...r.teams.map((t) => Math.abs(t[rankSort])));
@@ -420,9 +435,9 @@ function renderRankings(data) {
   $("rankings").innerHTML = `
     <p class="lede">Each team's rating in points against an average team on a neutral field, as of the last game played. The gap between two teams, plus home field, is the model's predicted margin. Tap a team for the five parts that add up to its power and for its profile chart.</p>
     <div class="pr-chips rk-sorts" role="group" aria-label="Rank by">${Object.entries(SORTS).map(([k, label]) =>
-      `<button type="button" class="pr-chip ${k === rankSort ? "on" : ""}" data-sort="${k}" aria-pressed="${k === rankSort}">${label}</button>`).join("")}</div>
-    ${rankSort === "power" ? "" : `<p class="rk-sortnote">${isForm ? "Ordered by how well each starting quarterback has been playing lately: his expected points added per dropback against the league average. This is not in spread points and is not overall strength." : `Ordered by ${SORTS[rankSort].toLowerCase()} only, not by overall strength.${rankSort === "results" ? " Results is the Elo rating, built from wins, losses and margins, turned into points." : rankSort === "passing" ? " Pass offense includes the starting quarterback." : ""}`} Each team's power rank is shown under its name.</p>`}
-    <p class="rk-head eyebrow"><span>Rank and team</span><span>${isForm ? "Per dropback" : `Points (bar ±${top.toFixed(1)})`}</span></p>
+      `<button type="button" class="pr-chip ${k === rankSort ? "on" : ""}" data-sort="${k}" aria-pressed="${k === rankSort}" aria-label="${label}">${SHORT_SORT[k] || label}</button>`).join("")}</div>
+    ${rankSort === "power" ? "" : `<p class="rk-sortnote">${isForm ? "Ordered by how well each starting quarterback has been playing lately: his expected points added per dropback against the league average. This is not in spread points and is not overall strength." : `Ordered by ${SORTS[rankSort].toLowerCase()} only, not by overall strength.${rankSort === "results" ? " Results is built from wins, losses and margins of victory, turned into points." : rankSort === "passing" ? " Pass offense includes the starting quarterback." : ""}`} Each team's power rank is shown under its name.${isForm ? "" : " Two decimals are shown to split ties."}</p>`}
+    <p class="rk-head eyebrow"><span>Rank and team</span><span>${isForm ? "Per dropback" : `Points · longest bar ${top.toFixed(1)}`}</span></p>
     <ol class="panel rk-list">${teams.map(row).join("")}</ol>
     <h2 class="day">What goes into the rating</h2>
     <div class="grid gap-3 md:grid-cols-2">
@@ -475,9 +490,7 @@ function showTab(name, data, fromClick) {
   for (const tab of TABS) $(tab).hidden = tab !== name;
   const hash = "#" + (name === "about" ? "guide" : name);
   if (location.hash !== hash && (fromClick || location.hash)) history.replaceState(null, "", hash);
-  // The tab bar stays pinned, so start the new tab at its top instead of part-way down.
-  const top = $("tabs").offsetTop;
-  if (fromClick && scrollY > top) scrollTo(0, top);
+
   for (const btn of $("tabs").children) {
     const on = btn.dataset.tab === name;
     btn.setAttribute("aria-selected", on);
@@ -487,6 +500,10 @@ function showTab(name, data, fromClick) {
   if (name === "record") drawChart(data);
   if (name === "props") Props.open(data);
   if (name === "rankings") renderRankings(data);
+  // The tab bar stays pinned, so start the new tab at its top instead of part-way down. The bar's own
+  // offset moves while it is pinned, so measure from the notice above it.
+  const top = Math.round($("notice").getBoundingClientRect().bottom + scrollY + 12);
+  if (fromClick && scrollY > top) scrollTo(0, top);
 }
 
 function start(data) {
