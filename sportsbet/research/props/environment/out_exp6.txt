@@ -1,0 +1,10 @@
+prop                                                                   any_td         pass_att          pass_cmp          pass_tds         pass_yds          rec_yds        receptions          rush_yds
+variant                                                                                                                                                                                                 
+replace history with adjusted (lam 5/10), yardage only        -0.008(9)m+0.03  +0.000(0)m+0.00   +0.000(0)m+0.00  -0.013(11)m-0.01  +0.016(5)m+0.01  -0.008(9)m+0.05   +0.000(0)m+0.00  -0.087(10)m-0.04
+replace history with adjusted (lam 5/10), yardage, recept...  -0.012(8)m+0.04  +0.000(0)m+0.00   +0.013(7)m+0.00   -0.011(9)m+0.01  +0.016(5)m+0.01  -0.008(9)m+0.05  -0.017(11)m+0.01  -0.087(10)m-0.04
+replace history with adjusted (lam 5/10), all incl. volume    -0.012(8)m+0.04  -0.024(6)m+0.03  -0.019(10)m-0.00   -0.011(9)m+0.01  +0.022(5)m+0.01  -0.010(9)m+0.04   -0.008(9)m-0.00  -0.087(11)m-0.03
+replace history with adjusted (lam 10/10), yardage only       -0.011(9)m+0.07  +0.000(0)m+0.00   +0.000(0)m+0.00  -0.026(11)m-0.01  +0.017(6)m+0.02  -0.009(9)m+0.11   +0.000(0)m+0.00   -0.060(9)m-0.05
+replace history with adjusted (lam 10/10), yardage, recep...  -0.017(8)m+0.09  +0.000(0)m+0.00   +0.028(7)m+0.02   -0.021(9)m+0.02  +0.017(6)m+0.02  -0.009(9)m+0.11  -0.017(10)m+0.02   -0.060(9)m-0.05
+replace history with adjusted (lam 10/10), all incl. volume   -0.017(8)m+0.09  +0.015(4)m+0.06   +0.010(6)m+0.01   -0.021(9)m+0.02  +0.030(5)m+0.02  -0.011(7)m+0.08  -0.011(11)m+0.00  -0.121(10)m-0.04
++schedule strength x level (fast, slow)                       +0.036(4)m-0.02                    +0.030(8)m+0.01   +0.033(5)m+0.04  +0.029(6)m+0.02  +0.030(4)m+0.18   +0.006(7)m+0.05   +0.008(9)m-0.02
++schedule strength (fast, slow), additive                     +0.039(4)m+0.00                    +0.042(6)m+0.01   +0.020(6)m+0.03  +0.035(6)m+0.01  +0.048(6)m+0.19   +0.004(8)m+0.05   -0.046(9)m-0.02

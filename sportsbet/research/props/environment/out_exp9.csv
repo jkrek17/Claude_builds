@@ -1,0 +1,41 @@
+variant,prop,dCRPS%,dMAE%,crps_wins,mae_wins,of
+A implied x level,any_td,-0.153,-0.25,14,13,15
+A implied x level,pass_tds,-0.051,-0.178,10,14,15
+A implied x level,rec_yds,-0.113,-0.101,15,12,15
+A implied x level,receptions,-0.048,-0.061,9,10,15
+A implied x level,rush_yds,-0.064,-0.023,10,9,15
+B defence completion rate allowed,pass_cmp,-0.256,-0.396,11,12,15
+B defence completion rate allowed,receptions,-0.043,-0.056,12,11,15
+C offence rushing EPA per game,pass_att,-0.178,-0.18,10,13,15
+C offence rushing EPA per game,pass_cmp,-0.129,-0.265,11,12,15
+C offence rushing EPA per game,pass_yds,-0.255,-0.226,13,13,15
+D starter QB yards x receiver level,rec_yds,-0.09,-0.108,13,13,15
+D starter QB yards x receiver level,receptions,-0.101,-0.135,13,12,15
+W observed wind above 5 mph (UPPER BOUND),pass_att,-0.063,-0.015,9,7,15
+W observed wind above 5 mph (UPPER BOUND),pass_cmp,-0.092,-0.079,10,11,15
+W observed wind above 5 mph (UPPER BOUND),pass_tds,-0.064,-0.059,12,9,15
+W observed wind above 5 mph (UPPER BOUND),pass_yds,-0.248,-0.277,14,14,15
+A+B+C+D,any_td,-0.153,-0.25,14,13,15
+A+B+C+D,pass_att,-0.178,-0.18,10,13,15
+A+B+C+D,pass_cmp,-0.425,-0.579,12,11,15
+A+B+C+D,pass_tds,-0.051,-0.178,10,14,15
+A+B+C+D,pass_yds,-0.255,-0.226,13,13,15
+A+B+C+D,rec_yds,-0.165,-0.166,15,12,15
+A+B+C+D,receptions,-0.179,-0.224,12,12,15
+A+B+C+D,rush_yds,-0.064,-0.023,10,9,15
+"A+B+C+D, is_home dropped",any_td,-0.184,-0.272,13,13,15
+"A+B+C+D, is_home dropped",pass_att,-0.183,-0.234,10,11,15
+"A+B+C+D, is_home dropped",pass_cmp,-0.452,-0.613,12,12,15
+"A+B+C+D, is_home dropped",pass_tds,-0.056,-0.182,10,14,15
+"A+B+C+D, is_home dropped",pass_yds,-0.247,-0.311,12,13,15
+"A+B+C+D, is_home dropped",rec_yds,-0.182,-0.174,15,12,15
+"A+B+C+D, is_home dropped",receptions,-0.181,-0.228,12,12,15
+"A+B+C+D, is_home dropped",rush_yds,-0.021,-0.093,8,10,15
+A+B+C+D+W (wind observed),any_td,-0.153,-0.25,14,13,15
+A+B+C+D+W (wind observed),pass_att,-0.22,-0.2,11,10,15
+A+B+C+D+W (wind observed),pass_cmp,-0.531,-0.641,12,11,15
+A+B+C+D+W (wind observed),pass_tds,-0.116,-0.238,9,13,15
+A+B+C+D+W (wind observed),pass_yds,-0.489,-0.496,14,13,15
+A+B+C+D+W (wind observed),rec_yds,-0.165,-0.166,15,12,15
+A+B+C+D+W (wind observed),receptions,-0.179,-0.224,12,12,15
+A+B+C+D+W (wind observed),rush_yds,-0.064,-0.023,10,9,15

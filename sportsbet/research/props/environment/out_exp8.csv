@@ -1,0 +1,55 @@
+variant,prop,dCRPS%,dMAE%,crps_wins,mae_wins,of
+drop every def_* feature (value of today's opponent terms),any_td,0.018,0.023,6,5,15
+drop every def_* feature (value of today's opponent terms),pass_att,0.035,0.155,6,5,15
+drop every def_* feature (value of today's opponent terms),pass_cmp,0.047,-0.028,8,7,15
+drop every def_* feature (value of today's opponent terms),pass_tds,-0.029,-0.019,9,8,15
+drop every def_* feature (value of today's opponent terms),pass_yds,0.095,0.065,4,5,15
+drop every def_* feature (value of today's opponent terms),rec_yds,-0.03,0.088,9,4,15
+drop every def_* feature (value of today's opponent terms),receptions,-0.033,0.029,9,5,15
+drop every def_* feature (value of today's opponent terms),rush_yds,0.227,0.103,7,6,15
++defence x level,any_td,0.02,-0.011,7,10,15
++defence x level,pass_att,0.015,-0.01,9,9,15
++defence x level,pass_cmp,0.02,0.015,6,7,15
++defence x level,pass_tds,0.014,-0.004,7,10,15
++defence x level,pass_yds,-0.008,-0.002,7,7,15
++defence x level,rec_yds,-0.02,0.021,7,5,15
++defence x level,receptions,0.016,0.017,5,4,15
++defence x level,rush_yds,-0.063,-0.025,12,10,15
++team points for (decayed),any_td,-0.009,-0.063,9,7,15
++team points for (decayed),pass_att,0.004,0.009,6,7,15
++team points for (decayed),pass_cmp,-0.031,-0.042,10,9,15
++team points for (decayed),pass_tds,0.009,0.013,10,10,15
++team points for (decayed),pass_yds,-0.035,-0.012,9,6,15
++team points for (decayed),rec_yds,0.009,0.006,6,7,15
++team points for (decayed),receptions,0.017,0.017,4,5,15
++team points for (decayed),rush_yds,0.006,0.018,6,7,15
++team points for + own defence points allowed,any_td,0.042,-0.075,5,8,15
++team points for + own defence points allowed,pass_att,-0.111,-0.088,10,9,15
++team points for + own defence points allowed,pass_cmp,-0.031,-0.126,7,9,15
++team points for + own defence points allowed,pass_tds,-0.032,-0.143,10,12,15
++team points for + own defence points allowed,pass_yds,-0.129,-0.14,11,9,15
++team points for + own defence points allowed,rec_yds,0.008,-0.039,7,9,15
++team points for + own defence points allowed,receptions,0.018,-0.022,6,8,15
++team points for + own defence points allowed,rush_yds,0.028,0.018,10,8,15
+"+starter QB yards, new-ness (skill props)",any_td,0.007,-0.009,7,6,15
+"+starter QB yards, new-ness (skill props)",rec_yds,-0.028,-0.05,10,12,15
+"+starter QB yards, new-ness (skill props)",receptions,-0.034,-0.058,12,10,15
+"+starter QB yards, new-ness (skill props)",rush_yds,0.062,-0.028,7,9,15
+"+starter QB yards fast+slow, tds, new",any_td,0.049,0.019,4,7,15
+"+starter QB yards fast+slow, tds, new",rec_yds,-0.03,-0.047,11,11,15
+"+starter QB yards fast+slow, tds, new",receptions,-0.045,-0.063,12,10,15
+"+starter QB yards fast+slow, tds, new",rush_yds,0.082,-0.005,8,9,15
++QB delta vs team,any_td,-0.004,0.081,9,6,15
++QB delta vs team,rec_yds,0.011,0.045,7,5,15
++QB delta vs team,receptions,0.017,0.045,10,7,15
++QB delta vs team,rush_yds,-0.067,0.028,10,4,15
++QB yards x receiver level,rec_yds,-0.09,-0.108,13,13,15
++QB yards x receiver level,receptions,-0.095,-0.123,13,12,15
++implied x level,any_td,-0.153,-0.25,14,13,15
++implied x level,pass_att,-0.005,0.014,7,7,15
++implied x level,pass_cmp,0.014,0.019,4,4,15
++implied x level,pass_tds,-0.051,-0.178,10,14,15
++implied x level,pass_yds,-0.011,0.008,6,5,15
++implied x level,rec_yds,-0.113,-0.101,15,12,15
++implied x level,receptions,-0.048,-0.061,9,10,15
++implied x level,rush_yds,-0.064,-0.023,10,9,15

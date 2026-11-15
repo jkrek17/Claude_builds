@@ -1,0 +1,48 @@
+prop       forecast        n     MAE    CRPS   bias  in50%  in80%   >med
+pass_yds   model        6268   58.33  41.831   1.99  0.500  0.800  0.499
+pass_yds   slow avg     6268   60.66  43.459   5.42  0.479  0.778  0.485
+pass_yds   position     6268   63.24  45.405   2.35  0.474  0.770  0.503
+pass_tds   model        6268    0.89   0.597   0.01  0.492  0.797  0.502
+pass_tds   slow avg     6268    0.92   0.609   0.03  0.493  0.797  0.490
+pass_tds   position     6268    0.97   0.634  -0.01  0.470  0.778  0.500
+pass_att   model        6268    6.79   4.889   0.19  0.506  0.812  0.482
+pass_att   slow avg     6268    7.06   5.070   0.62  0.489  0.789  0.462
+pass_att   position     6268    7.21   5.186   0.35  0.496  0.771  0.473
+pass_cmp   model        6268    4.73   3.396   0.08  0.495  0.797  0.496
+pass_cmp   slow avg     6268    4.89   3.521   0.04  0.482  0.782  0.497
+pass_cmp   position     6268    5.09   3.673  -0.39  0.475  0.761  0.521
+rush_yds   model        9278   25.22  17.696   0.02  0.509  0.806  0.499
+rush_yds   slow avg     9278   26.70  18.607   0.76  0.490  0.784  0.482
+rush_yds   position     9278   29.82  20.821   1.34  0.431  0.725  0.465
+rec_yds    model       26257   24.01  16.716   0.28  0.507  0.800  0.500
+rec_yds    slow avg    26257   24.67  17.056   0.84  0.497  0.796  0.486
+rec_yds    position    26257   27.26  18.927   0.30  0.455  0.759  0.475
+receptions model       26257    1.70   1.181   0.02  0.503  0.800  0.498
+receptions slow avg    26257    1.75   1.210   0.05  0.491  0.789  0.485
+receptions position    26257    1.97   1.375  -0.09  0.438  0.736  0.496
+any_td     model       26126    0.49   0.268   0.01  0.501  0.803  0.509
+any_td     slow avg    26126    0.50   0.273  -0.01  0.504  0.803  0.510
+any_td     position    26126    0.52   0.282  -0.01  0.489  0.791  0.504
+
+Seasons where the model's CRPS beats the slow average:
+  pass_yds   12 of 12   skill 3.7%
+  pass_tds   12 of 12   skill 1.9%
+  pass_att   12 of 12   skill 3.6%
+  pass_cmp   12 of 12   skill 3.5%
+  rush_yds   12 of 12   skill 5.0%
+  rec_yds    12 of 12   skill 2.0%
+  receptions 12 of 12   skill 2.3%
+  any_td     12 of 12   skill 1.9%
+
+Anytime TD reliability (forecast chance vs how often it happened):
+  0%-10%: n=   455  forecast 0.081  observed 0.077
+  10%-20%: n=  4840  forecast 0.162  observed 0.170
+  20%-30%: n=  9449  forecast 0.250  observed 0.265
+  30%-40%: n=  6756  forecast 0.345  observed 0.361
+  40%-50%: n=  3125  forecast 0.442  observed 0.443
+  50%-60%: n=  1162  forecast 0.541  observed 0.566
+  60%-70%: n=   301  forecast 0.636  observed 0.608
+  70%-100%: n=    38  forecast 0.739  observed 0.658
+  Brier 0.2007   base-rate Brier 0.2132
+
+wrote /home/user/Claude_builds/sportsbet/src/nflmodel/props_backtest.json

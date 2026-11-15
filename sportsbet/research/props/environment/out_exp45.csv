@@ -1,0 +1,233 @@
+variant,prop,dCRPS%,dMAE%,crps_wins,mae_wins,of
+drop dome,any_td,-0.006,-0.007,5,8,15
+drop dome,pass_att,-0.057,-0.03,9,8,15
+drop dome,pass_cmp,0.055,0.036,5,6,15
+drop dome,pass_tds,-0.007,-0.007,10,8,15
+drop dome,pass_yds,0.017,0.078,7,5,15
+drop dome,rec_yds,0.042,0.039,6,6,15
+drop dome,receptions,0.029,0.047,4,4,15
+drop dome,rush_yds,-0.124,-0.022,13,8,15
+drop is_home,any_td,-0.03,-0.018,12,11,15
+drop is_home,pass_att,-0.054,-0.056,12,11,15
+drop is_home,pass_cmp,-0.04,-0.035,6,10,15
+drop is_home,pass_tds,-0.004,-0.003,7,8,15
+drop is_home,pass_yds,-0.013,-0.072,8,11,15
+drop is_home,rec_yds,-0.046,-0.012,13,11,15
+drop is_home,receptions,-0.01,-0.007,9,9,15
+drop is_home,rush_yds,-0.063,-0.068,9,11,15
++turf,any_td,0.022,0.0,6,8,15
++turf,pass_att,0.016,0.005,5,9,15
++turf,pass_cmp,0.014,0.004,8,8,15
++turf,pass_tds,0.014,0.014,4,4,15
++turf,pass_yds,0.026,0.031,6,6,15
++turf,rec_yds,0.008,0.021,7,2,15
++turf,receptions,0.006,0.005,5,7,15
++turf,rush_yds,-0.061,0.028,9,5,15
++dome x level,any_td,0.034,0.013,2,4,15
++dome x level,pass_att,-0.053,-0.013,12,8,15
++dome x level,pass_cmp,0.005,0.003,7,8,15
++dome x level,pass_tds,0.012,-0.004,8,9,15
++dome x level,pass_yds,0.009,0.014,4,5,15
++dome x level,rec_yds,-0.011,0.001,8,8,15
++dome x level,receptions,0.002,0.002,6,10,15
++dome x level,rush_yds,-0.013,-0.012,8,9,15
+"WX +wind (mph, linear)",any_td,0.011,0.003,7,7,15
+"WX +wind (mph, linear)",pass_att,-0.031,-0.013,7,8,15
+"WX +wind (mph, linear)",pass_cmp,-0.07,-0.073,11,12,15
+"WX +wind (mph, linear)",pass_tds,-0.066,-0.069,11,11,15
+"WX +wind (mph, linear)",pass_yds,-0.224,-0.251,14,13,15
+"WX +wind (mph, linear)",rec_yds,-0.008,0.005,9,6,15
+"WX +wind (mph, linear)",receptions,-0.006,0.012,8,5,15
+"WX +wind (mph, linear)",rush_yds,-0.006,0.079,7,4,15
+WX +wind_hi (mph above 10),any_td,0.012,0.018,7,5,15
+WX +wind_hi (mph above 10),pass_att,-0.071,-0.011,10,8,15
+WX +wind_hi (mph above 10),pass_cmp,-0.057,-0.076,9,10,15
+WX +wind_hi (mph above 10),pass_tds,-0.014,-0.009,12,9,15
+WX +wind_hi (mph above 10),pass_yds,-0.19,-0.227,12,12,15
+WX +wind_hi (mph above 10),rec_yds,-0.003,0.02,9,5,15
+WX +wind_hi (mph above 10),receptions,-0.005,0.008,10,6,15
+WX +wind_hi (mph above 10),rush_yds,-0.004,0.023,7,8,15
+WX +wind_15 (flag >=15 mph),any_td,0.016,0.007,5,7,15
+WX +wind_15 (flag >=15 mph),pass_att,-0.054,-0.036,10,11,15
+WX +wind_15 (flag >=15 mph),pass_cmp,-0.053,-0.096,12,12,15
+WX +wind_15 (flag >=15 mph),pass_tds,-0.009,-0.002,9,6,15
+WX +wind_15 (flag >=15 mph),pass_yds,-0.208,-0.249,13,12,15
+WX +wind_15 (flag >=15 mph),rec_yds,-0.031,0.017,11,5,15
+WX +wind_15 (flag >=15 mph),receptions,-0.009,0.016,8,5,15
+WX +wind_15 (flag >=15 mph),rush_yds,-0.007,0.006,6,7,15
+WX +wind_hi x level,any_td,0.018,0.014,5,5,15
+WX +wind_hi x level,pass_att,-0.057,0.001,11,7,15
+WX +wind_hi x level,pass_cmp,-0.019,-0.055,9,10,15
+WX +wind_hi x level,pass_tds,0.013,-0.037,12,10,15
+WX +wind_hi x level,pass_yds,-0.166,-0.186,11,11,15
+WX +wind_hi x level,rec_yds,-0.004,0.025,12,5,15
+WX +wind_hi x level,receptions,-0.004,0.004,12,6,15
+WX +wind_hi x level,rush_yds,0.012,0.011,7,7,15
+WX +wind_15 x level,any_td,0.015,0.009,6,6,15
+WX +wind_15 x level,pass_att,-0.058,-0.029,11,10,15
+WX +wind_15 x level,pass_cmp,-0.043,-0.085,10,12,15
+WX +wind_15 x level,pass_tds,-0.006,-0.03,10,7,15
+WX +wind_15 x level,pass_yds,-0.218,-0.221,13,9,15
+WX +wind_15 x level,rec_yds,-0.034,0.018,11,5,15
+WX +wind_15 x level,receptions,-0.009,0.013,9,5,15
+WX +wind_15 x level,rush_yds,-0.008,0.001,7,7,15
+WX +wind_hi + wind_hi x level,any_td,0.035,0.026,4,2,15
+WX +wind_hi + wind_hi x level,pass_att,-0.075,-0.03,10,7,15
+WX +wind_hi + wind_hi x level,pass_cmp,-0.043,-0.07,8,10,15
+WX +wind_hi + wind_hi x level,pass_tds,0.016,-0.04,12,11,15
+WX +wind_hi + wind_hi x level,pass_yds,-0.175,-0.207,10,11,15
+WX +wind_hi + wind_hi x level,rec_yds,0.007,0.03,8,5,15
+WX +wind_hi + wind_hi x level,receptions,0.01,0.02,7,5,15
+WX +wind_hi + wind_hi x level,rush_yds,0.022,0.02,8,7,15
+"WX +temp (F, linear)",any_td,0.01,-0.033,8,10,15
+"WX +temp (F, linear)",pass_att,0.012,0.004,6,8,15
+"WX +temp (F, linear)",pass_cmp,-0.123,-0.131,12,11,15
+"WX +temp (F, linear)",pass_tds,0.012,0.015,10,10,15
+"WX +temp (F, linear)",pass_yds,-0.081,-0.071,10,11,15
+"WX +temp (F, linear)",rec_yds,0.024,0.019,7,7,15
+"WX +temp (F, linear)",receptions,-0.005,0.014,7,8,15
+"WX +temp (F, linear)",rush_yds,-0.111,-0.147,8,11,15
+WX +cold (deg below 40),any_td,0.028,0.006,5,9,15
+WX +cold (deg below 40),pass_att,-0.015,-0.01,9,7,15
+WX +cold (deg below 40),pass_cmp,-0.042,-0.027,9,10,15
+WX +cold (deg below 40),pass_tds,0.019,0.024,7,7,15
+WX +cold (deg below 40),pass_yds,-0.037,-0.01,10,8,15
+WX +cold (deg below 40),rec_yds,0.01,0.01,7,7,15
+WX +cold (deg below 40),receptions,0.004,0.009,8,4,15
+WX +cold (deg below 40),rush_yds,0.03,0.005,5,9,15
+WX +cold x level,any_td,0.026,0.016,4,3,15
+WX +cold x level,pass_att,-0.006,-0.012,10,7,15
+WX +cold x level,pass_cmp,-0.059,-0.075,9,10,15
+WX +cold x level,pass_tds,0.014,0.02,7,7,15
+WX +cold x level,pass_yds,-0.058,-0.033,10,9,15
+WX +cold x level,rec_yds,0.019,0.008,7,7,15
+WX +cold x level,receptions,0.006,0.014,9,4,15
+WX +cold x level,rush_yds,0.032,0.002,5,10,15
+WX +hot (deg above 80),any_td,0.018,-0.043,4,11,15
+WX +hot (deg above 80),pass_att,-0.005,0.001,8,9,15
+WX +hot (deg above 80),pass_cmp,0.018,0.005,7,7,15
+WX +hot (deg above 80),pass_tds,0.003,0.003,7,7,15
+WX +hot (deg above 80),pass_yds,0.003,0.004,6,4,15
+WX +hot (deg above 80),rec_yds,0.002,0.019,8,6,15
+WX +hot (deg above 80),receptions,0.018,0.023,4,4,15
+WX +hot (deg above 80),rush_yds,0.0,-0.019,8,8,15
+WX +wind_hi + cold,any_td,0.04,0.023,5,3,15
+WX +wind_hi + cold,pass_att,-0.046,-0.018,8,9,15
+WX +wind_hi + cold,pass_cmp,-0.126,-0.098,12,10,15
+WX +wind_hi + cold,pass_tds,0.012,0.025,9,7,15
+WX +wind_hi + cold,pass_yds,-0.221,-0.237,11,11,15
+WX +wind_hi + cold,rec_yds,0.032,0.029,8,6,15
+WX +wind_hi + cold,receptions,-0.001,0.019,8,5,15
+WX +wind_hi + cold,rush_yds,0.051,0.029,6,8,15
+"WX +wind_hi + cold, dome dropped",any_td,0.034,0.031,3,4,15
+"WX +wind_hi + cold, dome dropped",pass_att,-0.09,-0.058,10,11,15
+"WX +wind_hi + cold, dome dropped",pass_cmp,-0.154,-0.096,11,10,15
+"WX +wind_hi + cold, dome dropped",pass_tds,-0.001,0.01,11,9,15
+"WX +wind_hi + cold, dome dropped",pass_yds,-0.241,-0.233,11,11,15
+"WX +wind_hi + cold, dome dropped",rec_yds,0.017,0.045,9,6,15
+"WX +wind_hi + cold, dome dropped",receptions,0.014,0.057,8,4,15
+"WX +wind_hi + cold, dome dropped",rush_yds,-0.016,0.015,9,10,15
+WX +wind above 5,any_td,0.01,0.01,7,5,15
+WX +wind above 5,pass_att,-0.063,-0.015,9,7,15
+WX +wind above 5,pass_cmp,-0.092,-0.079,10,11,15
+WX +wind above 5,pass_tds,-0.064,-0.059,12,9,15
+WX +wind above 5,pass_yds,-0.248,-0.277,14,14,15
+WX +wind above 5,rec_yds,-0.02,0.01,10,5,15
+WX +wind above 5,receptions,-0.006,0.013,9,6,15
+WX +wind above 5,rush_yds,-0.001,0.067,8,5,15
+WX +wind above 8,any_td,0.01,0.016,7,4,15
+WX +wind above 8,pass_att,-0.078,-0.007,9,8,15
+WX +wind above 8,pass_cmp,-0.067,-0.068,10,10,15
+WX +wind above 8,pass_tds,-0.034,-0.027,12,8,15
+WX +wind above 8,pass_yds,-0.238,-0.249,13,13,15
+WX +wind above 8,rec_yds,-0.011,0.022,10,4,15
+WX +wind above 8,receptions,-0.005,0.014,9,5,15
+WX +wind above 8,rush_yds,-0.004,0.039,8,6,15
+WX +wind above 12,any_td,0.014,0.019,6,3,15
+WX +wind above 12,pass_att,-0.062,-0.011,11,10,15
+WX +wind above 12,pass_cmp,-0.026,-0.05,9,9,15
+WX +wind above 12,pass_tds,0.011,0.013,11,8,15
+WX +wind above 12,pass_yds,-0.148,-0.174,11,12,15
+WX +wind above 12,rec_yds,-0.004,0.016,10,6,15
+WX +wind above 12,receptions,-0.001,0.004,8,6,15
+WX +wind above 12,rush_yds,-0.003,0.012,8,9,15
+WX +wind above 15,any_td,0.013,0.017,7,3,15
+WX +wind above 15,pass_att,-0.017,-0.005,9,10,15
+WX +wind above 15,pass_cmp,0.007,-0.005,8,8,15
+WX +wind above 15,pass_tds,0.03,0.028,9,6,15
+WX +wind above 15,pass_yds,-0.049,-0.078,9,9,15
+WX +wind above 15,rec_yds,0.015,0.015,7,6,15
+WX +wind above 15,receptions,0.01,0.006,7,6,15
+WX +wind above 15,rush_yds,0.009,0.009,8,7,15
+REST +rest days,any_td,0.02,-0.004,5,8,15
+REST +rest days,pass_att,-0.027,-0.018,10,11,15
+REST +rest days,pass_cmp,-0.05,-0.024,11,9,15
+REST +rest days,pass_tds,0.014,0.002,4,6,15
+REST +rest days,pass_yds,0.001,-0.002,7,8,15
+REST +rest days,rec_yds,-0.016,-0.001,10,9,15
+REST +rest days,receptions,-0.021,-0.014,10,11,15
+REST +rest days,rush_yds,0.006,-0.03,9,11,15
+REST +short_week (<=5 days),any_td,0.029,0.001,2,7,15
+REST +short_week (<=5 days),pass_att,0.023,0.005,4,7,15
+REST +short_week (<=5 days),pass_cmp,0.029,0.004,4,9,15
+REST +short_week (<=5 days),pass_tds,0.018,-0.004,7,8,15
+REST +short_week (<=5 days),pass_yds,0.0,0.013,6,6,15
+REST +short_week (<=5 days),rec_yds,0.002,0.016,9,6,15
+REST +short_week (<=5 days),receptions,0.016,0.008,6,7,15
+REST +short_week (<=5 days),rush_yds,0.003,0.026,8,5,15
+REST +off_bye (>=13 days),any_td,0.017,-0.005,7,6,15
+REST +off_bye (>=13 days),pass_att,-0.013,-0.014,10,12,15
+REST +off_bye (>=13 days),pass_cmp,-0.037,-0.034,11,9,15
+REST +off_bye (>=13 days),pass_tds,0.018,0.013,4,8,15
+REST +off_bye (>=13 days),pass_yds,0.016,0.011,6,8,15
+REST +off_bye (>=13 days),rec_yds,-0.004,0.011,9,6,15
+REST +off_bye (>=13 days),receptions,-0.005,0.008,11,7,15
+REST +off_bye (>=13 days),rush_yds,0.008,-0.022,6,8,15
+REST +rest_diff,any_td,0.033,0.008,5,7,15
+REST +rest_diff,pass_att,-0.068,-0.048,9,12,15
+REST +rest_diff,pass_cmp,-0.048,-0.046,9,12,15
+REST +rest_diff,pass_tds,0.024,0.021,2,4,15
+REST +rest_diff,pass_yds,0.006,0.011,7,4,15
+REST +rest_diff,rec_yds,0.001,-0.001,9,9,15
+REST +rest_diff,receptions,-0.003,-0.009,8,8,15
+REST +rest_diff,rush_yds,-0.058,-0.032,8,8,15
+REST +div_game,any_td,-0.004,0.0,9,9,15
+REST +div_game,pass_att,-0.032,-0.038,7,8,15
+REST +div_game,pass_cmp,0.032,-0.04,9,10,15
+REST +div_game,pass_tds,-0.014,-0.037,8,9,15
+REST +div_game,pass_yds,-0.076,0.025,8,7,15
+REST +div_game,rec_yds,-0.026,0.012,9,6,15
+REST +div_game,receptions,0.021,0.02,5,4,15
+REST +div_game,rush_yds,-0.108,0.001,10,8,15
+REST +week number,any_td,0.044,-0.097,4,12,15
+REST +week number,pass_att,-0.068,-0.009,11,9,15
+REST +week number,pass_cmp,-0.129,-0.186,13,11,15
+REST +week number,pass_tds,0.003,0.018,10,8,15
+REST +week number,pass_yds,-0.157,-0.056,10,10,15
+REST +week number,rec_yds,-0.018,-0.003,12,8,15
+REST +week number,receptions,0.003,0.006,7,8,15
+REST +week number,rush_yds,-0.146,-0.109,9,8,15
+REST +late (week>=14),any_td,0.021,-0.054,5,10,15
+REST +late (week>=14),pass_att,-0.065,-0.018,10,9,15
+REST +late (week>=14),pass_cmp,-0.084,-0.109,9,7,15
+REST +late (week>=14),pass_tds,0.009,0.001,9,9,15
+REST +late (week>=14),pass_yds,-0.07,-0.043,9,8,15
+REST +late (week>=14),rec_yds,0.019,0.009,7,6,15
+REST +late (week>=14),receptions,0.015,0.016,6,7,15
+REST +late (week>=14),rush_yds,-0.065,-0.067,7,9,15
+REST +playoff,any_td,0.014,-0.006,4,9,15
+REST +playoff,pass_att,-0.054,-0.053,8,12,15
+REST +playoff,pass_cmp,0.021,0.006,8,8,15
+REST +playoff,pass_tds,0.013,0.017,7,7,15
+REST +playoff,pass_yds,-0.001,-0.007,7,7,15
+REST +playoff,rec_yds,-0.001,-0.019,10,10,15
+REST +playoff,receptions,0.015,0.009,5,7,15
+REST +playoff,rush_yds,-0.025,0.009,9,7,15
+REST all seven,any_td,0.127,-0.093,2,9,15
+REST all seven,pass_att,-0.168,-0.167,11,10,15
+REST all seven,pass_cmp,-0.201,-0.288,11,12,15
+REST all seven,pass_tds,0.076,0.059,7,8,15
+REST all seven,pass_yds,-0.16,-0.079,9,9,15
+REST all seven,rec_yds,0.023,0.022,7,4,15
+REST all seven,receptions,0.069,0.062,5,4,15
+REST all seven,rush_yds,-0.179,-0.157,11,9,15

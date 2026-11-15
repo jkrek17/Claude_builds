@@ -1,0 +1,86 @@
+=== P(at least one rushing or receiving TD), n=36073, test seasons 2012-2026
+ridge + NB (baseline)              Brier 0.19513  logloss 0.57691  mean p 0.2862 obs 0.2925  cal a=-0.035 b=0.921
+logGLM lam1 + Poisson              Brier 0.19471  logloss 0.57472  mean p 0.2865 obs 0.2925  cal a=+0.048 b=1.020  dBrier -0.21% 12/15  dLL -0.38% 13/15
+logGLM lam5 + Poisson              Brier 0.19467  logloss 0.57456  mean p 0.2867 obs 0.2925  cal a=+0.053 b=1.027  dBrier -0.23% 12/15  dLL -0.41% 13/15
+logGLM lam25 + Poisson             Brier 0.19459  logloss 0.57430  mean p 0.2873 obs 0.2925  cal a=+0.067 b=1.046  dBrier -0.28% 12/15  dLL -0.45% 13/15
+logGLM lam25 + NB grid             Brier 0.19463  logloss 0.57439  mean p 0.2859 obs 0.2925  cal a=+0.083 b=1.057  dBrier -0.25% 12/15  dLL -0.44% 13/15
+logGLM lam100 + Poisson            Brier 0.19452  logloss 0.57414  mean p 0.2885 obs 0.2925  cal a=+0.088 b=1.079  dBrier -0.31% 13/15  dLL -0.48% 13/15
+logGLM rawx lam25 + Poisson        Brier 0.19512  logloss 0.57584  mean p 0.2884 obs 0.2925  cal a=+0.087 b=1.076  dBrier -0.00% 7/15  dLL -0.19% 10/15
+direct logistic lam1               Brier 0.19480  logloss 0.57483  mean p 0.2886 obs 0.2925  cal a=-0.011 b=0.964  dBrier -0.17% 12/15  dLL -0.36% 13/15
+direct logistic lam5               Brier 0.19473  logloss 0.57459  mean p 0.2889 obs 0.2925  cal a=-0.003 b=0.975  dBrier -0.20% 13/15  dLL -0.40% 13/15
+direct logistic lam25              Brier 0.19460  logloss 0.57423  mean p 0.2895 obs 0.2925  cal a=+0.016 b=1.000  dBrier -0.27% 13/15  dLL -0.47% 13/15
+direct logistic lam100             Brier 0.19453  logloss 0.57408  mean p 0.2906 obs 0.2925  cal a=+0.046 b=1.044  dBrier -0.31% 14/15  dLL -0.49% 14/15
+direct logistic rawx lam25         Brier 0.19493  logloss 0.57515  mean p 0.2903 obs 0.2925  cal a=+0.015 b=1.005  dBrier -0.10% 9/15  dLL -0.31% 13/15
+average(logGLM25 Poisson, logistic25) Brier 0.19455  logloss 0.57415  mean p 0.2884 obs 0.2925  cal a=+0.044 b=1.027  dBrier -0.30% 12/15  dLL -0.48% 14/15
+  ridge + NB (baseline): Brier 0.19513  logloss 0.57691
+    0.00-0.05 n=   594 forecast 0.028 observed 0.109  z=+6.4
+    0.05-0.10 n=   938 forecast 0.079 observed 0.114  z=+3.4
+    0.10-0.15 n=  2190 forecast 0.128 observed 0.143  z=+2.0
+    0.15-0.20 n=  4127 forecast 0.178 observed 0.187  z=+1.5
+    0.20-0.30 n= 12474 forecast 0.252 observed 0.249  z=-0.9
+    0.30-0.40 n= 10202 forecast 0.345 observed 0.346  z=+0.2
+    0.40-0.50 n=  4444 forecast 0.440 observed 0.454  z=+1.9
+    0.50-0.60 n=  1016 forecast 0.535 observed 0.581  z=+3.0
+    0.60-1.00 n=    88 forecast 0.622 observed 0.602  z=-0.4
+  logGLM lam25 + Poisson: Brier 0.19459  logloss 0.57430
+    0.05-0.10 n=   380 forecast 0.086 observed 0.082  z=-0.3
+    0.10-0.15 n=  2079 forecast 0.130 observed 0.124  z=-0.9
+    0.15-0.20 n=  5161 forecast 0.178 observed 0.169  z=-1.6
+    0.20-0.30 n= 14156 forecast 0.249 observed 0.256  z=+1.8
+    0.30-0.40 n=  8951 forecast 0.344 observed 0.353  z=+1.9
+    0.40-0.50 n=  3816 forecast 0.441 observed 0.456  z=+1.9
+    0.50-0.60 n=  1239 forecast 0.539 observed 0.549  z=+0.7
+    0.60-1.00 n=   289 forecast 0.644 observed 0.630  z=-0.5
+  direct logistic lam25: Brier 0.19460  logloss 0.57423
+    0.05-0.10 n=   685 forecast 0.083 observed 0.092  z=+0.9
+    0.10-0.15 n=  2386 forecast 0.129 observed 0.129  z=-0.0
+    0.15-0.20 n=  4863 forecast 0.177 observed 0.177  z=+0.1
+    0.20-0.30 n= 13017 forecast 0.250 observed 0.253  z=+0.9
+    0.30-0.40 n=  9094 forecast 0.345 observed 0.348  z=+0.6
+    0.40-0.50 n=  4411 forecast 0.442 observed 0.444  z=+0.3
+    0.50-0.60 n=  1386 forecast 0.538 observed 0.553  z=+1.1
+    0.60-1.00 n=   212 forecast 0.631 observed 0.637  z=+0.2
+
+  by position: forecast / observed (all rows), and forecast / observed among forecasts under 15%
+    ridge + NB (baseline)     QB: 0.264/0.290  <15%: 0.092/0.197 (n=188)   RB: 0.291/0.299  <15%: 0.093/0.121 (n=2323)   WR: 0.286/0.289  <15%: 0.117/0.124 (n=863)   TE: 0.277/0.279  <15%: 0.107/0.175 (n=348)
+    logGLM lam25 + Poisson    QB: 0.267/0.290  <15%: 0.129/0.211 (n=95)   RB: 0.294/0.299  <15%: 0.120/0.106 (n=1861)   WR: 0.285/0.289  <15%: 0.134/0.118 (n=399)   TE: 0.277/0.279  <15%: 0.133/0.226 (n=106)
+    direct logistic lam25     QB: 0.274/0.290  <15%: 0.130/0.193 (n=83)   RB: 0.290/0.299  <15%: 0.114/0.115 (n=2351)   WR: 0.291/0.289  <15%: 0.131/0.121 (n=569)   TE: 0.287/0.279  <15%: 0.133/0.172 (n=87)
+  early season (weeks 1-4) forecast/observed: ridge + NB (baseline): 0.290/0.290  logGLM lam25 + Poisson: 0.290/0.290  direct logistic lam25: 0.292/0.290
+
+=== P(two or more TDs)
+ridge + NB (baseline)              Brier 0.05245  logloss 0.20579  mean p 0.0555 obs 0.0577  cal a=-0.137 b=0.930
+logGLM lam1 + Poisson              Brier 0.05243  logloss 0.20543  mean p 0.0542 obs 0.0577  cal a=-0.141 b=0.919  dBrier -0.04% 6/15  dLL -0.17% 10/15
+logGLM lam5 + Poisson              Brier 0.05242  logloss 0.20539  mean p 0.0542 obs 0.0577  cal a=-0.130 b=0.924  dBrier -0.05% 6/15  dLL -0.19% 10/15
+logGLM lam25 + Poisson             Brier 0.05241  logloss 0.20528  mean p 0.0542 obs 0.0577  cal a=-0.095 b=0.937  dBrier -0.07% 8/15  dLL -0.25% 11/15
+logGLM lam25 + NB grid             Brier 0.05240  logloss 0.20516  mean p 0.0549 obs 0.0577  cal a=-0.090 b=0.944  dBrier -0.09% 8/15  dLL -0.30% 12/15
+logGLM lam100 + Poisson            Brier 0.05241  logloss 0.20522  mean p 0.0543 obs 0.0577  cal a=-0.033 b=0.961  dBrier -0.07% 9/15  dLL -0.28% 10/15
+direct logistic lam25 (2+)         Brier 0.05247  logloss 0.20596  mean p 0.0550 obs 0.0577  cal a=-0.002 b=0.979  dBrier +0.05% 5/15  dLL +0.08% 8/15
+  ridge + NB (baseline): Brier 0.05245  logloss 0.20579
+    0.00-0.02 n=  6935 forecast 0.011 observed 0.014  z=+2.5
+    0.02-0.04 n=  9005 forecast 0.030 observed 0.034  z=+2.2
+    0.04-0.06 n=  7206 forecast 0.049 observed 0.049  z=-0.2
+    0.06-0.08 n=  4751 forecast 0.069 observed 0.065  z=-1.3
+    0.08-0.10 n=  3159 forecast 0.089 observed 0.085  z=-0.8
+    0.10-0.15 n=  3585 forecast 0.120 observed 0.130  z=+1.9
+    0.15-0.20 n=  1060 forecast 0.169 observed 0.169  z=+0.0
+    0.20-0.30 n=   370 forecast 0.227 observed 0.270  z=+1.9
+  logGLM lam25 + Poisson: Brier 0.05241  logloss 0.20528
+    0.00-0.02 n=  6720 forecast 0.013 observed 0.015  z=+1.4
+    0.02-0.04 n= 10992 forecast 0.029 observed 0.035  z=+3.2
+    0.04-0.06 n=  7057 forecast 0.049 observed 0.051  z=+0.7
+    0.06-0.08 n=  4073 forecast 0.069 observed 0.071  z=+0.4
+    0.08-0.10 n=  2614 forecast 0.089 observed 0.095  z=+1.0
+    0.10-0.15 n=  2983 forecast 0.120 observed 0.125  z=+0.8
+    0.15-0.20 n=  1057 forecast 0.171 observed 0.178  z=+0.6
+    0.20-0.30 n=   498 forecast 0.233 observed 0.227  z=-0.3
+    0.30-1.00 n=    79 forecast 0.338 observed 0.278  z=-1.2
+  direct logistic lam25 (2+): Brier 0.05247  logloss 0.20596
+    0.00-0.02 n=  5160 forecast 0.015 observed 0.016  z=+0.5
+    0.02-0.04 n= 11939 forecast 0.030 observed 0.032  z=+1.4
+    0.04-0.06 n=  7506 forecast 0.049 observed 0.052  z=+1.2
+    0.06-0.08 n=  4415 forecast 0.069 observed 0.070  z=+0.3
+    0.08-0.10 n=  2575 forecast 0.089 observed 0.099  z=+1.7
+    0.10-0.15 n=  2983 forecast 0.120 observed 0.124  z=+0.6
+    0.15-0.20 n=   981 forecast 0.170 observed 0.167  z=-0.3
+    0.20-0.30 n=   454 forecast 0.233 observed 0.253  z=+1.0
+    0.30-1.00 n=    60 forecast 0.337 observed 0.250  z=-1.6

@@ -16,12 +16,14 @@ dev = ["pytest>=8", "numpy>=1.26", "pandas>=2.1"]
 [project.scripts]
 sharpbet = "sharpbet.cli:main"
 nflmodel = "nflmodel.cli:main"
+nflprops = "nflmodel.props_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 sharpbet = ["sample_odds.json"]
+nflmodel = ["props_backtest.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
