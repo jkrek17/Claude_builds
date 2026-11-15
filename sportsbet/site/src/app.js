@@ -243,7 +243,7 @@ function showTab(name, data) {
   for (const btn of $("tabs").children) {
     const on = btn.dataset.tab === name;
     btn.setAttribute("aria-selected", on);
-    btn.className = "rounded-lg py-2 " + (on ? "bg-base-100 text-primary shadow-sm" : "muted");
+    btn.className = "rounded-lg py-2 " + (on ? "tab-on bg-base-100 text-primary" : "muted");
   }
   if (name === "record") drawChart(data);
 }
