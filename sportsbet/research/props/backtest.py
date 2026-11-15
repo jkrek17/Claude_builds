@@ -149,7 +149,7 @@ def report(res: pd.DataFrame, td_p: np.ndarray, td_y: np.ndarray) -> None:
 def load_panel(data_dir: Path) -> pd.DataFrame:
     games = pd.read_csv(data_dir / "games.csv")
     d = str(data_dir)
-    return P.build_panel(P.load_offense(d), games, P.load_snaps(d), P.load_rookie_seasons(d))
+    return P.build_panel(P.load_offense(d), games, P.load_snaps(d), P.load_rookie_seasons(d), P.load_lineups(d, games))
 
 
 def summary(res: pd.DataFrame) -> dict:

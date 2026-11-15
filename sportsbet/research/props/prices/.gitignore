@@ -1,0 +1,3 @@
+# Raw price snapshots are paid data and stay out of the repository.
+*.json.gz
+*.csv.gz

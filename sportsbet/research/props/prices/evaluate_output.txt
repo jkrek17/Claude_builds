@@ -1,0 +1,96 @@
+posted lines 419646, matched to a model prediction 210095 (50%); games 992, seasons [np.int64(2023), np.int64(2024), np.int64(2025), np.int64(2026)]
+
+== Who forecasts better: the model or the book's no-vig chance? (two-sided lines, one consensus row per player)
+prop             n over rate Brier model Brier book Brier 50/50  model weight
+any_td         566     0.290      0.1927     0.1920      0.2500    0.186 ±0.671
+rec_yds       6399     0.484      0.2521     0.2499      0.2500    0.327 ±0.135
+receptions    7274     0.472      0.2487     0.2452      0.2500    0.267 ±0.115
+rush_yds      2396     0.475      0.2569     0.2498      0.2500    0.078 ±0.165
+pass_tds      1899     0.484      0.2380     0.2389      0.2500    0.766 ±0.501
+pass_yds      1341     0.506      0.2513     0.2497      0.2500    0.329 ±0.376
+ALL          19875     0.474      0.2484     0.2455      0.2500    0.268 ±0.075
+model weight: 0 means the model adds nothing to the book's price, 1 means the model's chance should replace it.
+
+== Model's median against the line (two-sided, consensus)
+  any_td      model leans over on 3% of lines; its side wins 73.0% (n=566)
+  rec_yds     model leans over on 41% of lines; its side wins 52.2% (n=6399)
+  receptions  model leans over on 39% of lines; its side wins 55.1% (n=7274)
+  rush_yds    model leans over on 37% of lines; its side wins 50.7% (n=2396)
+  pass_tds    model leans over on 40% of lines; its side wins 58.3% (n=1899)
+  pass_yds    model leans over on 49% of lines; its side wins 52.6% (n=1341)
+
+== Betting the model's side at FanDuel prices (1 unit per bet)
+  all props, model edge > 0%:  16540 bets  win 50.0%  ROI +1.2% (±2.0%)  over share 46%
+  all props, model edge > 5%:  11457 bets  win 50.0%  ROI +2.4% (±2.5%)  over share 45%
+  all props, model edge > 10%:   7689 bets  win 49.4%  ROI +3.0% (±3.1%)  over share 44%
+  all props, model edge > 20%:   3109 bets  win 47.5%  ROI +6.0% (±5.5%)  over share 46%
+  pass_yds    edge > 0%:   1303 bets  win 54.4%  ROI +3.4% (±5.2%)  over share 56%
+              edge > 10%:    474 bets  win 53.4%  ROI +1.5% (±8.6%)  over share 60%
+  pass_tds    edge > 0%:    909 bets  win 54.3%  ROI +4.6% (±6.5%)  over share 45%
+              edge > 10%:    158 bets  win 60.1%  ROI +26.9% (±16.8%)  over share 59%
+  rush_yds    edge > 0%:   2084 bets  win 51.6%  ROI -1.9% (±4.0%)  over share 35%
+              edge > 10%:   1035 bets  win 52.9%  ROI +0.6% (±5.7%)  over share 31%
+  rec_yds     edge > 0%:   5275 bets  win 53.4%  ROI +1.5% (±2.6%)  over share 39%
+              edge > 10%:   2490 bets  win 54.6%  ROI +3.8% (±3.7%)  over share 34%
+  receptions  edge > 0%:   5104 bets  win 53.1%  ROI +1.0% (±2.6%)  over share 35%
+              edge > 10%:   2556 bets  win 52.6%  ROI +2.0% (±3.8%)  over share 32%
+  any_td      edge > 0%:   1865 bets  win 25.4%  ROI +1.6% (±9.2%)  over share 100%
+              edge > 10%:    976 bets  win 20.2%  ROI +2.6% (±15.0%)  over share 100%
+  season 2023, edge > 5%:   3174 bets  win 49.8%  ROI +2.6% (±4.8%)  over share 40%
+  season 2024, edge > 5%:   3365 bets  win 49.8%  ROI +1.4% (±4.4%)  over share 45%
+  season 2025, edge > 5%:   3279 bets  win 49.8%  ROI +2.4% (±4.6%)  over share 50%
+  season 2026, edge > 5%:   1639 bets  win 50.8%  ROI +4.0% (±7.0%)  over share 43%
+  yardage and count lines only, edge > 5%:  10119 bets  win 53.6%  ROI +2.5% (±2.2%)  over share 37%
+    overs:   3778 bets  win 51.3%  ROI -0.5% (±3.7%)  over share 100%
+    unders:   6341 bets  win 54.9%  ROI +4.2% (±2.8%)  over share 0%
+  for reference, betting every under blindly:  20611 bets  win 51.9%  ROI -2.7% (±1.8%)  over share 0%
+
+== Betting the model's side at Fanatics prices (1 unit per bet)
+  all props, model edge > 0%:   4065 bets  win 49.2%  ROI +1.2% (±3.9%)  over share 52%
+  all props, model edge > 5%:   2752 bets  win 49.2%  ROI +2.6% (±4.8%)  over share 51%
+  all props, model edge > 10%:   1822 bets  win 47.1%  ROI +1.7% (±6.4%)  over share 50%
+  all props, model edge > 20%:    720 bets  win 44.9%  ROI +6.1% (±11.8%)  over share 53%
+  pass_yds    edge > 0%:    329 bets  win 54.7%  ROI +2.8% (±10.1%)  over share 77%
+              edge > 10%:    103 bets  win 52.4%  ROI -0.9% (±18.2%)  over share 83%
+  pass_tds    edge > 0%:    288 bets  win 55.9%  ROI +5.7% (±11.7%)  over share 25%
+              edge > 10%:     60 bets  win 55.0%  ROI +16.2% (±28.2%)  over share 32%
+  rush_yds    edge > 0%:    464 bets  win 51.5%  ROI -3.3% (±8.6%)  over share 42%
+              edge > 10%:    217 bets  win 47.5%  ROI -10.3% (±12.6%)  over share 35%
+  rec_yds     edge > 0%:   1137 bets  win 54.8%  ROI +2.8% (±5.5%)  over share 43%
+              edge > 10%:    523 bets  win 54.9%  ROI +3.5% (±7.9%)  over share 36%
+  receptions  edge > 0%:   1155 bets  win 53.0%  ROI -0.6% (±5.4%)  over share 37%
+              edge > 10%:    599 bets  win 52.4%  ROI +1.5% (±7.5%)  over share 37%
+  any_td      edge > 0%:    692 bets  win 27.0%  ROI +1.8% (±14.6%)  over share 100%
+              edge > 10%:    320 bets  win 20.9%  ROI +5.3% (±25.2%)  over share 100%
+  season 2025, edge > 5%:   2373 bets  win 50.9%  ROI +2.6% (±4.9%)  over share 49%
+  season 2026, edge > 5%:    379 bets  win 38.3%  ROI +3.1% (±17.4%)  over share 63%
+  yardage and count lines only, edge > 5%:   2279 bets  win 54.1%  ROI +2.4% (±4.3%)  over share 41%
+    overs:    926 bets  win 50.0%  ROI -1.1% (±7.5%)  over share 100%
+    unders:   1353 bets  win 57.0%  ROI +4.8% (±5.7%)  over share 0%
+  for reference, betting every under blindly:   5159 bets  win 54.3%  ROI -1.1% (±3.4%)  over share 0%
+
+== Betting the model's side at best price across all books prices (1 unit per bet)
+  all props, model edge > 0%:  18110 bets  win 49.1%  ROI +1.4% (±2.0%)  over share 46%
+  all props, model edge > 5%:  12929 bets  win 48.9%  ROI +2.9% (±2.4%)  over share 44%
+  all props, model edge > 10%:   8904 bets  win 48.7%  ROI +4.3% (±2.9%)  over share 43%
+  all props, model edge > 20%:   3881 bets  win 47.0%  ROI +7.8% (±4.9%)  over share 46%
+  pass_yds    edge > 0%:    941 bets  win 52.1%  ROI -0.9% (±6.1%)  over share 51%
+              edge > 10%:    354 bets  win 52.3%  ROI -0.3% (±9.9%)  over share 55%
+  pass_tds    edge > 0%:   1442 bets  win 52.1%  ROI +1.6% (±5.4%)  over share 40%
+              edge > 10%:    295 bets  win 54.6%  ROI +18.4% (±13.0%)  over share 44%
+  rush_yds    edge > 0%:   1917 bets  win 51.2%  ROI -2.0% (±4.1%)  over share 34%
+              edge > 10%:    984 bets  win 52.4%  ROI +0.6% (±5.8%)  over share 29%
+  rec_yds     edge > 0%:   4895 bets  win 52.7%  ROI +0.9% (±2.8%)  over share 38%
+              edge > 10%:   2398 bets  win 54.6%  ROI +4.7% (±3.9%)  over share 34%
+  receptions  edge > 0%:   6367 bets  win 52.6%  ROI +3.0% (±2.4%)  over share 37%
+              edge > 10%:   3554 bets  win 52.5%  ROI +4.2% (±3.3%)  over share 33%
+  any_td      edge > 0%:   2548 bets  win 28.7%  ROI +1.9% (±7.6%)  over share 93%
+              edge > 10%:   1319 bets  win 22.7%  ROI +4.9% (±12.5%)  over share 97%
+  season 2023, edge > 5%:   3901 bets  win 49.1%  ROI +2.9% (±4.4%)  over share 41%
+  season 2024, edge > 5%:   3764 bets  win 48.5%  ROI +0.7% (±4.1%)  over share 42%
+  season 2025, edge > 5%:   3607 bets  win 49.1%  ROI +4.7% (±4.6%)  over share 51%
+  season 2026, edge > 5%:   1657 bets  win 49.1%  ROI +4.1% (±7.1%)  over share 45%
+  yardage and count lines only, edge > 5%:  11107 bets  win 52.7%  ROI +2.7% (±2.1%)  over share 36%
+    overs:   3991 bets  win 50.2%  ROI -1.1% (±3.6%)  over share 100%
+    unders:   7116 bets  win 54.1%  ROI +4.8% (±2.7%)  over share 0%
+  for reference, betting every under blindly:  19309 bets  win 52.0%  ROI -0.6% (±1.8%)  over share 0%

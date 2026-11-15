@@ -261,16 +261,43 @@ Walk-forward test on 2015 to 2026 (fit on earlier seasons only, from 2013).
 | Prop | Lines | Average miss | Own average | Seasons better (of 12) | Inside 50% band | Inside 80% band |
 |---|---|---|---|---|---|---|
 | Passing yards | 6,268 | 58.3 | 60.7 | 12 | 50.0% | 80.0% |
-| Passing TDs | 6,268 | 0.89 | 0.92 | 12 | 49.2% | 79.7% |
+| Passing TDs | 6,268 | 0.89 | 0.92 | 12 | 49.3% | 79.9% |
 | Pass attempts | 6,268 | 6.79 | 7.06 | 12 | 50.6% | 81.2% |
-| Completions | 6,268 | 4.73 | 4.89 | 12 | 49.5% | 79.7% |
-| Rushing yards | 9,278 | 25.2 | 26.7 | 12 | 50.9% | 80.6% |
-| Receiving yards | 26,257 | 24.0 | 24.7 | 12 | 50.7% | 80.0% |
-| Receptions | 26,257 | 1.70 | 1.75 | 12 | 50.3% | 80.0% |
-| Anytime TD (count) | 26,126 | 0.49 | 0.50 | 12 | 50.1% | 80.3% |
+| Completions | 6,268 | 4.72 | 4.89 | 12 | 49.5% | 79.7% |
+| Rushing yards | 9,278 | 25.3 | 26.7 | 12 | 50.4% | 80.7% |
+| Receiving yards | 26,257 | 24.0 | 24.7 | 12 | 50.3% | 79.9% |
+| Receptions | 26,257 | 1.70 | 1.75 | 12 | 50.0% | 79.9% |
+| Anytime TD (count) | 26,126 | 0.49 | 0.50 | 12 | 50.4% | 80.7% |
 
 When the model says a touchdown is 30 to 40% likely it has happened 36% of the time, and 10 to 20%
 has happened 17% of the time (Brier 0.2007 against 0.2132 for the base rate).
+
+## Against real sportsbook prices
+
+`research/props/prices/` tests the model against past prop prices from The Odds API (paid plan; the
+key is read from `ODDS_API_KEY` and never stored). `pull.py` saved one snapshot 30 minutes before
+kickoff for all 992 games from 2023 to week 9 of 2026, `parse.py` flattens it and `evaluate.py`
+scores it; the output is in `research/props/prices/evaluate_output.txt`. The model is fitted on
+earlier seasons only and knows what was knowable at that moment: the closing game line and the
+active list.
+
+| FanDuel, 1 unit on the model's side | Bets | Win rate | Return per bet (95% range) |
+|---|---|---|---|
+| Any model edge | 16,540 | 50.0% | +1.2% (-0.8 to +3.2) |
+| Edge above 5% | 11,457 | 50.0% | +2.4% (-0.1 to +4.9) |
+| Edge above 10% | 7,689 | 49.4% | +3.0% (-0.1 to +6.1) |
+| Edge above 20% | 3,109 | 47.5% | +6.0% (+0.5 to +11.5) |
+| Every under, no model | 20,611 | 51.9% | -2.7% (-4.5 to -0.9) |
+
+- Edge above 5% was positive in each season: +2.6%, +1.4%, +2.4%, +4.0% (2023 to 2026).
+- Unders returned +4.2% and overs -0.5% (yardage and reception lines, edge above 5%). Receiving
+  yards and receptions carry the result; rushing yards show nothing.
+- In a logistic blend with the books' no-vig chance, the model gets a weight of 0.27 (95% range
+  0.19 to 0.34): the book is the better forecaster, and the model still adds information to it.
+- Ranges are clustered by game. They do not allow for the model's design having been chosen on
+  seasons that overlap this test, for limits FanDuel puts on winning accounts, or for prices
+  moving between the snapshot and a bet. Betting earlier than 30 minutes before kickoff is untested.
+- This is a first, borderline sign of a small edge, not proof of one.
 
 What this does and does not show:
 
@@ -278,11 +305,10 @@ What this does and does not show:
   needed to turn a line into a chance.
 - The model is only 2 to 5% sharper than a player's own running average. Single games are mostly
   noise: a typical receiver's 80% band runs from about 10 to 100 yards.
-- **Nothing here shows an edge against a sportsbook.** No prop prices were available, so the model
-  has never been tested against one. Books see injuries, practice reports and matchups this model
-  does not, and a gap between the model's even line and a posted line is more likely the book
-  knowing something than the model being right.
-- The test knows who actually played (the inactives list, out 90 minutes before kickoff). A card
+- Against prices the evidence is thin (see above). Books see injuries, practice reports and
+  matchups this model does not, and a single gap between the model's even line and a posted line is
+  more likely the book knowing something than the model being right.
+- The test knows the active list (out 90 minutes before kickoff; from the weekly rosters since 2019). A card
   made earlier in the week knows only the roster and Friday's report, which captured
   roughly half to three quarters of the vacated-volume gain in testing, and late scratches are missed.
 - The test uses closing game lines. Quarterback props lean on the line; made before a line is
