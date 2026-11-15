@@ -1,0 +1,94 @@
+{
+ "first": 2015,
+ "last": 2026,
+ "props": {
+  "pass_yds": {
+   "n": 6268,
+   "mae": 58.325,
+   "mae_baseline": 60.658,
+   "crps": 41.8308,
+   "crps_baseline": 43.4592,
+   "coverage_50": 0.5,
+   "coverage_80": 0.8,
+   "seasons_better": 12,
+   "seasons": 12
+  },
+  "pass_tds": {
+   "n": 6268,
+   "mae": 0.893,
+   "mae_baseline": 0.916,
+   "crps": 0.5966,
+   "crps_baseline": 0.6086,
+   "coverage_50": 0.492,
+   "coverage_80": 0.797,
+   "seasons_better": 12,
+   "seasons": 12
+  },
+  "pass_att": {
+   "n": 6268,
+   "mae": 6.791,
+   "mae_baseline": 7.057,
+   "crps": 4.8889,
+   "crps_baseline": 5.0699,
+   "coverage_50": 0.506,
+   "coverage_80": 0.812,
+   "seasons_better": 12,
+   "seasons": 12
+  },
+  "pass_cmp": {
+   "n": 6268,
+   "mae": 4.725,
+   "mae_baseline": 4.889,
+   "crps": 3.3961,
+   "crps_baseline": 3.5213,
+   "coverage_50": 0.495,
+   "coverage_80": 0.797,
+   "seasons_better": 12,
+   "seasons": 12
+  },
+  "rush_yds": {
+   "n": 9278,
+   "mae": 25.221,
+   "mae_baseline": 26.701,
+   "crps": 17.6963,
+   "crps_baseline": 18.6074,
+   "coverage_50": 0.509,
+   "coverage_80": 0.806,
+   "seasons_better": 12,
+   "seasons": 12
+  },
+  "rec_yds": {
+   "n": 26257,
+   "mae": 24.01,
+   "mae_baseline": 24.667,
+   "crps": 16.7163,
+   "crps_baseline": 17.0559,
+   "coverage_50": 0.507,
+   "coverage_80": 0.8,
+   "seasons_better": 12,
+   "seasons": 12
+  },
+  "receptions": {
+   "n": 26257,
+   "mae": 1.703,
+   "mae_baseline": 1.748,
+   "crps": 1.1811,
+   "crps_baseline": 1.2095,
+   "coverage_50": 0.503,
+   "coverage_80": 0.8,
+   "seasons_better": 12,
+   "seasons": 12
+  },
+  "any_td": {
+   "n": 26126,
+   "mae": 0.486,
+   "mae_baseline": 0.502,
+   "crps": 0.2676,
+   "crps_baseline": 0.2727,
+   "coverage_50": 0.501,
+   "coverage_80": 0.803,
+   "seasons_better": 12,
+   "seasons": 12
+  }
+ }
+}

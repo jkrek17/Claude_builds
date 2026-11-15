@@ -1,0 +1,63 @@
+variant,prop,dCRPS%,dMAE%,crps_wins,mae_wins,of
+"replace history with adjusted (lam 5/10), yardage only",any_td,-0.008,0.032,9,3,15
+"replace history with adjusted (lam 5/10), yardage only",pass_att,0.0,0.0,0,0,15
+"replace history with adjusted (lam 5/10), yardage only",pass_cmp,0.0,0.0,0,0,15
+"replace history with adjusted (lam 5/10), yardage only",pass_tds,-0.013,-0.005,11,8,15
+"replace history with adjusted (lam 5/10), yardage only",pass_yds,0.016,0.009,5,5,15
+"replace history with adjusted (lam 5/10), yardage only",rec_yds,-0.008,0.047,9,2,15
+"replace history with adjusted (lam 5/10), yardage only",receptions,0.0,0.0,0,0,15
+"replace history with adjusted (lam 5/10), yardage only",rush_yds,-0.087,-0.042,10,10,15
+"replace history with adjusted (lam 5/10), yardage, receptions, completions, TDs",any_td,-0.012,0.037,8,5,15
+"replace history with adjusted (lam 5/10), yardage, receptions, completions, TDs",pass_att,0.0,0.0,0,0,15
+"replace history with adjusted (lam 5/10), yardage, receptions, completions, TDs",pass_cmp,0.013,0.004,7,5,15
+"replace history with adjusted (lam 5/10), yardage, receptions, completions, TDs",pass_tds,-0.011,0.009,9,7,15
+"replace history with adjusted (lam 5/10), yardage, receptions, completions, TDs",pass_yds,0.016,0.009,5,5,15
+"replace history with adjusted (lam 5/10), yardage, receptions, completions, TDs",rec_yds,-0.008,0.047,9,2,15
+"replace history with adjusted (lam 5/10), yardage, receptions, completions, TDs",receptions,-0.017,0.009,11,5,15
+"replace history with adjusted (lam 5/10), yardage, receptions, completions, TDs",rush_yds,-0.087,-0.042,10,10,15
+"replace history with adjusted (lam 5/10), all incl. volume",any_td,-0.012,0.037,8,5,15
+"replace history with adjusted (lam 5/10), all incl. volume",pass_att,-0.024,0.025,6,7,15
+"replace history with adjusted (lam 5/10), all incl. volume",pass_cmp,-0.019,-0.002,10,6,15
+"replace history with adjusted (lam 5/10), all incl. volume",pass_tds,-0.011,0.009,9,7,15
+"replace history with adjusted (lam 5/10), all incl. volume",pass_yds,0.022,0.01,5,7,15
+"replace history with adjusted (lam 5/10), all incl. volume",rec_yds,-0.01,0.035,9,2,15
+"replace history with adjusted (lam 5/10), all incl. volume",receptions,-0.008,-0.001,9,9,15
+"replace history with adjusted (lam 5/10), all incl. volume",rush_yds,-0.087,-0.025,11,8,15
+"replace history with adjusted (lam 10/10), yardage only",any_td,-0.011,0.069,9,2,15
+"replace history with adjusted (lam 10/10), yardage only",pass_att,0.0,0.0,0,0,15
+"replace history with adjusted (lam 10/10), yardage only",pass_cmp,0.0,0.0,0,0,15
+"replace history with adjusted (lam 10/10), yardage only",pass_tds,-0.026,-0.011,11,9,15
+"replace history with adjusted (lam 10/10), yardage only",pass_yds,0.017,0.017,6,6,15
+"replace history with adjusted (lam 10/10), yardage only",rec_yds,-0.009,0.106,9,2,15
+"replace history with adjusted (lam 10/10), yardage only",receptions,0.0,0.0,0,0,15
+"replace history with adjusted (lam 10/10), yardage only",rush_yds,-0.06,-0.051,9,9,15
+"replace history with adjusted (lam 10/10), yardage, receptions, completions, TDs",any_td,-0.017,0.085,8,5,15
+"replace history with adjusted (lam 10/10), yardage, receptions, completions, TDs",pass_att,0.0,0.0,0,0,15
+"replace history with adjusted (lam 10/10), yardage, receptions, completions, TDs",pass_cmp,0.028,0.02,7,6,15
+"replace history with adjusted (lam 10/10), yardage, receptions, completions, TDs",pass_tds,-0.021,0.018,9,7,15
+"replace history with adjusted (lam 10/10), yardage, receptions, completions, TDs",pass_yds,0.017,0.017,6,6,15
+"replace history with adjusted (lam 10/10), yardage, receptions, completions, TDs",rec_yds,-0.009,0.106,9,2,15
+"replace history with adjusted (lam 10/10), yardage, receptions, completions, TDs",receptions,-0.017,0.024,10,4,15
+"replace history with adjusted (lam 10/10), yardage, receptions, completions, TDs",rush_yds,-0.06,-0.051,9,9,15
+"replace history with adjusted (lam 10/10), all incl. volume",any_td,-0.017,0.085,8,5,15
+"replace history with adjusted (lam 10/10), all incl. volume",pass_att,0.015,0.059,4,7,15
+"replace history with adjusted (lam 10/10), all incl. volume",pass_cmp,0.01,0.013,6,6,15
+"replace history with adjusted (lam 10/10), all incl. volume",pass_tds,-0.021,0.018,9,7,15
+"replace history with adjusted (lam 10/10), all incl. volume",pass_yds,0.03,0.024,5,7,15
+"replace history with adjusted (lam 10/10), all incl. volume",rec_yds,-0.011,0.082,7,2,15
+"replace history with adjusted (lam 10/10), all incl. volume",receptions,-0.011,0.003,11,9,15
+"replace history with adjusted (lam 10/10), all incl. volume",rush_yds,-0.121,-0.036,10,9,15
+"+schedule strength x level (fast, slow)",any_td,0.036,-0.022,4,10,15
+"+schedule strength x level (fast, slow)",pass_cmp,0.03,0.011,8,8,15
+"+schedule strength x level (fast, slow)",pass_tds,0.033,0.037,5,4,15
+"+schedule strength x level (fast, slow)",pass_yds,0.029,0.02,6,7,15
+"+schedule strength x level (fast, slow)",rec_yds,0.03,0.178,4,1,15
+"+schedule strength x level (fast, slow)",receptions,0.006,0.048,7,5,15
+"+schedule strength x level (fast, slow)",rush_yds,0.008,-0.016,9,11,15
+"+schedule strength (fast, slow), additive",any_td,0.039,0.0,4,7,15
+"+schedule strength (fast, slow), additive",pass_cmp,0.042,0.006,6,8,15
+"+schedule strength (fast, slow), additive",pass_tds,0.02,0.027,6,6,15
+"+schedule strength (fast, slow), additive",pass_yds,0.035,0.01,6,10,15
+"+schedule strength (fast, slow), additive",rec_yds,0.048,0.19,6,1,15
+"+schedule strength (fast, slow), additive",receptions,0.004,0.054,8,4,15
+"+schedule strength (fast, slow), additive",rush_yds,-0.046,-0.017,9,10,15

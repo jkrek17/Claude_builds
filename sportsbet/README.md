@@ -1,9 +1,10 @@
 # SportsBet tools
 
-Two command line tools live here:
+Three command line tools live here:
 
 - **sharpbet** finds sportsbook prices that beat the sharp market's fair line and sizes the top 3.
 - **nflmodel** predicts the moneyline, spread and total for every NFL game. See [NFL prediction model](#nfl-prediction-model).
+- **nflprops** predicts each player's passing, rushing and receiving line as a full range of outcomes. See [NFL player props](#nfl-player-props).
 
 # sharpbet
 
@@ -206,7 +207,82 @@ An independent audit of the first version reproduced its numbers with its own sc
 leakage: predictions do not change when later games are removed or scrambled, and betting lines have
 no influence on them.
 
-## Tests
+# NFL player props
+
+`nflprops` predicts, for every likely player in a week's games, passing yards, passing TDs, pass
+attempts, completions, rushing yards, receiving yards, receptions and the chance of a touchdown. It
+never sees a sportsbook prop price. Each prediction is a whole distribution, so you can ask for the
+chance of clearing any number.
+
+```
+pip install -e ".[model]"
+nflprops                                   # the next unplayed week
+nflprops --week 11 --csv props.csv --json props.json
+nflprops --player "nico collins" --prop rec_yds --line 62.5
+```
+
+The card shows each player's median and the range the model expects 8 times in 10. The CSV adds the
+"even line" (the half-point number the model thinks is a coin flip) and a ladder of chances (60+,
+70+, ...). The JSON holds the full distribution for the web page: quantiles `q` at the top-level
+`probs` for yardage props, and `pmf` (the chance of exactly 0, 1, 2, ...) for count props.
+
+## What is in the model
+
+- **Expected value** (`props.py`): a ridge regression per prop and position, refit on earlier games
+  only. Inputs are the player's own short and long memory of volume and production, his share of the
+  team's targets and carries, his snap share last game, the opponent's recent defence, the game's
+  spread and total (the posted line, or the `nflmodel` prediction when none is posted), and the
+  starting quarterback's level for his receivers.
+- **Injuries and trades** (`availability.py`): the weekly roster and the official injury report pick
+  the players. Anyone on injured reserve, cut, or listed Out or Doubtful is dropped, a traded player
+  appears for his new team with his memory of the old role cut in half, and the targets and carries
+  of whoever is missing shift to the teammates who remain ("vacated volume").
+- **Spread** (`props.py`): yardage props use how far results have actually landed from expectation
+  for similar players; receptions use a negative binomial, passing TDs a binomial, and the chance of
+  a touchdown its own logistic model.
+
+Three expert reviews chose these pieces by walk-forward test and rejected many more; see
+[research/props/README.md](research/props/README.md).
+
+## How good it is, honestly
+
+Walk-forward test on 2015 to 2026 (fit on earlier seasons only, from 2013).
+`python3 research/props/backtest.py` reproduces it; output is in `research/props/backtest_output.txt`.
+"Own average" is the player's long-run decayed average with the same spread method.
+
+| Prop | Lines | Average miss | Own average | Seasons better (of 12) | Inside 50% band | Inside 80% band |
+|---|---|---|---|---|---|---|
+| Passing yards | 6,268 | 58.3 | 60.7 | 12 | 50.0% | 80.0% |
+| Passing TDs | 6,268 | 0.89 | 0.92 | 12 | 49.2% | 79.7% |
+| Pass attempts | 6,268 | 6.79 | 7.06 | 12 | 50.6% | 81.2% |
+| Completions | 6,268 | 4.73 | 4.89 | 12 | 49.5% | 79.7% |
+| Rushing yards | 9,278 | 25.2 | 26.7 | 12 | 50.9% | 80.6% |
+| Receiving yards | 26,257 | 24.0 | 24.7 | 12 | 50.7% | 80.0% |
+| Receptions | 26,257 | 1.70 | 1.75 | 12 | 50.3% | 80.0% |
+| Anytime TD (count) | 26,126 | 0.49 | 0.50 | 12 | 50.1% | 80.3% |
+
+When the model says a touchdown is 30 to 40% likely it has happened 36% of the time, and 10 to 20%
+has happened 17% of the time (Brier 0.2007 against 0.2132 for the base rate).
+
+What this does and does not show:
+
+- The ranges are honest: results land inside the 80% band 80% of the time. That is the property
+  needed to turn a line into a chance.
+- The model is only 2 to 5% sharper than a player's own running average. Single games are mostly
+  noise: a typical receiver's 80% band runs from about 10 to 100 yards.
+- **Nothing here shows an edge against a sportsbook.** No prop prices were available, so the model
+  has never been tested against one. Books see injuries, practice reports and matchups this model
+  does not, and a gap between the model's even line and a posted line is more likely the book
+  knowing something than the model being right.
+- The test knows who actually played (the inactives list, out 90 minutes before kickoff). A card
+  made earlier in the week knows only the roster and Friday's report, which captured
+  roughly half to three quarters of the vacated-volume gain in testing, and late scratches are missed.
+- The test uses closing game lines. Quarterback props lean on the line; made before a line is
+  posted they lose roughly a third of their advantage over the player's own average.
+- Not modelled yet: weather for passing props, how props move together within a game (needed for
+  same-game parlays), first touchdown scorer, kickers and defences.
+
+# Tests
 
 ```
 pip install -e ".[dev]"

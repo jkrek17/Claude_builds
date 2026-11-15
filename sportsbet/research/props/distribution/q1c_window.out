@@ -1,0 +1,48 @@
+
+=== pass_yds   (seasons 2017+ only for the 'won' count, where an 8-12 season window first differs)
+  window all  CRPS 42.1271  2017+: +0.00% 0/10   2019-2026 bias(act-exp) -4.429  >p50 0.489 >p90 0.084
+  window 12   CRPS 42.1320  2017+: +0.02% 6/10   2019-2026 bias(act-exp) -4.135  >p50 0.491 >p90 0.086
+  window 8    CRPS 42.1281  2017+: +0.04% 4/10   2019-2026 bias(act-exp) -3.147  >p50 0.493 >p90 0.090
+  window 5    CRPS 42.2315  2017+: +0.21% 4/10   2019-2026 bias(act-exp) -2.216  >p50 0.495 >p90 0.093
+
+=== pass_tds   (seasons 2017+ only for the 'won' count, where an 8-12 season window first differs)
+  window all  CRPS 0.5971  2017+: +0.00% 0/10   2019-2026 bias(act-exp) -0.017  >p50 0.519 >p90 0.078
+  window 12   CRPS 0.5970  2017+: -0.03% 5/10   2019-2026 bias(act-exp) -0.016  >p50 0.522 >p90 0.080
+  window 8    CRPS 0.5973  2017+: +0.06% 3/10   2019-2026 bias(act-exp) -0.008  >p50 0.522 >p90 0.083
+  window 5    CRPS 0.5980  2017+: +0.20% 1/10   2019-2026 bias(act-exp) -0.004  >p50 0.525 >p90 0.085
+
+=== pass_att   (seasons 2017+ only for the 'won' count, where an 8-12 season window first differs)
+  window all  CRPS 4.9308  2017+: +0.00% 0/10   2019-2026 bias(act-exp) -0.340  >p50 0.481 >p90 0.082
+  window 12   CRPS 4.9333  2017+: +0.08% 2/10   2019-2026 bias(act-exp) -0.358  >p50 0.480 >p90 0.085
+  window 8    CRPS 4.9342  2017+: +0.09% 2/10   2019-2026 bias(act-exp) -0.280  >p50 0.482 >p90 0.088
+  window 5    CRPS 4.9449  2017+: +0.30% 0/10   2019-2026 bias(act-exp) -0.144  >p50 0.493 >p90 0.095
+
+=== pass_cmp   (seasons 2017+ only for the 'won' count, where an 8-12 season window first differs)
+  window all  CRPS 3.3978  2017+: +0.00% 0/10   2019-2026 bias(act-exp) -0.107  >p50 0.502 >p90 0.093
+  window 12   CRPS 3.3996  2017+: +0.08% 1/10   2019-2026 bias(act-exp) -0.106  >p50 0.498 >p90 0.094
+  window 8    CRPS 3.4009  2017+: +0.13% 5/10   2019-2026 bias(act-exp) -0.059  >p50 0.496 >p90 0.098
+  window 5    CRPS 3.4051  2017+: +0.16% 2/10   2019-2026 bias(act-exp) -0.006  >p50 0.500 >p90 0.102
+
+=== rush_yds   (seasons 2017+ only for the 'won' count, where an 8-12 season window first differs)
+  window all  CRPS 18.0050  2017+: +0.00% 0/10   2019-2026 bias(act-exp) -0.205  >p50 0.506 >p90 0.095
+  window 12   CRPS 18.0133  2017+: +0.07% 4/10   2019-2026 bias(act-exp) +0.132  >p50 0.506 >p90 0.098
+  window 8    CRPS 18.0251  2017+: +0.15% 6/10   2019-2026 bias(act-exp) +0.289  >p50 0.508 >p90 0.100
+  window 5    CRPS 18.0582  2017+: +0.36% 3/10   2019-2026 bias(act-exp) +0.310  >p50 0.506 >p90 0.103
+
+=== rec_yds   (seasons 2017+ only for the 'won' count, where an 8-12 season window first differs)
+  window all  CRPS 16.5805  2017+: +0.00% 0/10   2019-2026 bias(act-exp) -0.508  >p50 0.492 >p90 0.094
+  window 12   CRPS 16.5782  2017+: -0.02% 3/10   2019-2026 bias(act-exp) -0.632  >p50 0.491 >p90 0.093
+  window 8    CRPS 16.5833  2017+: +0.03% 2/10   2019-2026 bias(act-exp) -0.667  >p50 0.491 >p90 0.094
+  window 5    CRPS 16.5968  2017+: +0.15% 1/10   2019-2026 bias(act-exp) -0.568  >p50 0.492 >p90 0.094
+
+=== receptions   (seasons 2017+ only for the 'won' count, where an 8-12 season window first differs)
+  window all  CRPS 1.1711  2017+: +0.00% 0/10   2019-2026 bias(act-exp) -0.026  >p50 0.493 >p90 0.096
+  window 12   CRPS 1.1709  2017+: -0.02% 3/10   2019-2026 bias(act-exp) -0.044  >p50 0.490 >p90 0.095
+  window 8    CRPS 1.1710  2017+: -0.01% 5/10   2019-2026 bias(act-exp) -0.055  >p50 0.488 >p90 0.094
+  window 5    CRPS 1.1710  2017+: +0.01% 5/10   2019-2026 bias(act-exp) -0.044  >p50 0.489 >p90 0.095
+
+=== any_td   (seasons 2017+ only for the 'won' count, where an 8-12 season window first differs)
+  window all  CRPS 0.2558  2017+: +0.00% 0/10   2019-2026 bias(act-exp) +0.013  >p50 0.512 >p90 0.104
+  window 12   CRPS 0.2559  2017+: +0.02% 3/10   2019-2026 bias(act-exp) +0.013  >p50 0.512 >p90 0.105
+  window 8    CRPS 0.2559  2017+: +0.06% 3/10   2019-2026 bias(act-exp) +0.012  >p50 0.511 >p90 0.104
+  window 5    CRPS 0.2563  2017+: +0.23% 3/10   2019-2026 bias(act-exp) +0.009  >p50 0.509 >p90 0.104
