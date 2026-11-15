@@ -20,6 +20,7 @@ AVAILABILITY_FILES = {
 SNAPS_URL = "https://github.com/nflverse/nflverse-data/releases/download/snap_counts/snap_counts_{season}.csv"
 PLAYERS_URL = "https://github.com/nflverse/nflverse-data/releases/download/players/players.csv"
 SNAPS_FIRST = 2013
+LINEUPS_FIRST = 2019
 FIRST_SEASON = 1999
 DEFAULT_DIR = Path.home() / ".cache" / "nflmodel"
 
@@ -55,6 +56,11 @@ def refresh(data_dir: Path, season: int, max_age_hours: float = 3.0) -> None:
             path = data_dir / name.format(season=year)
             if not path.exists() or (year == season - 1 and path.stat().st_mtime < final_after):
                 _fetch(url.format(season=year), path)
+    # Past active lists for the props model's line-ups (game-day status is recorded from 2019).
+    for year in range(LINEUPS_FIRST, season):
+        path = data_dir / f"roster_weekly_{year}.csv"
+        if not path.exists() or (year == season - 1 and path.stat().st_mtime < final_after):
+            _fetch(AVAILABILITY_FILES["roster_weekly_{season}.csv"].format(season=year), path)
     for year in range(SNAPS_FIRST, season):
         path = data_dir / f"snap_counts_{year}.csv"
         if not path.exists() or (year == season - 1 and path.stat().st_mtime < final_after):

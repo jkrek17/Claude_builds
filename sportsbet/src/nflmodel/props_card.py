@@ -137,7 +137,8 @@ def _dist(model: P.PropModel, pos: str, mu: float, scale: float = 1.0) -> dict:
 
 def week_props(offense: pd.DataFrame, games: pd.DataFrame, season: int, week: int,
                preds: pd.DataFrame | None = None, avail: pd.DataFrame | None = None,
-               snaps: pd.DataFrame | None = None, rookies: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict[str, P.PropModel]]:
+               snaps: pd.DataFrame | None = None, rookies: pd.DataFrame | None = None,
+               lineup: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict[str, P.PropModel]]:
     """Predictions for a week. For an unplayed week the players are guessed from recent games; for a
     finished week the players who appeared are scored, with the model fitted only on earlier dates."""
     games = _fill_lines(games, preds)
@@ -157,7 +158,10 @@ def week_props(offense: pd.DataFrame, games: pd.DataFrame, season: int, week: in
                 col = "home_qb_id" if games.loc[row, "home_team"].replace(P.TEAM_MAP).iloc[0] == team else "away_qb_id"
                 games.loc[row, col] = qb
     both = pd.concat([off, target, up], ignore_index=True)
-    panel = P.build_panel(both, games, snaps, rookies)
+    if lineup is not None and not up.empty:
+        # The unplayed games' line-up is the card's own candidate list, not last week's roster status.
+        lineup = pd.concat([lineup[~lineup["game_id"].isin(set(up["game_id"]))], up[["game_id", "team", "player_id"]]])
+    panel = P.build_panel(both, games, snaps, rookies, lineup)
     models = P.fit_all(panel)
     cur = panel[~panel["played"].astype(bool)]
     out = []

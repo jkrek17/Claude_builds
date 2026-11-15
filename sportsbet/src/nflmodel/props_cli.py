@@ -110,7 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     preds = predict_all(games, str(data_dir)) if need_model else None
     avail = availability.for_week(availability.load(str(data_dir), [season]), season, week)
     df, models = C.week_props(offense, games, season, week, preds, avail,
-                               P.load_snaps(str(data_dir)), P.load_rookie_seasons(str(data_dir)))
+                               P.load_snaps(str(data_dir)), P.load_rookie_seasons(str(data_dir)),
+                               P.load_lineups(str(data_dir), games))
     if df.empty:
         print(f"No games found for {season} week {week}.", file=sys.stderr)
         return 1

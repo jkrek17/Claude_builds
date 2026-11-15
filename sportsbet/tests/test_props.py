@@ -200,3 +200,16 @@ def test_consistency_scale_widens_the_range_and_keeps_the_mean(panel):
 def test_consistency_labels():
     assert C.consistency_label(None) is None
     assert [C.consistency_label(s) for s in (0.9, 1.0, 1.1)] == ["steady", "typical", "boom or bust"]
+
+
+def test_active_list_replaces_who_recorded_a_stat(league):
+    offense, games = league
+    last = games["game_id"].iloc[-1]
+    team = games["home_team"].iloc[-1]
+    # WR2 was active but never touched the ball: he has no stat row for the game.
+    quiet = offense[~((offense["game_id"] == last) & (offense["player_id"] == f"{team}-WR2"))]
+    rows = offense[offense["game_id"] == last][["game_id", "team", "player_id"]]
+    pick = lambda d: d[(d["game_id"] == last) & (d["player_id"] == f"{team}-WR0")]["vac_tgt"].iloc[0]
+    full = pick(P.build_panel(offense, games))
+    assert pick(P.build_panel(quiet, games)) > full + 0.02              # without the list he looks absent
+    assert pick(P.build_panel(quiet, games, lineup=rows)) == pytest.approx(full, abs=0.02)

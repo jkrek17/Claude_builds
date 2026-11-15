@@ -139,14 +139,53 @@ def _decayed(keys: np.ndarray, x: np.ndarray, decay: float, mult: np.ndarray | N
     return out
 
 
+def load_lineups(data_dir: str, games: pd.DataFrame, first_season: int = 2019) -> pd.DataFrame | None:
+    """Active skill players per game (game_id, team, player_id) from the cached weekly rosters.
+
+    Roster status ACT in the week of a game is the game-day active list; it is recorded from 2019."""
+    files = [f for f in sorted(glob.glob(os.path.join(data_dir, "roster_weekly_*.csv")))
+             if int(os.path.basename(f)[-8:-4]) >= first_season]
+    if not files:
+        return None
+    r = pd.concat([pd.read_csv(f, usecols=["season", "week", "team", "position", "status", "gsis_id"], low_memory=False)
+                   for f in files], ignore_index=True).dropna(subset=["gsis_id"])
+    r = r[(r["status"] == "ACT") & r["position"].isin(POSITIONS)]
+    r["team"] = r["team"].replace(TEAM_MAP)
+    g = games[["game_id", "season", "week", "home_team", "away_team"]]
+    sides = pd.concat([g.rename(columns={f"{s}_team": "team"})[["game_id", "season", "week", "team"]] for s in ("home", "away")])
+    sides["team"] = sides["team"].replace(TEAM_MAP)
+    out = r.merge(sides, on=["season", "week", "team"]).rename(columns={"gsis_id": "player_id"})
+    return out[["game_id", "team", "player_id"]].drop_duplicates()
+
+
+def _lineup_totals(d: pd.DataFrame, lineup: pd.DataFrame) -> pd.DataFrame:
+    """For each panel row: the listed line-up's summed target and carry shares (NaN where no list covers
+    the game) and whether the row's own player is on the list. Shares are each player's latest before the game."""
+    days = d[["game_id", "team", "gameday"]].drop_duplicates(["game_id", "team"])
+    lu = lineup.merge(days, on=["game_id", "team"])
+    lu["day"] = pd.to_datetime(lu["gameday"])
+    state = pd.DataFrame({"player_id": d["player_id"].to_numpy(), "day": pd.to_datetime(d["gameday"]).to_numpy(),
+                          "tgt": d["_tgt_after"].to_numpy(), "car": d["_car_after"].to_numpy()}).sort_values("day")
+    lu = pd.merge_asof(lu.sort_values("day"), state, on="day", by="player_id", allow_exact_matches=False)
+    tot = lu.groupby(["game_id", "team"], as_index=False).agg(tot_tgt=("tgt", "sum"), tot_car=("car", "sum"))
+    out = d[["game_id", "team", "player_id"]].merge(tot, on=["game_id", "team"], how="left")
+    own = d[["game_id", "team", "player_id"]].merge(lineup.assign(own_listed=True), on=["game_id", "team", "player_id"], how="left")
+    out["own_listed"] = own["own_listed"].fillna(False).to_numpy(bool)
+    return out
+
+
 def build_panel(offense: pd.DataFrame, games: pd.DataFrame, snaps: pd.DataFrame | None = None,
-                rookies: pd.DataFrame | None = None) -> pd.DataFrame:
+                rookies: pd.DataFrame | None = None, lineup: pd.DataFrame | None = None) -> pd.DataFrame:
     """One row per player per game: the outcomes plus every pre-game feature.
 
     ``offense`` may contain rows for games not yet played (see :func:`upcoming_rows`); their outcome
     columns are ignored because every feature looks only at earlier rows. The one thing taken from the
     game itself is its line-up: which teammates have a row. For a played game that is who appeared (known
     from the inactives list 90 minutes before kickoff); for an upcoming game it is whoever the caller lists.
+
+    ``lineup`` (game_id, team, player_id: the active list, see :func:`load_lineups`) replaces "who has a
+    row" wherever it covers a game. Without it a reserve who was active but never touched the ball
+    counts as absent, which tells the feature something about how the game went.
     """
     g = games.copy()
     g["home_team"] = g["home_team"].replace(TEAM_MAP)
@@ -257,6 +296,10 @@ def build_panel(offense: pd.DataFrame, games: pd.DataFrame, snaps: pd.DataFrame 
         d[f"new_{name}"] = SHRINK / (n + SHRINK)
         d[f"tgt_share_{name}"] = s[:, 2] / (s[:, len(stats) + 1] + SHRINK * 34.0)
         d[f"car_share_{name}"] = s[:, 0] / (s[:, len(stats) + 2] + SHRINK * 27.0)
+        if name == "slow":   # the same shares after this game, for players named in a later line-up
+            post = s * SLOW + x
+            d["_tgt_after"] = post[:, 2] / (post[:, len(stats) + 1] + SHRINK * 34.0)
+            d["_car_after"] = post[:, 0] / (post[:, len(stats) + 2] + SHRINK * 27.0)
     st = d["starter"].to_numpy()
     pstats = ["attempts", "completions", "passing_yards", "passing_tds"]
     xp = np.column_stack([d[pstats].to_numpy(float) * st[:, None], st])
@@ -295,8 +338,14 @@ def build_panel(offense: pd.DataFrame, games: pd.DataFrame, snaps: pd.DataFrame 
 
     # Vacated volume: the share of targets and carries held by the other teammates in this game's
     # line-up, against what the player has usually had around him. Positive = less competition than usual.
+    listed = _lineup_totals(d, lineup) if lineup is not None else None
     for kind, col in (("tgt", "tgt_share_slow"), ("car", "car_share_slow")):
         now = (d.groupby(["game_id", "team"])[col].transform("sum") - d[col]).to_numpy()
+        if listed is not None:
+            # Where the active list is known, the line-up is that list, not whoever ended up with a stat.
+            tot = listed[f"tot_{kind}"].to_numpy()
+            own = np.where(listed["own_listed"].to_numpy(), d[col].to_numpy(), 0.0)
+            now = np.where(np.isnan(tot), now, tot - own)
         h = _decayed(keys, np.column_stack([now, np.ones(len(d))]), FAST)
         usual = np.where(h[:, 1] > 0, h[:, 0] / (h[:, 1] + 1e-12), now)
         d[f"vac_{kind}"] = usual - now
@@ -306,6 +355,7 @@ def build_panel(offense: pd.DataFrame, games: pd.DataFrame, snaps: pd.DataFrame 
     q["qb_level"] = q["passing_yards_slow"] + 200.0 * q["qbnew_slow"] - 200.0
     d = d.merge(q[["game_id", "team", "qb_level"]], on=["game_id", "team"], how="left")
     d["qb_level"] = d["qb_level"].fillna(0.0)
+    d = d.drop(columns=["_tgt_after", "_car_after"])
 
     d = d.copy()
     d["exp_targets"] = d["tgt_share_slow"] * d["tm_targets"]
