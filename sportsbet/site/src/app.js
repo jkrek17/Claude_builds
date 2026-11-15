@@ -19,6 +19,7 @@ const COLORS = {
   NYJ: "#125740", PHI: "#004c54", PIT: "#ffb612", SEA: "#69be28", SF: "#aa0000", TB: "#d50a0a",
   TEN: "#4b92db", WAS: "#5a1414",
 };
+const esc = (text) => String(text).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
 const color = (abbr) => COLORS[abbr] || "#8a909c";
 
 // Logos are loaded from ESPN's image server, which spells two teams differently. If one fails to
@@ -156,10 +157,41 @@ function recordTable(head, rows) {
   </table></div>`;
 }
 
+// The weekly loop's frozen-pick record: picks saved before kickoff and graded afterwards.
+function loopPanel(data) {
+  const loop = data.loop;
+  if (!loop || !loop.status) return "";
+  const st = loop.status, rep = loop.report || {};
+  const health = st.red.length
+    ? `<p class="text-sm"><strong class="text-primary">A weekly check failed.</strong> ${st.red.map(esc).join("; ")}.</p>`
+    : `<p class="text-sm"><strong>All weekly checks passed.</strong></p>`;
+  let body = `<p class="mt-1 text-sm muted">No week has been graded yet. Picks are saved each Thursday before kickoff and graded when the week is over.</p>`;
+  const s = rep.season_to_date && rep.season_to_date.official;
+  if (s) {
+    const line = (label, r) => {
+      const n = r.w + r.l;
+      return [label, n ? `${r.w}-${r.l}` : "none yet", n ? `luck alone: ${pct(r.luck_lo)} to ${pct(r.luck_hi)}` : ""];
+    };
+    const clv = s.clv.n
+      ? `${s.clv.mean >= 0 ? "+" : ""}${s.clv.mean.toFixed(2)} pts${s.clv.pm == null ? "" : " ± " + s.clv.pm.toFixed(2)}`
+      : "none yet";
+    body = `<div class="mt-2">${recordTable(["Saved picks, " + rep.season, "Record", "How to read it"], [
+      line("Winners", s.winners), line("Spread", s.spread), line("Totals", s.total),
+      ["Line moved toward the pick", clv, s.clv.n < 120 ? "too few picks to judge" : "about +0.8 would break even"],
+      ["Paper bets at -110", `${s.paper.units >= 0 ? "+" : ""}${s.paper.units.toFixed(1)} units`,
+       `luck alone: ${s.paper.luck_lo.toFixed(1)} to ${s.paper.luck_hi >= 0 ? "+" : ""}${s.paper.luck_hi.toFixed(1)}`],
+    ])}</div>
+    <p class="mt-2 text-xs muted">These picks were saved before kickoff and cannot be changed afterwards. One week of results tells you nothing about the model.</p>`;
+  }
+  const change = rep.model_change ? `<p class="mt-2 text-xs muted">${esc(rep.model_change).replace(/`/g, "")}</p>` : "";
+  return `<h2 class="text-sm font-semibold">Weekly check</h2>
+    <div class="panel mt-2 mb-9 p-4">${health}${st.amber.map((a) => `<p class="mt-1 text-xs muted">Note: ${esc(a)}.</p>`).join("")}${body}${change}</div>`;
+}
+
 function renderRecord(data) {
   const b = data.backtest;
   const both = (pair) => `${rec(pair)} <span class="faint">${pct(rate(pair))}</span>`;
-  $("record").innerHTML = `
+  $("record").innerHTML = `${loopPanel(data)}
     <h2 class="text-sm font-semibold">${data.season} by week</h2>
     <p class="mb-2 mt-1 text-xs muted">Picks on every game, graded against the closing line.</p>
     ${recordTable(["Week", "Winners", "Spread", "Totals"],

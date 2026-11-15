@@ -75,8 +75,20 @@ def backtest(preds: pd.DataFrame, last_season: int, first_season: int = BACKTEST
     }
 
 
+def loop_state(state_dir: str | Path | None) -> dict | None:
+    """The weekly loop's status and report numbers, when a state directory with them is given."""
+    if not state_dir:
+        return None
+    out = {}
+    for key in ("status", "report"):
+        path = Path(state_dir) / f"{key}.json"
+        if path.exists():
+            out[key] = json.loads(path.read_text())
+    return out or None
+
+
 def build(preds: pd.DataFrame, season: int, week: int, generated_at: dt.datetime | None = None,
-          backtest_first: int = BACKTEST_FIRST) -> dict:
+          backtest_first: int = BACKTEST_FIRST, loop: dict | None = None) -> dict:
     """Everything the page shows. `preds` is card.predict_all output; `week` is the week shown first."""
     this = preds[preds["season"] == season]
     rows = this.set_index("game_id")
@@ -94,11 +106,12 @@ def build(preds: pd.DataFrame, season: int, week: int, generated_at: dt.datetime
         "generated_at": generated_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "season": season, "week": week, "break_even": BREAK_EVEN, "windy_mph": WINDY_MPH,
         "weeks": weeks, "record": season_record(preds, season), "by_week": by_week,
-        "backtest": backtest(preds, season - 1, backtest_first),
+        "backtest": backtest(preds, season - 1, backtest_first), "loop": loop,
     })
 
 
-def write(path: str | Path, preds: pd.DataFrame, season: int, week: int) -> None:
+def write(path: str | Path, preds: pd.DataFrame, season: int, week: int,
+          state_dir: str | Path | None = None) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(build(preds, season, week), allow_nan=False, separators=(",", ":")))
+    path.write_text(json.dumps(build(preds, season, week, loop=loop_state(state_dir)), allow_nan=False, separators=(",", ":")))

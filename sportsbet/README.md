@@ -181,10 +181,64 @@ python3 -m http.server -d dist                # open http://localhost:8000
 ```
 
 The `site` and `publish` jobs in `.github/workflows/sportsbet.yml` rerun the model and publish the page
-to GitHub Pages on Tuesday, Thursday, Saturday and Sunday mornings US Eastern, and whenever a change to
-`sportsbet/` lands on `main`. This needs Pages turned on once: repository Settings, Pages, Source
+to GitHub Pages on Tuesday, Wednesday, Thursday, Saturday and Sunday mornings US Eastern, and whenever a
+change to `sportsbet/` lands on `main`. This needs Pages turned on once: repository Settings, Pages, Source
 "GitHub Actions". Wind forecasts are only shown for the run that made them, so a finished game shows
 no wind.
+
+## The weekly loop
+
+`nflmodel-loop` saves each week's picks before kickoff, grades them when the week is over, tests a fixed
+list of alternative settings, and writes a report. The `loop` job in `.github/workflows/sportsbet.yml`
+runs it on every scheduled slot; it does whatever the calendar and the saved state call for, so running
+it twice changes nothing.
+
+```
+nflmodel-loop run --state-dir STATE       # check, freeze, grade, test settings, report
+nflmodel-loop status --state-dir STATE    # what the last run did
+nflmodel --json site.json --state-dir STATE   # the page then shows the saved-pick record
+```
+
+**What it keeps.** The state lives on the `sportsbet-data` branch, never on `main`:
+
+| File | What it is |
+|---|---|
+| `picks.csv` | Every pick as it stood when saved. Append-only, and each row carries a hash of the row before it, so a pick changed after the fact is detected and the run fails. |
+| `grades.csv` | Each pick graded against the final score and the closing line. Rebuilt from `picks.csv` every run. |
+| `REPORT.md`, `reports/` | The weekly report, latest and one per graded week. |
+| `challengers/`, `promotions.json` | Each week's test of the alternative settings and the history of proposals. |
+
+**When picks are saved.** Thursday morning's run saves the pick of record for every game of the week,
+before the first kickoff. Tuesday and Wednesday save an early look, graded on its own line. A week is
+graded only when every game in it has a final score.
+
+**What the report says.** Health checks first, then last week's games, the season record with the range
+luck alone would produce, error against the closing line, whether the line moved toward the picks after
+they were saved (the fastest honest sign of skill, about 80 times quicker than a win rate), and paper
+bets of one unit at -110. One week of results says nothing about a model, and the report says so.
+
+**How the model is allowed to change.** The ratings and the blend already learn from every result. The
+loop only retunes settings, and only like this:
+
+- The candidates are fixed in `src/nflmodel/challengers.json`: the current settings with one value moved
+  one step. The same 36 are tested every week, so repeated looks add no new guesses.
+- A candidate is proposed when its squared error beats the current model's on every game since 2010
+  with a season-clustered one-sided p of 0.0025 or less, by at least 0.1%, in at least 65% of seasons, in
+  both halves of the window and in the latest three seasons, four weekly looks in a row.
+- A proposal is a draft pull request with the evidence. Nothing merges by itself. At most one change per
+  model per season, and a merged change is proposed for reverting if its advantage fades.
+- Records against the spread, profit, closing-line results, and any single week, month or season never
+  trigger a change. The weights the card gives the model against the line are never tuned.
+
+Replayed over 2014 to 2025 with no real effect present, this rule made a false change in about 4% of
+seasons; "switch to whichever setting is ahead" did so every season. On real history it would have made
+one change in twelve years, worth 0.006 points of error. Expect the loop to change the model rarely and
+never to create a betting edge. Its value is the honest record, and that it stops the model being
+changed for bad reasons.
+
+**One-time setup.** For the loop to open its own pull requests, turn on repository Settings, Actions,
+General, "Allow GitHub Actions to create and approve pull requests". Without it the proposal is written
+to an issue with a link that opens the pull request.
 
 ## Known limits
 
