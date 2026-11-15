@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@source "./index.html";
+@source "./app.js";
+@plugin "daisyui" {
+  themes: light --default;
+}
+
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: #f6f7f9;
+  --color-base-300: #e6e8ec;
+  --color-base-content: #16181d;
+  --color-primary: #2a78d6;
+  --color-primary-content: #ffffff;
+  --color-success: #0f7b3f;
+  --color-error: #c0362c;
+  --color-warning: #b26a00;
+  --radius-box: 1rem;
+  --radius-field: 0.75rem;
+}
+
+:root {
+  --ink-2: #5b616e;      /* secondary text */
+  --ink-3: #8a909c;      /* muted text */
+  --series-1: #2a78d6;   /* spread picks */
+  --series-2: #eb6834;   /* total picks */
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-2); }
+.faint { color: var(--ink-3); }
+.eyebrow { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.panel { background: var(--color-base-100); border: 1px solid var(--color-base-300); border-radius: 1rem; }
+.swatch { display: inline-block; width: 0.625rem; height: 0.625rem; border-radius: 9999px; }

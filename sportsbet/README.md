@@ -166,6 +166,25 @@ relationship with forecast error.
 The earlier research write-ups for each model are in `research/margin` and `research/totals`. They
 describe the models before quarterback form and observed wind were added.
 
+## The web page
+
+`site/` is a small static page for a phone: the week's card, the season record and the backtest. It is
+built with [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss) and
+[daisyUI](https://github.com/saadeghi/daisyui), with [Chart.js](https://github.com/chartjs/Chart.js)
+for the one chart. The page holds no model code. It reads `data/site.json`, which the model writes:
+
+```
+nflmodel --json site/dist/data/site.json     # every week's card, the record and the backtest
+cd site && npm ci && npm run build            # writes the page into site/dist
+python3 -m http.server -d dist                # open http://localhost:8000
+```
+
+The `site` and `publish` jobs in `.github/workflows/sportsbet.yml` rerun the model and publish the page
+to GitHub Pages on Tuesday, Thursday, Saturday and Sunday mornings US Eastern, and whenever a change to
+`sportsbet/` lands on `main`. This needs Pages turned on once: repository Settings, Pages, Source
+"GitHub Actions". Wind forecasts are only shown for the run that made them, so a finished game shows
+no wind.
+
 ## Known limits
 
 - The starting quarterback is taken from nflverse. For games where it is not announced yet, the

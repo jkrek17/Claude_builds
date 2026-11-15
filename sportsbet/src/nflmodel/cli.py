@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import data, weather
+from . import data, site, weather
 from .card import BREAK_EVEN, next_week, predict_all, season_record, week_card
 
 NOTE = ("How to read this: the model was tested on 4,363 games from 2010 to 2025 without ever seeing a\n"
@@ -70,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--offline", action="store_true", help="use the cached files without downloading")
     parser.add_argument("--no-weather", action="store_true", help="skip the wind forecast and use climatology")
     parser.add_argument("--csv", help="also write the week's predictions to this CSV file")
+    parser.add_argument("--json", help="also write the web page's data file (every week, record, backtest)")
     args = parser.parse_args(argv)
 
     data_dir = Path(args.data_dir)
@@ -88,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     print(render(cards, season, week, season_record(preds, season)))
     if args.csv:
         pd.DataFrame(cards).to_csv(args.csv, index=False)
+    if args.json:
+        site.write(args.json, preds, season, week)
     return 0
 
 
