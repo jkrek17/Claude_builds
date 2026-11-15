@@ -87,7 +87,7 @@ def _fill_lines(games: pd.DataFrame, preds: pd.DataFrame | None) -> pd.DataFrame
     return g.drop(columns=["pred_margin", "pred_total"])
 
 
-def _summary(model: P.PropModel, pos: str, mu: float) -> dict:
+def _summary(model: P.PropModel, pos: str, mu: float, scale: float = 1.0) -> dict:
     prop = model.prop
     if prop.kind == "count":
         pmf = model.pmf(pos, mu)
@@ -96,33 +96,42 @@ def _summary(model: P.PropModel, pos: str, mu: float) -> dict:
         out = {"median": q(0.5), "low": q(BAND[0]), "high": q(BAND[1])}
         out["ladder"] = {f"{k}+": float(pmf[k:].sum()) for k in range(1, 11) if 0.02 <= pmf[k:].sum() <= 0.98}
     else:
-        qs = model.quantiles(pos, mu)
+        qs = model.quantiles(pos, mu, scale)
         q = lambda p: float(np.interp(p, P.QUANTILES, qs))
         out = {"median": q(0.5), "low": q(BAND[0]), "high": q(BAND[1])}
         step = 25.0 if prop.key == "pass_yds" else (5.0 if prop.key in ("pass_att", "pass_cmp") else 10.0)
         lo, hi = math.ceil(q(0.1) / step) * step, math.floor(q(0.95) / step) * step
-        out["ladder"] = {f"{int(x)}+": model.prob_over(pos, mu, x - 0.5) for x in np.arange(lo, hi + step, step) if x > 0}
+        out["ladder"] = {f"{int(x)}+": model.prob_over(pos, mu, x - 0.5, scale) for x in np.arange(lo, hi + step, step) if x > 0}
     # The half-point line closest to an even chance.
     best, gap = None, 2.0
     for line in np.arange(0.5, max(out["high"] * 1.5, 3.0) + 1.0, 1.0):
-        p = model.prob_over(pos, mu, float(line))
+        p = model.prob_over(pos, mu, float(line), scale)
         if abs(p - 0.5) < gap:
             best, gap = (float(line), p), abs(p - 0.5)
     out["fair_line"], out["fair_over"] = best
     return out
 
 
+STEADY, VOLATILE = 0.95, 1.05   # range width against a typical player, for the consistency label
+
+
+def consistency_label(scale: float | None) -> str | None:
+    if scale is None:
+        return None
+    return "steady" if scale <= STEADY else ("boom or bust" if scale >= VOLATILE else "typical")
+
+
 JSON_PROBS = np.round(np.concatenate([[0.005], np.arange(0.01, 0.995, 0.01), [0.995]]), 3)
 
 
-def _dist(model: P.PropModel, pos: str, mu: float) -> dict:
+def _dist(model: P.PropModel, pos: str, mu: float, scale: float = 1.0) -> dict:
     """The whole distribution, for the web page: quantiles at JSON_PROBS for yardage props, or the
     probability of each count 0, 1, 2, ... for count props."""
     if model.prop.kind == "count":
         pmf = model.pmf(pos, mu)
         keep = int(np.searchsorted(np.cumsum(pmf), 0.9999)) + 1
         return {"q": None, "pmf": [round(float(x), 4) for x in pmf[:keep]]}
-    qs = np.interp(JSON_PROBS, P.QUANTILES, model.quantiles(pos, mu))
+    qs = np.interp(JSON_PROBS, P.QUANTILES, model.quantiles(pos, mu, scale))
     return {"q": [round(float(x), 1) for x in qs], "pmf": None}
 
 
@@ -155,16 +164,21 @@ def week_props(offense: pd.DataFrame, games: pd.DataFrame, season: int, week: in
     for prop in P.PROPS:
         d = cur[P.eligible(cur, prop)]
         mu = models[prop.key].expected(d)
-        for (_, r), m in zip(d.iterrows(), mu):
+        scales = models[prop.key].spread_scale(d)
+        has_scale = prop.key in P.SPREAD_MODS
+        for (_, r), m, sc in zip(d.iterrows(), mu, scales):
             if not np.isfinite(m):
                 continue
-            s = _summary(models[prop.key], r["position"], float(m))
+            sc = float(sc)
+            s = _summary(models[prop.key], r["position"], float(m), sc)
             row = {"game_id": r["game_id"], "gameday": r["gameday"], "team": r["team"], "opponent": r["opponent_team"],
                    "player_id": r["player_id"], "player": r["player_display_name"], "position": r["position"],
                    "status": r.get("status") if isinstance(r.get("status"), str) else None,
                    "prop": prop.key, "expected": float(m), **{k: v for k, v in s.items() if k != "ladder"},
                    "chance": float(1 - models[prop.key].pmf(r["position"], float(m))[0]) if prop.key == "any_td" else None,
-                   "ladder": s["ladder"], **_dist(models[prop.key], r["position"], float(m)),
+                   "ladder": s["ladder"], **_dist(models[prop.key], r["position"], float(m), sc),
+                   "range_width": round(sc, 3) if has_scale else None,
+                   "consistency": consistency_label(sc if has_scale else None),
                    "actual": float(r[prop.target]) if r["game_id"] in set(target["game_id"]) and r["player_id"] in set(target["player_id"]) else None}
             out.append(row)
     return pd.DataFrame(out), models

@@ -241,6 +241,14 @@ The card shows each player's median and the range the model expects 8 times in 1
   for similar players; receptions use a negative binomial, passing TDs a binomial, and the chance of
   a touchdown its own logistic model.
 
+- **Consistency** (`props.py`): for rushing and receiving yards the range is stretched or squeezed
+  for each player by how much his own yardage has bounced around, how deep his targets are, how much
+  history he has and whether it is early in the season. `range_width` is that factor (1.0 is a typical
+  player with the same expected value) and `consistency` labels it steady, typical or boom or bust.
+  It does not move the expected value. In the walk-forward test the steadiest third of receivers
+  landed inside their 80% band 82.6% of the time without it and 79.8% with it, and the most volatile
+  third 77.8% without and 80.3% with; overall accuracy is unchanged (CRPS 0.04% better).
+
 Three expert reviews chose these pieces by walk-forward test and rejected many more; see
 [research/props/README.md](research/props/README.md).
 
@@ -279,6 +287,8 @@ What this does and does not show:
   roughly half to three quarters of the vacated-volume gain in testing, and late scratches are missed.
 - The test uses closing game lines. Quarterback props lean on the line; made before a line is
   posted they lose roughly a third of their advantage over the player's own average.
+- Consistency is small: most players' ranges move by under 5%, and the widest by about 10%. Passing
+  props, receptions and touchdowns have no per-player adjustment.
 - Not modelled yet: weather for passing props, how props move together within a game (needed for
   same-game parlays), first touchdown scorer, kickers and defences.
 

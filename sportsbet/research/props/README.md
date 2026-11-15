@@ -13,9 +13,10 @@ the first version of the model (commit `06bcc62`), so their scripts reproduce th
 | `environment/` (game and opponent) | Implied team points x the player's level, completion rate allowed, team rushing EPA for passing props, starting quarterback level x receiver level; home field dropped | Defence versus position, non-linear spread and total terms, pace, pass rate, pass rush, rest, division, surface, cold, opponent-adjusted history. Wind helps passing yards by about 0.25% with a perfect forecast and is not in yet |
 | `distribution/` (spread and calibration) | Binomial(9) for passing TDs, 2 to 6 expected-value bins for yardage spreads, a direct logistic model for anytime TD, receptions dispersion that shrinks as the mean grows, randomised PITs for scoring counts | Log-link or boosted-tree expected values, gamma, lognormal and skew-normal yardage families, attempts and completions as counts, early-season dummies, rolling training windows, any recalibration layer |
 
-Tested, real, and not yet built: a spread modifier for rushing and receiving yards (target depth, the
-player's own volatility, weeks 1 to 4), worth 0.1 to 0.4% CRPS and better calibration for deep
-threats (`distribution/q2b_scaled.py`).
+Added later (consistency): the spread modifier for rushing and receiving yards from
+`distribution/q2b_scaled.py` (own volatility, target depth, history length, weeks 1 to 4). On the
+shipped model it is worth only 0.04% CRPS but evens out the 80% band between steady and volatile
+players (see the consistency table in `backtest_output.txt`).
 
 Known faults left in the shipped model (from `distribution/final.out`): passing yards run a little
 high for the best quarterbacks (300+ yards forecast 23.5%, happened 21.6%), rushing overs run high

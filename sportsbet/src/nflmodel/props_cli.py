@@ -66,9 +66,11 @@ def lookup(df: pd.DataFrame, models: dict, player: str, prop: str, line: float) 
         return f"No {prop} prediction for a player matching '{player}' this week."
     out = []
     for _, r in hit.iterrows():
-        p = models[prop].prob_over(r["position"], r["expected"], line)
+        scale = r["range_width"] if pd.notna(r.get("range_width")) else 1.0
+        p = models[prop].prob_over(r["position"], r["expected"], line, scale)
         out.append(f"{r['player']} ({r['team']}) {P.PROP_BY_KEY[prop].label} over {line:g}: {p:.1%}   under: {1 - p:.1%}"
-                   f"   (median {r['median']:.0f}, range {r['low']:.0f}-{r['high']:.0f})")
+                   f"   (median {r['median']:.0f}, range {r['low']:.0f}-{r['high']:.0f}"
+                   + (f", {r['consistency']}: range {r['range_width']:.2f}x a typical player's" if r.get("consistency") else "") + ")")
     return "\n".join(out)
 
 

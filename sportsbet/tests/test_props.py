@@ -168,6 +168,8 @@ def test_card_drops_players_who_are_out_and_moves_traded_players(league):
     assert browser == pytest.approx(r["fair_over"], abs=0.02)
     c = df[df["prop"] == "receptions"].iloc[0]
     assert sum(c["pmf"][int(c["fair_line"] + 0.5):]) == pytest.approx(c["fair_over"], abs=0.002)
+    assert set(df[df["prop"] == "rec_yds"]["consistency"]) <= {"steady", "typical", "boom or bust"}
+    assert df[df["prop"] == "pass_yds"]["consistency"].isna().all()
     td = df[df["prop"] == "any_td"].iloc[0]
     assert 1 - td["pmf"][0] == pytest.approx(td["chance"], abs=0.001)
     text = props_cli.render(df, season, week)
@@ -175,3 +177,26 @@ def test_card_drops_players_who_are_out_and_moves_traded_players(league):
     out = props_cli.to_json(df, season, week)
     assert len(out["probs"]) == len(r["q"]) and out["props"]["rec_yds"]["kind"] == "yards"
     assert "DDD TE0" in props_cli.lookup(df, models, "ddd te0", "rec_yds", 30.5)
+
+
+def test_consistency_scale_widens_the_range_and_keeps_the_mean(panel):
+    model = P.fit_all(panel)["rec_yds"]
+    wr = panel[(panel["season"] == panel["season"].max()) & (panel["position"] == "WR")]
+    wr = wr[P.eligible(wr, model.prop)]
+    scale = model.spread_scale(wr)
+    assert ((scale >= P.SPREAD_CLIP[0]) & (scale <= P.SPREAD_CLIP[1])).all()
+    mu = float(model.expected(wr)[0])
+    steady, usual, wild = (model.quantiles("WR", mu, s) for s in (0.7, 1.0, 1.4))
+    width = lambda q: np.interp(0.9, P.QUANTILES, q) - np.interp(0.1, P.QUANTILES, q)
+    assert width(steady) < width(usual) < width(wild)
+    assert steady.mean() == pytest.approx(usual.mean(), rel=1e-6) == pytest.approx(wild.mean(), rel=1e-6)
+    assert (steady >= 0).all() or (usual < 0).any()
+    assert model.prob_over("WR", mu, mu * 2, 1.4) > model.prob_over("WR", mu, mu * 2, 0.7)
+    # Props without the adjustment always report a typical range.
+    qb = panel[(panel["season"] == panel["season"].max()) & (panel["position"] == "QB")]
+    assert (P.fit_all(panel)["pass_yds"].spread_scale(qb) == 1.0).all()
+
+
+def test_consistency_labels():
+    assert C.consistency_label(None) is None
+    assert [C.consistency_label(s) for s in (0.9, 1.0, 1.1)] == ["steady", "typical", "boom or bust"]
