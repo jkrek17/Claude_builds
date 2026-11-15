@@ -7,6 +7,10 @@ on:
   pull_request:
     paths: ["sportsbet/**", ".github/workflows/sportsbet.yml"]
   workflow_dispatch:
+  schedule:
+    # Rebuild the predictions page: Tuesday 5 AM, then Thursday, Saturday and Sunday 9 AM US Eastern (EST).
+    - cron: "0 10 * * 2"
+    - cron: "0 14 * * 4,6,0"
 
 permissions:
   contents: read
@@ -29,3 +33,61 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
+
+  site:
+    name: Build the predictions page
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: sportsbet
+    env:
+      # Publish from main only: on a schedule, on a manual run, or when a change lands.
+      PUBLISH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sportsbet/site/package-lock.json
+      - name: Build the page
+        working-directory: sportsbet/site
+        run: npm ci && npm run build
+      - uses: actions/setup-python@v5
+        if: env.PUBLISH == 'true'
+        with:
+          python-version: "3.13"
+      - name: Restore the nflverse data cache
+        if: env.PUBLISH == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nflmodel
+          key: nflmodel-data-${{ github.run_id }}
+          restore-keys: nflmodel-data-
+      - name: Run the model and write the page's data
+        if: env.PUBLISH == 'true'
+        run: |
+          pip install -e ".[model]"
+          nflmodel --json site/dist/data/site.json
+      - uses: actions/upload-pages-artifact@v3
+        if: env.PUBLISH == 'true'
+        with:
+          path: sportsbet/site/dist
+
+  publish:
+    name: Publish to GitHub Pages
+    needs: site
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -3,8 +3,9 @@ import pandas as pd
 import pytest
 
 import datetime as dt
+import json
 
-from nflmodel import margin_model, qb_form, scoredist, totals_model, weather
+from nflmodel import margin_model, qb_form, scoredist, site, totals_model, weather
 from nflmodel.card import (BREAK_EVEN, fit_key_factors, game_card, market_home_prob, next_week, norm_cdf,
                            predict_all, season_record, week_card)
 from nflmodel.cli import render
@@ -124,6 +125,19 @@ def test_predict_all_and_render(tmp_path):
     assert len(cards) == 8
     text = render(cards, season, week, season_record(preds, season))
     assert "Moneyline" in text and "1-800-GAMBLER" in text
+
+    # The web page's data file: valid JSON, every week present, results graded only for finished games.
+    site.write(tmp_path / "out" / "site.json", preds, season, week)
+    page = json.loads((tmp_path / "out" / "site.json").read_text())
+    assert page["season"] == 2005 and page["week"] == 13 and len(page["weeks"]) == 14
+    assert [w["week"] for w in page["by_week"]] == list(range(1, 13))
+    played, upcoming = page["weeks"]["12"][0], page["weeks"]["13"][0]
+    assert played["final"] and played["home_score"] is not None and played["ml_hit"] in (True, False, None)
+    assert not upcoming["final"] and upcoming["home_score"] is None and upcoming["ats_hit"] is None
+    assert page["record"] == json.loads(json.dumps(season_record(preds, season)))
+    back = site.build(preds, season, week, backtest_first=2003)["backtest"]
+    assert [s["season"] for s in back["seasons"]] == [2003, 2004]
+    assert back["ats"][1] == sum(s["ats"][1] for s in back["seasons"]) and 0 < back["su_model"] < 1
 
 
 def test_qb_form_rates_good_quarterbacks_higher_and_flags_backups():

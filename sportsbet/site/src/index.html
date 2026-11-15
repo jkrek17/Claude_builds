@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#2b4674">
+  <title>NFL Model</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="bg-base-200 text-base-content min-h-screen">
+  <main class="mx-auto max-w-4xl px-4 pb-16 pt-4">
+    <header class="hero flex items-end justify-between gap-4 px-5 py-7 text-white">
+      <div>
+        <p class="eyebrow">NFL model <span id="season"></span></p>
+        <h1 class="display mt-1 text-6xl" id="title">Loading</h1>
+        <p class="mt-1 text-sm text-white/80" id="updated"></p>
+      </div>
+      <label class="shrink-0">
+        <span class="sr-only">Week</span>
+        <select id="week" class="select select-sm w-28 border-0 bg-white text-base-content"></select>
+      </label>
+    </header>
+
+    <p class="panel notice mt-4 px-4 py-3 text-sm leading-relaxed" id="notice"></p>
+
+    <nav class="tabs-flat mt-5 grid grid-cols-3" role="tablist" id="tabs">
+      <button role="tab" data-tab="picks">Picks</button>
+      <button role="tab" data-tab="record">Record</button>
+      <button role="tab" data-tab="about">How to read</button>
+    </nav>
+
+    <section id="picks" class="mt-6" role="tabpanel"></section>
+    <section id="record" class="mt-6" role="tabpanel" hidden></section>
+    <section id="about" class="mt-6" role="tabpanel" hidden></section>
+
+    <footer class="mt-10 text-center text-xs faint leading-relaxed">
+      Predictions, not betting advice. Bet only what you can afford to lose.<br>
+      If gambling stops being fun, call <a class="underline" href="tel:18004262537">1-800-GAMBLER</a>.
+    </footer>
+  </main>
+  <script src="chart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
