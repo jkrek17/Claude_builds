@@ -225,7 +225,7 @@ const Props = (() => {
     return `<article class="panel pr-player ${isOpen ? "open" : ""}" data-player="${esc(p.id)}" data-search="${esc(p.search)}">
       <button type="button" class="pr-row" data-act="toggle" aria-expanded="${isOpen}">
         ${window.teamLogo ? window.teamLogo(p.team) : ""}
-        <span class="pr-name"><span class="display">${esc(p.name)}</span><span class="pr-meta">${p.position} · ${p.team} vs ${p.opponent}</span></span>
+        <span class="pr-name"><span class="display">${esc(p.name)}</span><span class="pr-meta">${p.position} · ${p.team} vs ${p.opponent}${p.status ? ` · <strong class="pr-status">${esc(p.status)}</strong>` : ""}</span></span>
         <span class="pr-headline num">${headline}</span>
         <span class="pr-chev" aria-hidden="true">${isOpen ? "−" : "+"}</span>
       </button>
@@ -294,12 +294,13 @@ const Props = (() => {
     if (!b) return `<p class="pr-cap mt-8">A backtest summary for each prop will appear here when the props model is final.</p>`;
     const rows = ORDER.filter((prop) => b[prop]).map((prop) => {
       const r = b[prop], cell = (v, f) => (v == null ? "–" : f(v));
+      const miss = (v) => v.toFixed(v < 10 ? 2 : 1);
       return `<tr><td>${esc(label(prop))}</td><td class="text-right">${cell(r.n, (v) => v.toLocaleString())}</td>
-        <td class="text-right">${cell(r.mae, (v) => v.toFixed(1))}</td><td class="text-right">${cell(r.mae_baseline, (v) => v.toFixed(1))}</td>
+        <td class="text-right">${cell(r.mae, miss)}</td><td class="text-right">${cell(r.mae_baseline, miss)}</td>
         <td class="text-right">${cell(r.coverage_80, (v) => Math.round(v * 100) + "%")}</td></tr>`;
     }).join("");
     return `<h2 class="day">How reliable is it?</h2>
-      <p class="lede">Tested on past seasons without looking ahead. The "most games" range should hold about 80% of results.</p>
+      <p class="lede">Tested on ${data.backtest_seasons ? `the ${data.backtest_seasons[0]} to ${data.backtest_seasons[1]} seasons` : "past seasons"} without looking ahead. The "most games" range should hold about 80% of results.</p>
       <div class="panel overflow-x-auto"><table class="table table-sm num"><thead><tr><th>Prop</th><th class="text-right">Games</th>
         <th class="text-right">Average miss</th><th class="text-right">Player's own average</th><th class="text-right">Range held</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
@@ -421,7 +422,7 @@ const Props = (() => {
       let p = players.get(row.player_id);
       if (!p) {
         p = { id: row.player_id, name: row.player, team: row.team, opponent: row.opponent, position: row.position,
-              game: row.game_id, rows: {}, weight: 0,
+              game: row.game_id, rows: {}, weight: 0, status: row.status || "",
               search: `${row.player} ${row.team} ${row.position} ${(window.TEAM_NAMES || {})[row.team] || ""}`.toLowerCase() };
         players.set(row.player_id, p);
       }
