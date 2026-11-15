@@ -171,7 +171,8 @@ describe the models before quarterback form and observed wind were added.
 `site/` is a small static page for a phone: the week's card, the season record and the backtest. It is
 built with [Tailwind CSS](https://github.com/tailwindlabs/tailwindcss) and
 [daisyUI](https://github.com/saadeghi/daisyui), with [Chart.js](https://github.com/chartjs/Chart.js)
-for the one chart. The page holds no model code. It reads `data/site.json`, which the model writes:
+for the one chart. Team logos are NFL trademarks; they are loaded from ESPN's image server and are not
+stored in this repository. The page holds no model code. It reads `data/site.json`, which the model writes:
 
 ```
 nflmodel --json site/dist/data/site.json     # every week's card, the record and the backtest

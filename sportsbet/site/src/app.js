@@ -21,6 +21,16 @@ const COLORS = {
 };
 const color = (abbr) => COLORS[abbr] || "#8a909c";
 
+// Logos are loaded from ESPN's image server, which spells two teams differently. If one fails to
+// load, the team's color dot is shown in its place.
+const LOGO_NAMES = { LA: "lar", WAS: "wsh" };
+function logo(abbr) {
+  const dot = `<span class='swatch' style='background:${color(abbr)}'></span>`;
+  if (!TEAMS[abbr]) return `<span class="logo">${dot}</span>`;
+  const src = `https://a.espncdn.com/i/teamlogos/nfl/500/${LOGO_NAMES[abbr] || abbr.toLowerCase()}.png`;
+  return `<span class="logo"><img src="${src}" alt="" width="28" height="28" loading="lazy" onerror="this.outerHTML=&quot;${dot}&quot;"></span>`;
+}
+
 const $ = (id) => document.getElementById(id);
 const pct = (x, digits = 1) => (x == null ? "n/a" : (100 * x).toFixed(digits) + "%");
 const rec = ([wins, n]) => `${wins}-${n - wins}`;
@@ -50,7 +60,7 @@ function teamRow(abbr, predicted, actual, picked) {
   const weight = picked ? "font-semibold" : "";
   const final = actual == null ? "" : `<span class="num w-12 text-right font-semibold">${actual}</span>`;
   return `<div class="flex items-center gap-3 py-1">
-    <span class="swatch shrink-0" style="background:${color(abbr)}"></span>
+    ${logo(abbr)}
     <span class="w-11 text-base ${weight}">${abbr}</span>
     <span class="flex-1 truncate text-sm muted">${TEAMS[abbr] || ""}</span>
     <span class="num text-sm ${actual == null ? weight : "faint"}">${predicted.toFixed(1)}</span>${final}
@@ -252,7 +262,7 @@ function start(data) {
   const made = new Date(data.generated_at);
   $("updated").textContent = "Updated " + made.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const b = data.backtest;
-  $("notice").innerHTML = `<strong class="text-warning">No proven edge.</strong> <span class="muted">In testing on ${b.games.toLocaleString()} games the model won ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. Breaking even takes ${pct(data.break_even)}. Read these as informed predictions, not winning bets.</span>`;
+  $("notice").innerHTML = `<strong class="text-primary">No proven edge.</strong> <span class="muted">In testing on ${b.games.toLocaleString()} games the model won ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. Breaking even takes ${pct(data.break_even)}. Read these as informed predictions, not winning bets.</span>`;
   renderRecord(data);
   renderAbout(data);
   $("tabs").addEventListener("click", (e) => e.target.dataset.tab && showTab(e.target.dataset.tab, data));
