@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import data
+from . import availability, data
 from . import props as P
 from . import props_card as C
 from .card import next_week, predict_all
@@ -18,8 +18,8 @@ NOTE = ("How to read this: each line is the model's middle estimate and the rang
         "(10th to 90th percentile). 'Even line' is the half-point number the model thinks is a coin flip.\n"
         "The model never sees sportsbook prop prices, so a gap between its even line and a book's line is\n"
         "NOT proof of an edge: books know about injuries, snap counts and matchups that this model does\n"
-        "not, and no test against prop prices has been run. Players are listed from recent games and may\n"
-        "be inactive. Bet only what you can afford to lose. If gambling stops being fun, call 1-800-GAMBLER.")
+        "not, and no test against prop prices has been run. Players come from this week's rosters and injury\n"
+        "report when published; (Q) means questionable, and late scratches are not known. Bet only what you can afford to lose. If gambling stops being fun, call 1-800-GAMBLER.")
 
 _ORDER = ["pass_yds", "pass_tds", "pass_att", "pass_cmp", "rush_yds", "rec_yds", "receptions", "any_td"]
 
@@ -47,7 +47,8 @@ def render(df: pd.DataFrame, season: int, week: int) -> str:
             for p in players:
                 rows = t[t["player_id"] == p.player_id].set_index("prop")
                 cells = [_cell(_with_prop(rows.loc[k], k)) for k in _ORDER if k in rows.index]
-                out.append(f"  {team:<3} {p.position:<2} {p.player:<22} " + "  ".join(cells))
+                name = p.player + (" (Q)" if p.status == "Questionable" else "")
+                out.append(f"  {team:<3} {p.position:<2} {name:<26} " + "  ".join(cells))
         out.append("")
     out.append(NOTE)
     return "\n".join(out)
@@ -102,7 +103,8 @@ def main(argv: list[str] | None = None) -> int:
     this = games[(games["season"] == season) & (games["week"] == week)]
     need_model = this["spread_line"].isna().any() or this["total_line"].isna().any()
     preds = predict_all(games, str(data_dir)) if need_model else None
-    df, models = C.week_props(offense, games, season, week, preds)
+    avail = availability.for_week(availability.load(str(data_dir), [season]), season, week)
+    df, models = C.week_props(offense, games, season, week, preds, avail)
     if df.empty:
         print(f"No games found for {season} week {week}.", file=sys.stderr)
         return 1
