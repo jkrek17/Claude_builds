@@ -1,0 +1,33 @@
+{
+  "card": {
+    "margin_weight": 0.1,
+    "total_weight": 0.08
+  },
+  "margin": {
+    "elo_autocorr": true,
+    "elo_k": 28.0,
+    "elo_per_pt": 25.0,
+    "elo_regress": 0.4,
+    "epa_k": 0.02,
+    "epa_regress": 0.3,
+    "hfa0": 2.6,
+    "hfa_k": 0.001,
+    "lg_k": 0.01,
+    "qb_decay": 0.9,
+    "qb_n0": 8.0,
+    "qb_prior0": -2.0,
+    "qb_prior_k": 0.05,
+    "ridge": 200.0
+  },
+  "qb_form": {
+    "decay": 0.97,
+    "prior_start": -0.1,
+    "prior_weight": 200.0
+  },
+  "totals": {
+    "epa": {"k": 0.03, "km": 0.002, "kq": 0.05, "q0": -0.04, "r": 0.75, "rq": 1.0},
+    "plays": {"k": 0.02, "km": 0.002, "kq": 0.02, "q0": 0.0, "r": 0.75, "rq": 0.7},
+    "pts": {"k": 0.02, "km": 0.002, "kq": 0.02, "q0": 0.0, "r": 0.9, "rq": 0.85},
+    "ridge": 0.02
+  }
+}

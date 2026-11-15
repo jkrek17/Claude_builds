@@ -18,10 +18,13 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
+from . import params as _params
+
 TEAM_MAP = {"OAK": "LV", "SD": "LAC", "STL": "LA", "JAC": "JAX", "SL": "LA"}
-DECAY = 0.97         # per-appearance decay of a quarterback's history
-PRIOR_WEIGHT = 200.0  # dropbacks of new-quarterback prior
-PRIOR_START = -0.10  # initial EPA per dropback assumed for a quarterback with no history
+# Settings (params.json, group "qb_form"):
+#   decay         per-appearance decay of a quarterback's history
+#   prior_weight  dropbacks of new-quarterback prior
+#   prior_start   initial EPA per dropback assumed for a quarterback with no history
 FEATURES = ["qb_form_diff", "qb_backup_diff"]
 _COLS = ["player_id", "position", "game_id", "attempts", "sacks_suffered", "carries",
          "passing_epa", "rushing_epa"]
@@ -39,8 +42,10 @@ def load_player_stats(data_dir: str) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True)
 
 
-def qb_form_features(games: pd.DataFrame, player_stats: pd.DataFrame) -> pd.DataFrame:
+def qb_form_features(games: pd.DataFrame, player_stats: pd.DataFrame, params: dict | None = None) -> pd.DataFrame:
     """One row per game_id with qb_form_diff and qb_backup_diff (home minus away)."""
+    p = params or _params.DEFAULT["qb_form"]
+    DECAY, PRIOR_WEIGHT, PRIOR_START = p["decay"], p["prior_weight"], p["prior_start"]
     g = games.copy()
     g["gameday"] = g["gameday"].astype(str)
     g = g.sort_values(["gameday", "game_id"], kind="mergesort").reset_index(drop=True)

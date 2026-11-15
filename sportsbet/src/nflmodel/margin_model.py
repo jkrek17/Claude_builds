@@ -31,6 +31,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from . import params as _params
+
 # Residual SD of (actual margin - pred_margin), out of sample 2010-2025
 # (see backtest.py / REPORT.md).  Use: P(home win) = Phi(pred_margin / RESID_SD),
 # P(home covers spread s) = Phi((pred_margin - s) / RESID_SD).
@@ -44,22 +46,21 @@ TEAM_MAP = {"OAK": "LV", "SD": "LAC", "STL": "LA", "JAC": "JAX", "SL": "LA",
 
 # Hyper-parameters.  Tuned ONLY on seasons 2003-2009 (see backtest.py --tune);
 # 2010+ was never used to choose them.
-PARAMS = dict(
-    elo_k=28.0,         # Elo K factor
-    elo_regress=0.40,   # fraction regressed to 1500 between seasons
-    elo_per_pt=25.0,    # Elo points per point of margin
-    elo_autocorr=True,  # 2.2/(0.001*winner_elo_diff+2.2) correction on the MOV multiplier
-    epa_k=0.02,         # online learning rate of the EPA ratings
-    epa_regress=0.30,   # fraction regressed to 0 between seasons
-    lg_k=0.01,          # learning rate of the running league-mean EPA
-    qb_decay=0.90,      # per-start decay of a QB's history
-    qb_n0=8.0,          # prior weight (in starts) on the new-starter prior
-    qb_prior0=-2.0,     # initial new-starter prior (EPA/game vs league mean)
-    qb_prior_k=0.05,    # learning rate of the new-starter prior
-    hfa0=2.6,           # initial home-field advantage (points)
-    hfa_k=0.001,        # learning rate of the drifting HFA
-    ridge=200.0,          # ridge penalty of the blend
-)
+#   elo_k        Elo K factor
+#   elo_regress  fraction regressed to 1500 between seasons
+#   elo_per_pt   Elo points per point of margin
+#   elo_autocorr 2.2/(0.001*winner_elo_diff+2.2) correction on the MOV multiplier
+#   epa_k        online learning rate of the EPA ratings
+#   epa_regress  fraction regressed to 0 between seasons
+#   lg_k         learning rate of the running league-mean EPA
+#   qb_decay     per-start decay of a QB's history
+#   qb_n0        prior weight (in starts) on the new-starter prior
+#   qb_prior0    initial new-starter prior (EPA/game vs league mean)
+#   qb_prior_k   learning rate of the new-starter prior
+#   hfa0         initial home-field advantage (points)
+#   hfa_k        learning rate of the drifting HFA
+#   ridge        ridge penalty of the blend
+PARAMS = _params.DEFAULT["margin"]
 
 FEATURES = ["elo_diff", "pass_diff", "rush_diff", "qb_diff", "hfa", "rest_diff"]
 
@@ -275,7 +276,7 @@ def blend_walk_forward(feats: pd.DataFrame, features=None, ridge=None,
 
 
 def predict_margins(games: pd.DataFrame, team_stats: pd.DataFrame,
-                    player_stats: pd.DataFrame | None = None) -> pd.DataFrame:
+                    player_stats: pd.DataFrame | None = None, params: dict | None = None) -> pd.DataFrame:
     """One row per game_id for every game from 2003 on (played or not) with
     `pred_margin` (home minus away, points) and its component features.
 
@@ -285,14 +286,17 @@ def predict_margins(games: pd.DataFrame, team_stats: pd.DataFrame,
 
     With `player_stats` (quarterback rows of nflverse weekly player stats) the
     blend also uses each starter's own rolling efficiency and an in-season
-    backup flag, see `qb_form`."""
-    feats = compute_features(games, team_stats)
+    backup flag, see `qb_form`. `params` is a full settings dict as returned by
+    `params.load()`; the packaged settings are used when it is omitted."""
+    params = params or _params.DEFAULT
+    feats = compute_features(games, team_stats, params["margin"])
     features = list(FEATURES)
     if player_stats is not None:
         from . import qb_form
-        feats = feats.merge(qb_form.qb_form_features(games, player_stats), on="game_id", how="left")
+        feats = feats.merge(qb_form.qb_form_features(games, player_stats, params["qb_form"]),
+                            on="game_id", how="left")
         features += qb_form.FEATURES
-    pred, _ = blend_walk_forward(feats, features=features)
+    pred, _ = blend_walk_forward(feats, features=features, ridge=params["margin"]["ridge"])
     feats["pred_margin"] = pred
     feats["home_win_prob"] = norm_cdf(pred / RESID_SD)
     out = feats[feats["season"] >= FIRST_PRED_SEASON]
