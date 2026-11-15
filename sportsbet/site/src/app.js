@@ -58,12 +58,12 @@ function mark(hit) {
 
 function teamRow(abbr, predicted, actual, picked) {
   const weight = picked ? "font-semibold" : "";
-  const final = actual == null ? "" : `<span class="num w-12 text-right font-semibold">${actual}</span>`;
+  const final = actual == null ? "" : `<span class="num score w-12 text-right">${actual}</span>`;
   return `<div class="flex items-center gap-3 py-1">
     ${logo(abbr)}
     <span class="w-11 text-base ${weight}">${abbr}</span>
     <span class="flex-1 truncate text-sm muted">${TEAMS[abbr] || ""}</span>
-    <span class="num text-sm ${actual == null ? weight : "faint"}">${predicted.toFixed(1)}</span>${final}
+    <span class="num ${actual == null ? "score" : "text-sm faint"} ${actual == null && !picked ? "!font-normal muted" : ""}">${predicted.toFixed(1)}</span>${final}
   </div>`;
 }
 
@@ -104,8 +104,8 @@ function gameCard(c, breakEven) {
         <span><span class="font-medium">${c.ml_pick} to win</span> ${mark(c.ml_hit)}</span>
         <span class="num text-xs muted">model ${pct(c.ml_pick_prob, 0)} · market ${pct(market, 0)}</span>
       </div>
-      <div class="mt-1.5 h-1.5 rounded-full bg-base-300" role="img" aria-label="Model win chance ${pct(c.ml_pick_prob, 0)}">
-        <div class="h-1.5 rounded-full" style="width:${(100 * c.ml_pick_prob).toFixed(1)}%;background:${color(c.ml_pick)}"></div>
+      <div class="mt-1.5 h-1 bg-base-300" role="img" aria-label="Model win chance ${pct(c.ml_pick_prob, 0)}">
+        <div class="h-1" style="width:${(100 * c.ml_pick_prob).toFixed(1)}%;background:${color(c.ml_pick)}"></div>
       </div>
     </div>
     <div class="mt-3 divide-y divide-base-300 border-t border-base-300">
@@ -119,7 +119,7 @@ function gameCard(c, breakEven) {
 function tile(label, pair, accent) {
   return `<div class="panel tile px-3 py-3 text-center" style="--accent:var(${accent})">
     <p class="eyebrow">${label}</p>
-    <p class="num mt-1 text-xl font-semibold">${pair[1] ? rec(pair) : "0-0"}</p>
+    <p class="num mt-1 text-2xl font-bold tracking-tight">${pair[1] ? rec(pair) : "0-0"}</p>
     <p class="num text-xs muted">${pair[1] ? pct(rate(pair)) : "no games yet"}</p>
   </div>`;
 }
@@ -243,7 +243,7 @@ function showTab(name, data) {
   for (const btn of $("tabs").children) {
     const on = btn.dataset.tab === name;
     btn.setAttribute("aria-selected", on);
-    btn.className = "rounded-lg py-2 " + (on ? "tab-on bg-base-100 text-primary" : "muted");
+    btn.className = on ? "tab-on text-primary" : "muted";
   }
   if (name === "record") drawChart(data);
 }
