@@ -181,6 +181,11 @@ cd site && npm ci && npm run build            # writes the page into site/dist
 python3 -m http.server -d dist                # open http://localhost:8000
 ```
 
+The Props tab reads `data/props.json` (written by `nflprops --json site/dist/data/props.json`) the first
+time it is opened. Each row carries the model's full distribution for one player and prop, so the page works
+out the chance of over, under and push for any line typed in, in the browser. There are no sportsbook prop
+lines in the data. If the props file is missing the tab says so.
+
 The `site` and `publish` jobs in `.github/workflows/sportsbet.yml` rerun the model and publish the page
 to GitHub Pages on Tuesday, Thursday, Saturday and Sunday mornings US Eastern, and whenever a change to
 `sportsbet/` lands on `main`. This needs Pages turned on once: repository Settings, Pages, Source

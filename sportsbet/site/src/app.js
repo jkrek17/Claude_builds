@@ -31,6 +31,10 @@ function logo(abbr) {
   return `<span class="logo"><img src="${src}" alt="" width="28" height="28" loading="lazy" onerror="this.outerHTML=&quot;${dot}&quot;"></span>`;
 }
 
+// Shared with props.js, which draws the Props tab.
+window.teamLogo = logo;
+window.TEAM_NAMES = TEAMS;
+
 const $ = (id) => document.getElementById(id);
 const pct = (x, digits = 1) => (x == null ? "n/a" : (100 * x).toFixed(digits) + "%");
 const rec = ([wins, n]) => `${wins}-${n - wins}`;
@@ -303,13 +307,14 @@ function renderAbout(data) {
 }
 
 function showTab(name, data) {
-  for (const tab of ["picks", "record", "about"]) $(tab).hidden = tab !== name;
+  for (const tab of ["picks", "props", "record", "about"]) $(tab).hidden = tab !== name;
   for (const btn of $("tabs").children) {
     const on = btn.dataset.tab === name;
     btn.setAttribute("aria-selected", on);
     btn.className = on ? "tab-on text-primary" : "muted";
   }
   if (name === "record") drawChart(data);
+  if (name === "props") Props.open(data);
 }
 
 function start(data) {

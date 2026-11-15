@@ -71,6 +71,8 @@ jobs:
         run: |
           pip install -e ".[model]"
           nflmodel --json site/dist/data/site.json
+          # Player props for the Props tab. If this fails the picks still publish, and the tab says so.
+          nflprops --json site/dist/data/props.json || echo "::warning::nflprops failed; the Props tab has no data"
       - uses: actions/upload-pages-artifact@v3
         if: env.PUBLISH == 'true'
         with:
