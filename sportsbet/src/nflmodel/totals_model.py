@@ -62,7 +62,7 @@ WIND_PRIOR = 8.5       # mph, used before any outdoor game has been seen
 
 # Features of the final linear layer (intercept added automatically).
 FEATURES = ["base_pts", "off_pts", "def_pts", "off_epa", "def_epa", "pace",
-            "indoor", "clim_wind_x", "div_game"]
+            "indoor", "wind_x", "div_game"]
 RIDGE = 0.02               # ridge penalty (per observation, on standardised features)
 
 
@@ -289,6 +289,10 @@ def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict |
     month = g["gameday"].dt.month
     f["late_outdoor"] = outdoor * month.isin([12, 1, 2]).astype(float)   # tested, not used
     f["clim_wind_x"] = (f["clim_wind"].fillna(WIND_PRIOR) - WIND_PRIOR) * outdoor
+    # Wind at the game, for outdoor games. Used to fit the wind effect; for prediction see predict_totals.
+    obs = pd.to_numeric(g["wind"], errors="coerce")
+    f["obs_wind_x"] = ((obs - WIND_PRIOR) * outdoor).where(obs.notna() & (outdoor > 0))
+    f["wind_x"] = f["obs_wind_x"].fillna(f["clim_wind_x"])
     f["playoff"] = (g["game_type"] != "REG").astype(float)
     f["div_game"] = f["div_game"].fillna(0).astype(float)
     f["base_pts"] = 2.0 * f["mu_pts"]
@@ -309,35 +313,62 @@ def _fit(X: np.ndarray, y: np.ndarray, ridge: float = 0.0) -> np.ndarray:
 
 
 def walk_forward_predict(feat: pd.DataFrame, features=None, ridge: float | None = None,
-                         first_season: int = FIRST_PRED_SEASON, return_coefs: bool = False):
+                         first_season: int = FIRST_PRED_SEASON, return_coefs: bool = False,
+                         predict_with: dict | None = None):
     """Predict each season S with a linear model fit on played games of seasons
-    FIT_START..S-1.  Returns a Series aligned to feat.index (NaN before first_season)."""
-    features = features or FEATURES
+    FIT_START..S-1.  Returns a Series aligned to feat.index (NaN before first_season).
+
+    `predict_with` maps a feature to the column to use in its place when predicting (the fit always
+    uses the feature itself), e.g. {"wind_x": "wind_x_pred"} to fit on observed wind but predict
+    from a forecast."""
+    features = list(features or FEATURES)
     ridge = RIDGE if ridge is None else ridge
     pred = pd.Series(np.nan, index=feat.index)
     coefs = {}
     y = feat["actual_total"].to_numpy()
     X = feat[features].to_numpy(dtype=float)
+    Xp = feat[[(predict_with or {}).get(c, c) for c in features]].to_numpy(dtype=float)
     ok = feat["played"].to_numpy() & np.isfinite(X).all(1)
     seasons = feat["season"].to_numpy()
     for s in sorted(set(seasons[seasons >= first_season])):
         tr = ok & (seasons >= FIT_START) & (seasons < s)
         c = _fit(X[tr], y[tr], ridge)
         te = seasons == s
-        pred[te] = c[0] + X[te] @ c[1:]
+        pred[te] = c[0] + Xp[te] @ c[1:]
         coefs[int(s)] = c
     return (pred, coefs) if return_coefs else pred
 
 
-def predict_totals(games: pd.DataFrame, team_stats: pd.DataFrame) -> pd.DataFrame:
+def predict_totals(games: pd.DataFrame, team_stats: pd.DataFrame,
+                   wind_forecast: dict | None = None, wind: str = "climatology") -> pd.DataFrame:
     """One row per game_id for every game from 2003 on (played or not).
 
-    pred_total uses only information available before that game's kickoff day."""
+    pred_total uses only information available before that game's kickoff day.
+
+    The wind effect is fit on the wind observed at past outdoor games. What a prediction uses for
+    wind depends on what would be known beforehand:
+
+    * a game in `wind_forecast` ({game_id: forecast mph at kickoff}) uses that forecast;
+    * otherwise the stadium's typical wind for the month, from earlier seasons (`wind="climatology"`);
+    * `wind="observed"` instead uses the wind recorded at the game where there is one. That is a
+      perfect forecast, so use it only to measure the upper bound of what a forecast can add."""
+    if wind not in ("climatology", "observed"):
+        raise ValueError("wind must be 'climatology' or 'observed'")
     feat = build_features(games, team_stats)
-    feat["pred_total"] = walk_forward_predict(feat)
+    feat["wind_x_pred"] = feat["wind_x"] if wind == "observed" else feat["clim_wind_x"]
+    feat["wind_source"] = np.where(feat["indoor"] > 0, "indoor",
+                                   np.where((wind == "observed") & feat["obs_wind_x"].notna(),
+                                            "observed", "climatology"))
+    if wind_forecast:
+        fc = feat["game_id"].map(wind_forecast).astype(float)
+        use = fc.notna() & (feat["indoor"] == 0)
+        feat.loc[use, "wind_x_pred"] = fc[use] - WIND_PRIOR
+        feat.loc[use, "wind_source"] = "forecast"
+    feat["wind_mph"] = np.where(feat["indoor"] > 0, np.nan, feat["wind_x_pred"] + WIND_PRIOR)
+    feat["pred_total"] = walk_forward_predict(feat, predict_with={"wind_x": "wind_x_pred"})
     cols = ["game_id", "season", "week", "pred_total", "struct_total", "base_pts", "off_pts",
             "def_pts", "off_epa", "def_epa", "pace", "qb_adj", "qb_known", "indoor",
-            "clim_wind", "clim_wind_x", "div_game"]
+            "clim_wind", "wind_mph", "wind_source", "div_game"]
     out = feat.loc[feat["season"] >= FIRST_PRED_SEASON, cols]
     # return in the caller's row order
     order = {gid: k for k, gid in enumerate(games["game_id"])}

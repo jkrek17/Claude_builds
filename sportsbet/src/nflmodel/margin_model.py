@@ -274,19 +274,29 @@ def blend_walk_forward(feats: pd.DataFrame, features=None, ridge=None,
     return pred, weights
 
 
-def predict_margins(games: pd.DataFrame, team_stats: pd.DataFrame) -> pd.DataFrame:
+def predict_margins(games: pd.DataFrame, team_stats: pd.DataFrame,
+                    player_stats: pd.DataFrame | None = None) -> pd.DataFrame:
     """One row per game_id for every game from 2003 on (played or not) with
     `pred_margin` (home minus away, points) and its component features.
 
     Each prediction uses only games played on earlier dates plus schedule
     facts (site, rest, announced starting QB; if the QB id is missing the
-    team's most recent starter is assumed and `qb_assumed` is True)."""
+    team's most recent starter is assumed and `qb_assumed` is True).
+
+    With `player_stats` (quarterback rows of nflverse weekly player stats) the
+    blend also uses each starter's own rolling efficiency and an in-season
+    backup flag, see `qb_form`."""
     feats = compute_features(games, team_stats)
-    pred, _ = blend_walk_forward(feats)
+    features = list(FEATURES)
+    if player_stats is not None:
+        from . import qb_form
+        feats = feats.merge(qb_form.qb_form_features(games, player_stats), on="game_id", how="left")
+        features += qb_form.FEATURES
+    pred, _ = blend_walk_forward(feats, features=features)
     feats["pred_margin"] = pred
     feats["home_win_prob"] = norm_cdf(pred / RESID_SD)
     out = feats[feats["season"] >= FIRST_PRED_SEASON]
-    cols = ["game_id", "pred_margin", "home_win_prob"] + FEATURES + \
+    cols = ["game_id", "pred_margin", "home_win_prob"] + features + \
            ["elo_home", "elo_away", "qb_home", "qb_away", "qb_assumed"]
     return out[cols].reset_index(drop=True)
 
