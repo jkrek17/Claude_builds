@@ -73,10 +73,19 @@ jobs:
           nflmodel --json site/dist/data/site.json
           # Player props for the Props tab. If this fails the picks still publish, and the tab says so.
           nflprops --json site/dist/data/props.json || echo "::warning::nflprops failed; the Props tab has no data"
+      # The page lives at /nfl/. The old address at the root sends visitors there, keeping the open tab.
+      - name: Put the page under /nfl with a redirect at the root
+        if: env.PUBLISH == 'true'
+        working-directory: sportsbet/site
+        run: |
+          mkdir -p _pages
+          cp -r dist _pages/nfl
+          cp redirect.html _pages/index.html
+          touch _pages/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         if: env.PUBLISH == 'true'
         with:
-          path: sportsbet/site/dist
+          path: sportsbet/site/_pages
 
   publish:
     name: Publish to GitHub Pages
