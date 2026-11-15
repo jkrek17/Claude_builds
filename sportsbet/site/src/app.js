@@ -156,37 +156,79 @@ function recordTable(head, rows) {
   </table></div>`;
 }
 
+// A win-loss record with a thin bar showing the win rate; the tick marks 50%.
+function meter(pair, accent) {
+  const r = rate(pair);
+  return `<div class="meter">
+    <span class="display num">${pair[1] ? rec(pair) : "–"}</span>
+    <span class="track"><span class="fill" style="width:${r == null ? 0 : (100 * r).toFixed(1)}%;background:var(${accent})"></span></span>
+  </div>`;
+}
+
+// Model against the closing line on one measure. `lowerWins` is true for average misses.
+function duel(label, note, model, line, format, lowerWins) {
+  const modelWins = lowerWins ? model < line : model > line;
+  const cell = (name, value, wins) => `<div class="duel-cell ${wins ? "wins" : ""}">
+    <p class="eyebrow">${name}</p><p class="display num text-3xl">${format(value)}</p>${wins ? `<p class="tag">Closer</p>` : ""}</div>`;
+  return `<div class="panel duel">
+    <div class="duel-head"><h3>${label}</h3><p>${note}</p></div>
+    <div class="grid grid-cols-2">${cell("Model", model, modelWins)}${cell("Closing line", line, !modelWins)}</div>
+  </div>`;
+}
+
+// A win rate on a 40% to 60% scale with the break-even point marked.
+function gauge(label, pair, breakEven, accent) {
+  const r = rate(pair), pos = (x) => Math.max(0, Math.min(100, (x - 0.4) / 0.2 * 100)).toFixed(1);
+  return `<div class="panel gauge">
+    <div class="flex items-end justify-between">
+      <div><p class="eyebrow">${label}</p><p class="display num text-4xl">${pct(r)}</p></div>
+      <p class="num text-sm muted">${rec(pair)}</p>
+    </div>
+    <div class="gauge-track" role="img" aria-label="${label}: ${pct(r)}, break-even ${pct(breakEven)}">
+      <span class="fill" style="width:${pos(r)}%;background:var(${accent})"></span>
+      <span class="mark" style="left:${pos(breakEven)}%"><i>needs ${pct(breakEven)}</i></span>
+    </div>
+    <div class="flex justify-between text-xs faint num"><span>40%</span><span>60%</span></div>
+  </div>`;
+}
+
 function renderRecord(data) {
   const b = data.backtest;
   const both = (pair) => `${rec(pair)} <span class="faint">${pct(rate(pair))}</span>`;
+  const weekRow = (label, w, extra = "") => `<div class="week ${extra}">
+    <span class="wk display">${label}</span>${meter(w.su, "--series-3")}${meter(w.ats, "--series-1")}${meter(w.ou, "--series-2")}</div>`;
   $("record").innerHTML = `
-    <h2 class="text-sm font-semibold">${data.season} by week</h2>
-    <p class="mb-2 mt-1 text-xs muted">Picks on every game, graded against the closing line.</p>
-    ${recordTable(["Week", "Winners", "Spread", "Totals"],
-      data.by_week.map((w) => [w.week, rec(w.su), rec(w.ats), rec(w.ou)])
-        .concat([["<strong>Season</strong>", both(data.record.su), both(data.record.ats), both(data.record.ou)]]))}
+    <h2 class="day">${data.season} by week</h2>
+    <p class="lede">Picks on every game, graded against the closing line. Each bar is the share won, and the tick marks 50%.</p>
+    <div class="panel weeks">
+      <div class="week head"><span></span><span>Winners</span><span>Spread</span><span>Totals</span></div>
+      ${data.by_week.map((w) => weekRow(`Wk ${w.week}`, w)).join("")}
+      ${weekRow("Season", data.record, "total")}
+    </div>
 
-    <h2 class="mt-9 text-sm font-semibold">Backtest, ${b.first} to ${b.last}</h2>
-    <p class="mb-2 mt-1 text-xs muted">${b.games.toLocaleString()} games. Each one was predicted using only earlier games, and never a betting line.</p>
-    ${recordTable(["", "Model", "Closing line"], [
-      ["Margin, average miss", b.margin_mae.model.toFixed(2) + " pts", b.margin_mae.line.toFixed(2) + " pts"],
-      ["Total, average miss", b.total_mae.model.toFixed(2) + " pts", b.total_mae.line.toFixed(2) + " pts"],
-      ["Winners picked", pct(b.su_model), pct(b.su_line)],
-      ["Against the spread", both(b.ats), `needs ${pct(data.break_even)}`],
-      ["Over/under", both(b.ou), `needs ${pct(data.break_even)}`],
-    ])}
+    <h2 class="day">Backtest, ${b.first} to ${b.last}</h2>
+    <p class="lede">${b.games.toLocaleString()} games. Each one was predicted using only earlier games, and never a betting line.</p>
+    <div class="grid gap-3 md:grid-cols-2">
+      ${gauge("Against the spread", b.ats, data.break_even, "--series-1")}
+      ${gauge("Over/under", b.ou, data.break_even, "--series-2")}
+    </div>
+    <div class="mt-3 grid gap-3 md:grid-cols-3">
+      ${duel("Margin", "Average miss in points. Lower is better.", b.margin_mae.model, b.margin_mae.line, (v) => v.toFixed(2), true)}
+      ${duel("Total", "Average miss in points. Lower is better.", b.total_mae.model, b.total_mae.line, (v) => v.toFixed(2), true)}
+      ${duel("Winners", "Share of games picked correctly.", b.su_model, b.su_line, (v) => pct(v), false)}
+    </div>
 
-    <h2 class="mt-9 text-sm font-semibold">Win rate against the line, by season</h2>
-    <p class="mt-1 text-xs muted">The dashed line is the ${pct(data.break_even)} needed to break even at -110. Neither series stays above it.</p>
-    <div class="panel mt-2 p-3">
+    <h2 class="day">Win rate by season</h2>
+    <p class="lede">The dashed line is the ${pct(data.break_even)} needed to break even at -110. Neither series stays above it.</p>
+    <div class="panel p-3">
       <div class="mb-1 flex gap-4 text-xs muted">
         <span><span class="swatch" style="background:var(--series-1)"></span> Spread picks</span>
         <span><span class="swatch" style="background:var(--series-2)"></span> Total picks</span>
       </div>
       <div class="relative h-56"><canvas id="chart" role="img" aria-label="Model win rate against the spread and on totals for each season"></canvas></div>
     </div>
-    <details class="mt-3 text-sm">
-      <summary class="cursor-pointer muted">Show the season table</summary>
+    <details class="more">
+      <summary>Show the season table</summary>
       <div class="mt-2">${recordTable(["Season", "Winners", "Spread", "Totals"],
         b.seasons.map((s) => [s.season, both(s.su), both(s.ats), both(s.ou)]))}</div>
     </details>`;
@@ -234,16 +276,30 @@ function drawChart(data) {
 
 function renderAbout(data) {
   const b = data.backtest;
-  const item = (title, body) => `<div class="panel p-4"><h3 class="text-sm font-semibold">${title}</h3><p class="mt-1 text-sm leading-relaxed muted">${body}</p></div>`;
-  $("about").innerHTML = `<div class="space-y-3">
+  let n = 0;
+  const item = (title, body, extra = "") => `<article class="panel guide ${extra}">
+    <span class="step display num">${String(++n).padStart(2, "0")}</span>
+    <div><h3>${title}</h3><p>${body}</p></div></article>`;
+  $("about").innerHTML = `
+    <div class="panel verdict">
+      <p class="eyebrow">The short version</p>
+      <p class="display text-4xl">Informed predictions, not winning bets</p>
+      <div class="mt-4 grid grid-cols-3 gap-2 num">
+        <div><p class="display text-3xl">${pct(rate(b.ats))}</p><p class="cap">against the spread</p></div>
+        <div><p class="display text-3xl">${pct(rate(b.ou))}</p><p class="cap">on totals</p></div>
+        <div><p class="display text-3xl gold">${pct(data.break_even)}</p><p class="cap">needed to break even</p></div>
+      </div>
+    </div>
+    <h2 class="day">Reading a game card</h2>
+    <div class="grid gap-3 md:grid-cols-2">
     ${item("What this is", `A model that predicts every NFL game's score, winner and total from team and quarterback stats. It never sees a betting line when it predicts. The picks come from comparing its numbers with the line afterwards.`)}
-    ${item("It has no proven edge", `Over ${b.games.toLocaleString()} games from ${b.first} to ${b.last} it went ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. You need ${pct(data.break_even)} to break even at -110. The closing line was the more accurate forecast of both margin and total. Betting every pick would have lost about 4% of the money staked.`)}
-    ${item("Model and market win chance", `The bar shows the model's chance for the team it picks. The market number is the same chance taken from the moneylines with the bookmaker's cut removed. The market's number has been the more accurate one, so a gap between the two is not an edge.`)}
-    ${item("The chance on a spread or total pick", `This is the chance the pick wins if it does not push. It leans mostly on the line and only slightly on the model, which is why it stays close to 50%. Values this close to 50% are not statistically different from a coin flip.`)}
+    ${item("It has no proven edge", `Over ${b.games.toLocaleString()} games from ${b.first} to ${b.last} it went ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. You need ${pct(data.break_even)} to break even at -110. The closing line was the more accurate forecast of both margin and total. Betting every pick would have lost about 4% of the money staked.`, "key")}
+    ${item("Model win chance", `The split bar shows the model's chance for each team. Open "The numbers behind it" to see the market's chance, taken from the moneylines with the bookmaker's cut removed. The market's number has been the more accurate one, so a gap between the two is not an edge.`)}
+    ${item("The chance on a spread or total pick", `This is the chance the pick wins if it does not push. It leans mostly on the line and only slightly on the model, which is why it stays close to 50%. Values this close to 50% are not statistically different from a coin flip. A pick is outlined in gold only when its chance clears ${pct(data.break_even)}.`)}
     ${item("Push chance", `Shown when a line sits on a whole number. NFL games land on margins such as 3 and 7 far more often than a smooth curve suggests, and the push chance accounts for that.`)}
     ${item("Wind", `Outdoor games use the National Weather Service forecast at kickoff when one is available. A game is marked windy at ${data.windy_mph} mph or more. In the backtest, unders won 54.8% of those games, which is suggestive but not proven.`)}
     ${item("Limits", `Injuries other than the starting quarterback are not modeled. Lines are the ones published by nflverse and may differ from your sportsbook's. Rain and temperature are not used.`)}
-  </div>`;
+    </div>`;
 }
 
 function showTab(name, data) {
