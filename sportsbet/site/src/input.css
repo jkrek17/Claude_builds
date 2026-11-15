@@ -207,6 +207,7 @@ thead th { background: var(--navy); color: #fff; font-size: 0.6875rem; letter-sp
 .pr-block:first-child { border-top: 0; }
 .pr-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 0.75rem; }
 .pr-head h4 { font-family: "Barlow Condensed", "Arial Narrow", sans-serif; font-size: 1.25rem; font-weight: 700; line-height: 1; text-transform: uppercase; color: var(--navy); }
+.pr-head h4 .chip { margin-left: 0.375rem; vertical-align: middle; font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.4; }
 .pr-head p { font-size: 0.75rem; color: var(--ink-2); }
 
 .pr-entry { display: flex; gap: 0.375rem; margin-top: 0.75rem; }
