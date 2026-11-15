@@ -1,0 +1,37 @@
+MARGIN, 2010 to 2025
+  games: 4363
+  closing spread                     MAE 10.054  RMSE 13.040
+  model without quarterback form     MAE 10.298  RMSE 13.258  vs line 2100-2154 (49.4%, SE 0.8%)
+  model with quarterback form        MAE 10.273  RMSE 13.223  vs line 2123-2131 (49.9%, SE 0.8%)
+  quarterback form lowered squared error in 13 of 16 seasons
+
+TOTAL, 2010 to 2025
+  closing total                      MAE 10.471  RMSE 13.242
+  model, stadium wind climatology    MAE 10.590  RMSE 13.423  vs line 2214-2104 (51.3%, SE 0.8%)
+  model, wind observed at the game*  MAE 10.567  RMSE 13.382  vs line 2233-2085 (51.7%, SE 0.8%)
+  * a perfect forecast: the upper bound of what a kickoff wind forecast can add
+
+UNDERS IN WIND (outdoor games, observed wind, pushes excluded)
+  2010-2025  wind >= 15 mph:  354 games, under 54.8% (SE 2.7%)
+  2010-2025  wind >= 20 mph:   84 games, under 52.4% (SE 5.5%)
+  2010-2017  wind >= 15 mph:  195 games, under 52.8% (SE 3.6%)
+  2010-2017  wind >= 20 mph:   51 games, under 54.9% (SE 7.0%)
+  2018-2025  wind >= 15 mph:  159 games, under 57.2% (SE 4.0%)
+  2018-2025  wind >= 20 mph:   33 games, under 48.5% (SE 8.7%)
+
+KEY NUMBERS (games lined within half a point of k; chance the favourite wins by exactly k)
+  k= 3  n=1527  actual 8.6%  key-number distribution 9.0%  normal curve 3.1%
+  k= 7  n= 716  actual 7.1%  key-number distribution 5.9%  normal curve 3.1%
+  k=10  n= 304  actual 4.6%  key-number distribution 4.3%  normal curve 3.1%
+  k= 6  n= 593  actual 4.4%  key-number distribution 3.1%  normal curve 3.1%
+  k=14  n= 113  actual 3.5%  key-number distribution 4.1%  normal curve 3.1%
+  k= 4  n= 820  actual 2.9%  key-number distribution 2.7%  normal curve 3.1%
+  k= 1  n= 504  actual 2.0%  key-number distribution 2.2%  normal curve 3.1%
+
+LOOK-AHEAD CHECK (remove every game after a date; earlier predictions must not change)
+  cut 2012-10-21: max change margin 8.9e-16, total 0.0e+00
+      same-day check (11 games): margin 0.0e+00, total 0.0e+00
+  cut 2019-12-01: max change margin 8.9e-16, total 0.0e+00
+      same-day check (12 games): margin 0.0e+00, total 0.0e+00
+  cut 2024-10-06: max change margin 0.0e+00, total 0.0e+00
+      same-day check (12 games): margin 0.0e+00, total 0.0e+00

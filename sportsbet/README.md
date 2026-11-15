@@ -1,3 +1,10 @@
+# SportsBet tools
+
+Two command line tools live here:
+
+- **sharpbet** finds sportsbook prices that beat the sharp market's fair line and sizes the top 3.
+- **nflmodel** predicts the moneyline, spread and total for every NFL game. See [NFL prediction model](#nfl-prediction-model).
+
 # sharpbet
 
 A command line tool that finds sports bets priced better than the sharp market says they should be,
@@ -79,6 +86,100 @@ Useful `scan` options, all shown by `sharpbet scan --help`:
   of the time.
 - Books limit accounts that win this way.
 - Line movement signals and closing line value are not tracked yet. Both need odds history.
+
+# NFL prediction model
+
+`nflmodel` predicts every NFL game's winner, margin and total points without ever looking at a
+betting line, then compares its numbers with the line to give a moneyline, spread and total pick.
+
+```
+pip install -e ".[model]"
+nflmodel                       # the next unplayed week
+nflmodel --season 2026 --week 11 --csv week11.csv
+```
+
+It downloads game results and team stats from [nflverse](https://github.com/nflverse) into
+`~/.cache/nflmodel` and refreshes them when they are more than three hours old.
+
+## What is in the model
+
+- **Margin** (`margin_model.py`, `qb_form.py`): margin-based Elo, opponent-adjusted passing and
+  rushing EPA with recency decay, a starting quarterback rating that travels with the quarterback,
+  the quarterback's own rolling EPA per dropback, a flag for an in-season backup, home field that
+  drifts over time, and rest. A ridge blend is refit each season on earlier seasons only.
+- **Total** (`totals_model.py`, `weather.py`): opponent-adjusted points, offensive and defensive EPA
+  per play, pace, quarterback, roof, wind and divisional games, again fit only on the past. The wind
+  effect is learned from the wind recorded at past outdoor games (about a quarter point less scoring
+  per mph). For an upcoming outdoor game the model uses the National Weather Service hourly forecast
+  at kickoff, and falls back to the stadium's typical wind for the month when no forecast is
+  available (more than a week out, a neutral site, or `--no-weather`).
+- **Card** (`card.py`, `scoredist.py`): win probability from a normal distribution around the
+  predicted margin (SD 13.3), predicted score from margin and total, and the spread and total side
+  the model favors. Spread and total chances come from a distribution re-weighted by how often each
+  number has actually come up, so a line on 3 or 7 shows its real push chance.
+
+## How good it is, honestly
+
+Walk-forward test on 4,363 games, 2010 to 2025. The model never saw a result before predicting it.
+`python3 research/backtest_v2.py ~/.cache/nflmodel` reproduces these; its output is saved in
+`research/backtest_v2_output.txt`.
+
+| | Model | Closing line |
+|---|---|---|
+| Margin, average miss (points) | 10.27 | 10.05 |
+| Total, average miss (points) | 10.59 | 10.47 |
+| Straight-up winners picked | 65.2% | 66.4% |
+| Home win probability, Brier score (lower is better) | 0.217 | 0.211 |
+| Against the spread, every game | 2123-2131 (49.9%) | break-even is 52.4% |
+| Over/under, every game | 2214-2104 (51.3%) | break-even is 52.4% |
+
+The model picks winners a little worse than the market, and it does not beat the closing line. No
+threshold of disagreement with the line produced a win rate that clears 52.4% beyond what luck
+explains, and betting every spread and total at -110 would have lost about 4% of everything staked.
+When the model and the line are combined to predict the result, the model gets a weight of about 0.1
+and the line 0.9, which is why the "chance" shown on each spread and total pick stays close to 50%.
+The same holds for moneylines: the market's win probability is the more accurate one, so a gap
+between the model and the market is not an edge.
+
+Use the predictions as an informed opinion on each game. They are not evidence of a betting edge.
+
+### What a review of extra data found
+
+Four reviews tested about 100 candidate features and methods on the same walk-forward basis. Three
+had a real effect and are now in the model:
+
+- **Quarterback form.** Lowered the margin miss from 10.30 to 10.27 and improved 13 of 16 seasons.
+- **Wind.** With the wind actually observed at each game, which is the best a forecast could do, the
+  total miss falls from 10.59 to 10.57 and the over/under record rises to 2233-2085 (51.7%). In
+  outdoor games with 15 mph or more of wind the under won 194 of 354 (54.8%, standard error 2.7
+  points): 52.8% in 2010 to 2017 and 57.2% in 2018 to 2025. That is suggestive, not proven, and a
+  forecast will do somewhat worse than the observed wind used here. The card flags these games.
+- **Key numbers.** Favorites lined near 3 win by exactly 3 in 8.6% of games; a normal curve says
+  3.1% and the re-weighted distribution 9.0%.
+
+What made no measurable difference: injury report counts, snap-weighted injuries, offensive line
+continuity, play-by-play filters (success rate, garbage time, turnover luck, red zone), travel and
+time zones, bye weeks, primetime, referees, coaches, and multi-model or perturbed-parameter
+ensembles. A 40-member perturbed ensemble moved predictions by under a point and its spread had no
+relationship with forecast error.
+
+The earlier research write-ups for each model are in `research/margin` and `research/totals`. They
+describe the models before quarterback form and observed wind were added.
+
+## Known limits
+
+- The starting quarterback is taken from nflverse. For games where it is not announced yet, the
+  team's last starter is assumed and the card says so. Other injuries are not modeled.
+- Lines in nflverse are closing lines for past games and current lines for upcoming games. They may
+  differ from your sportsbook's.
+- Wind is the only weather input. Temperature and rain are not used. Retractable-roof stadiums are
+  always treated as closed. Forecasts come from the US National Weather Service, so games abroad
+  use climatology.
+- The first run downloads about 250 MB of nflverse files.
+
+An independent audit of the first version reproduced its numbers with its own scoring code and found no look-ahead
+leakage: predictions do not change when later games are removed or scrambled, and betting lines have
+no influence on them.
 
 ## Tests
 

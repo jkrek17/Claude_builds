@@ -5,15 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sharpbet"
 version = "0.1.0"
-description = "Finds +EV bets against a de-vigged sharp line, ranks them and sizes the top 3 with fractional Kelly"
+description = "Sports betting tools: a +EV price scanner (sharpbet) and an NFL prediction model (nflmodel)"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+model = ["numpy>=1.26", "pandas>=2.1"]
+dev = ["pytest>=8", "numpy>=1.26", "pandas>=2.1"]
 
 [project.scripts]
 sharpbet = "sharpbet.cli:main"
+nflmodel = "nflmodel.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

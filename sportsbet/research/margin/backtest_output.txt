@@ -1,0 +1,196 @@
+
+==============================================================================
+1. ACCURACY, out of sample 2010-2025 (regular season + playoffs), n=4363
+==============================================================================
+model  : MAE 10.298  RMSE 13.258  mean error +0.047
+closing: MAE 10.054  RMSE 13.040  mean error +0.083
+naive (always predict 0): MAE 11.371  RMSE 14.604
+corr(model, closing spread) = 0.896
+corr(model, result) = 0.398   corr(closing, result) = 0.431
+model picks straight-up winner: 0.647   closing line (non-pick'em): 0.662
+share of games where model is closer to the result than the line: 0.454
+regress (result - line) on (model - line), no intercept: slope +0.107 (se 0.073); 0 = model adds nothing to the line
+regress result on [line, model]: line weight 0.922, model weight 0.138
+
+per season:
+ season   n  model_mae  line_mae  model_rmse  line_rmse
+   2010 267      10.95     10.75       13.91      13.91
+   2011 267      10.52     10.51       13.79      13.68
+   2012 267      11.06     10.72       14.16      13.86
+   2013 267       9.86      9.81       12.83      12.76
+   2014 267      11.34     11.28       14.57      14.42
+   2015 267      10.00     10.12       12.72      12.96
+   2016 267       9.32      9.04       11.86      11.75
+   2017 267      10.43     10.08       13.60      13.14
+   2018 267      10.15      9.87       13.18      12.99
+   2019 267      10.45     10.18       13.46      13.06
+   2020 269       9.98      9.79       12.74      12.70
+   2021 285      11.00     10.67       13.88      13.55
+   2022 284       9.10      8.78       11.84      11.49
+   2023 285      10.45      9.98       13.59      13.17
+   2024 285      10.14      9.70       12.96      12.72
+   2025 285      10.04      9.67       12.78      12.24
+
+(tuning window 2003-2009: model MAE 10.864 RMSE 13.688; line MAE 10.688 RMSE 13.499)
+(2026 to date, n=137: model MAE 9.530, line MAE 9.449)
+
+==============================================================================
+2. AGAINST THE SPREAD 2010-2025: bet the side the model favours vs the closing line
+==============================================================================
+ |edge|>  bets  wins  losses  pushes  win%  se%  z_vs_50  z_vs_52.38  roi%@-110  clears_52.4
+       0  4254  2100    2154     109 49.37 0.77    -0.83       -3.94      -5.76        False
+       1  2923  1449    1474      79 49.57 0.92    -0.46       -3.04      -5.36        False
+       2  1850   922     928      50 49.84 1.16    -0.14       -2.19      -4.86        False
+       3  1035   528     507      28 51.01 1.55     0.65       -0.88      -2.61        False
+       4   537   281     256      11 52.33 2.16     1.08       -0.02      -0.10        False
+       5   271   144     127       4 53.14 3.04     1.03        0.25       1.44         True
+se% = binomial standard error at p=0.5; break-even at -110 is 52.38%
+
+per season (wins-losses, win%) by threshold:
+ season            >0           >1          >2          >3          >4
+   2010 122-140 (47%)  80-82 (49%) 48-50 (49%) 27-31 (47%) 18-17 (51%)
+   2011 137-119 (54%)  98-71 (58%) 71-51 (58%) 35-27 (56%) 17-14 (55%)
+   2012 130-132 (50%)  76-93 (45%) 41-57 (42%) 23-27 (46%)  6-15 (29%)
+   2013 130-130 (50%)  98-88 (53%) 65-55 (54%) 35-26 (57%) 18-12 (60%)
+   2014 140-121 (54%)  95-88 (52%) 54-58 (48%) 38-34 (53%) 17-13 (57%)
+   2015 138-119 (54%)  95-79 (55%) 70-47 (60%) 39-20 (66%) 18-10 (64%)
+   2016 130-132 (50%) 100-92 (52%) 64-67 (49%) 39-40 (49%) 23-19 (55%)
+   2017 137-122 (53%)  93-85 (52%) 61-58 (51%) 39-33 (54%) 21-22 (49%)
+   2018 133-125 (52%)  85-95 (47%) 50-57 (47%) 30-31 (49%) 19-21 (48%)
+   2019 119-138 (46%)  79-91 (46%) 52-46 (53%) 21-26 (45%) 16-13 (55%)
+   2020 130-139 (48%)  89-97 (48%) 58-56 (51%) 39-28 (58%) 17-14 (55%)
+   2021 135-146 (48%)  95-94 (50%) 57-57 (50%) 32-32 (50%) 20-18 (53%)
+   2022 128-146 (47%)  90-99 (48%) 63-66 (49%) 41-38 (52%) 21-15 (58%)
+   2023 119-152 (44%) 88-106 (45%) 55-65 (46%) 27-39 (41%)  8-12 (40%)
+   2024 140-141 (50%) 97-111 (47%) 61-72 (46%) 38-38 (50%) 25-22 (53%)
+   2025 132-152 (46%) 91-103 (47%) 52-66 (44%) 25-37 (40%) 17-19 (47%)
+  threshold >0: seasons above 52.38%: 4/16; above 50%: 5/16
+  threshold >1: seasons above 52.38%: 3/16; above 50%: 7/16
+  threshold >2: seasons above 52.38%: 4/16; above 50%: 6/16
+  threshold >3: seasons above 52.38%: 6/16; above 50%: 7/16
+  threshold >4: seasons above 52.38%: 10/16; above 50%: 11/16
+mean |model - line| = 2.09 pts; sd(model - line) = 2.70
+
+==============================================================================
+3. RESIDUAL SD AND WIN-PROBABILITY CALIBRATION 2010-2025
+==============================================================================
+residual SD (about the prediction, i.e. RMSE): 13.258; SD about residual mean: 13.260; mean +0.047
+margin_model.RESID_SD = 13.3
+residual SD of the closing line on the same games: 13.040
+residual RMSE by |pred|: {Interval(0, 3, closed='right'): 13.53, Interval(3, 7, closed='right'): 13.08, Interval(7, 30, closed='right'): 13.13}
+normality of residuals: share within 1 SD 0.702 (normal .683), 2 SD 0.948 (normal .954); excess kurtosis +0.34
+
+ties excluded (13); n=4350; with both moneylines: 4349; home win rate 0.557
+forecast                                         Brier  logloss   (games with moneyline, n=4349)
+model, Normal(pred, RESID_SD const)             0.2174   0.6236
+model, walk-forward SD (prior seasons only)     0.2175   0.6238
+closing spread through Normal(line, 13.04)      0.2115   0.6108
+de-vigged closing moneyline                     0.2111   0.6096
+constant = base rate                            0.2467   0.6866
+walk-forward SD by season: {2010: 13.69, 2011: 13.72, 2012: 13.72, 2013: 13.77, 2014: 13.69, 2015: 13.76, 2016: 13.68, 2017: 13.56, 2018: 13.56, 2019: 13.54, 2020: 13.54, 2021: 13.49, 2022: 13.51, 2023: 13.43, 2024: 13.44, 2025: 13.42}
+
+reliability by decile of model home-win probability (const SD):
+       n   p_lo   p_hi  mean_pred  actual  market_mean     se      z
+dec                                                                 
+0    435  0.111  0.339      0.267   0.271        0.271  0.021  0.221
+1    435  0.339  0.413      0.379   0.363        0.377  0.023 -0.672
+2    435  0.413  0.471      0.444   0.409        0.443  0.024 -1.477
+3    435  0.471  0.516      0.494   0.490        0.497  0.024 -0.191
+4    435  0.516  0.562      0.540   0.538        0.549  0.024 -0.069
+5    435  0.562  0.607      0.585   0.593        0.599  0.024  0.344
+6    435  0.607  0.653      0.630   0.623        0.645  0.023 -0.299
+7    435  0.653  0.700      0.675   0.697        0.699  0.022  0.946
+8    435  0.700  0.768      0.732   0.724        0.738  0.021 -0.366
+9    435  0.768  0.945      0.822   0.864        0.814  0.016  2.290
+expected calibration error (decile, n-weighted): 0.0148
+market ECE (decile): 0.0175
+
+model-implied home-cover probability vs outcome (pushes excluded):
+                n  mean_pred  actual
+bin                                 
+(0.0, 0.4]    412      0.363   0.483
+(0.4, 0.45]   654      0.428   0.523
+(0.45, 0.5]  1077      0.476   0.488
+(0.5, 0.55]  1020      0.524   0.473
+(0.55, 0.6]   662      0.572   0.489
+(0.6, 1.0]    429      0.643   0.508
+
+==============================================================================
+4. ABLATIONS (walk-forward blend refit for each variant)
+==============================================================================
+                             variant  MAE 2003-2009  RMSE 2003-2009  MAE 2010-2025  RMSE 2010-2025
+                          FULL MODEL         10.864          13.688         10.298          13.258
+                       drop elo_diff         11.017          13.837         10.388          13.378
+                      drop pass_diff         10.858          13.724         10.343          13.292
+                      drop rush_diff         10.863          13.725         10.295          13.278
+                        drop qb_diff         10.925          13.766         10.375          13.371
+                            drop hfa         11.017          13.917         10.410          13.420
+                      drop rest_diff         10.879          13.712         10.297          13.258
+                      Elo + HFA only         10.933          13.820         10.388          13.390
+                      Elo + HFA + QB         10.876          13.771         10.331          13.303
+             EPA + QB + HFA (no Elo)         11.028          13.857         10.389          13.380
+                static HFA (hfa_k=0)         10.860          13.683         10.314          13.266
+      faster HFA drift (hfa_k=0.003)         10.874          13.692         10.299          13.257
+Elo without MOV autocorr. correction         10.864          13.688         10.294          13.255
+Feature selection and tuning used the 2003-2009 columns only; 2010-2025 columns are shown for transparency.
+
+blend weights by season fitted (each uses earlier seasons only):
+      elo_diff  pass_diff  rush_diff  qb_diff    hfa  rest_diff
+2003     0.598      0.406      1.034    0.723  0.885      0.227
+2010     0.596      0.501      1.033    0.778  0.927      0.310
+2015     0.586      0.498      0.965    0.837  0.958      0.206
+2020     0.572      0.516      0.994    0.855  0.923      0.202
+2025     0.556      0.541      0.979    0.852  0.932      0.192
+2026     0.566      0.523      0.917    0.847  0.935      0.203
+
+HFA state (points) at first game of season: {2003: 2.7, 2010: 2.56, 2015: 2.64, 2019: 2.45, 2021: 1.41, 2023: 1.66, 2025: 1.95, 2026: 1.97}
+
+==============================================================================
+5. LEAKAGE / TRUNCATION TESTS
+==============================================================================
+sanity: closing-line MAE 10.05 (expected ~10-10.5), model MAE 10.30 -> model is WORSE than the market
+cut 2012-10-21: rows removed: max|diff|=0.0e+00 OK; results blanked: max|diff|=0.0e+00 OK; results scrambled: max|diff|=0.0e+00 OK; (later games DO change, max 29.7 pts, as they should) [2506 games compared, 11 on the cut date]
+cut 2016-12-11: rows removed: max|diff|=0.0e+00 OK; results blanked: max|diff|=0.0e+00 OK; results scrambled: max|diff|=0.0e+00 OK; (later games DO change, max 28.4 pts, as they should) [3678 games compared, 14 on the cut date]
+cut 2019-09-08: rows removed: max|diff|=0.0e+00 OK; results blanked: max|diff|=0.0e+00 OK; results scrambled: max|diff|=0.0e+00 OK; (later games DO change, max 29.9 pts, as they should) [4286 games compared, 13 on the cut date]
+cut 2021-01-17: rows removed: max|diff|=0.0e+00 OK; results blanked: max|diff|=0.0e+00 OK; results scrambled: max|diff|=0.0e+00 OK; (later games DO change, max 26.1 pts, as they should) [4805 games compared, 2 on the cut date]
+cut 2023-11-23: rows removed: max|diff|=0.0e+00 OK; results blanked: max|diff|=0.0e+00 OK; results scrambled: max|diff|=0.0e+00 OK; (later games DO change, max 24.5 pts, as they should) [5544 games compared, 3 on the cut date]
+cut 2025-10-05: rows removed: max|diff|=0.0e+00 OK; results blanked: max|diff|=0.0e+00 OK; results scrambled: max|diff|=0.0e+00 OK; (later games DO change, max 24.1 pts, as they should) [6024 games compared, 12 on the cut date]
+TRUNCATION TEST: PASS at all cut points
+market columns shuffled: max|diff| = 0.0e+00 (model never reads the line)
+
+==============================================================================
+6. UNPLAYED GAMES
+==============================================================================
+135 unplayed games, all with predictions: True; QB assumed (= team's last starter) in 109
+        game_id    gameday  pred_margin  spread_line  home_win_prob  elo_diff  pass_diff  rush_diff  qb_diff  hfa  rest_diff  qb_assumed
+2026_10_BUF_NYJ 2026-11-15       -12.02         -8.5           0.18    -16.19      -7.24      -1.86     0.97 1.73        1.0       False
+ 2026_10_CAR_NO 2026-11-15         2.57          1.5           0.58      0.25       1.41       0.29    -0.23 1.73        0.0       False
+2026_10_HOU_CLE 2026-11-15        -2.53         -4.5           0.42     -3.00      -4.05      -0.24    -0.15 1.73        0.0       False
+2026_10_JAX_TEN 2026-11-15       -12.05        -10.5           0.18    -15.07      -7.15      -0.51    -2.06 1.73        4.0       False
+ 2026_10_KC_ATL 2026-11-15        -4.80         -3.0           0.36     -4.96      -3.49      -0.84    -1.20 1.73        0.0       False
+ 2026_10_LA_ARI 2026-11-15        -8.36         -9.5           0.26     -8.86      -6.01      -0.29    -1.83 1.73        0.0       False
+2026_10_MIA_IND 2026-11-15         2.27          4.5           0.57      0.72      -0.55       0.67    -0.10 1.73        0.0       False
+ 2026_10_MIN_GB 2026-11-15         0.69          2.5           0.52      0.13       2.83      -0.39    -2.74 1.73        1.0       False
+ 2026_10_NE_DET 2026-11-15         0.62          2.5           0.52      1.62       1.32      -0.50    -0.63 0.00        0.0       False
+2026_10_PIT_CIN 2026-11-15         3.01          3.5           0.59      0.82       2.06      -1.33     2.94 1.73       -7.0       False
+ 2026_10_SEA_LV 2026-11-15       -11.55         -6.5           0.19     -8.97      -4.61      -1.85    -4.70 1.73        0.0       False
+ 2026_10_SF_DAL 2026-11-15        -4.96         -4.5           0.35     -8.09      -2.12      -1.44     0.51 1.73        0.0       False
+2026_10_LAC_BAL 2026-11-16         7.98          4.5           0.73      5.12       0.79       2.22     0.47 1.73        3.0       False
+2026_11_IND_HOU 2026-11-19         9.45         10.0           0.76      6.76       4.42      -0.83     2.89 1.73        0.0       False
+ 2026_11_ARI_KC 2026-11-22        11.01         14.0           0.80      7.25       4.46       0.98     2.42 1.73        0.0       False
+2026_11_BAL_CAR 2026-11-22        -0.88          1.5           0.47     -1.52      -2.08      -2.53     1.84 1.73        1.0       False
+
+==============================================================================
+7. HYPER-PARAMETER SEARCH on 2003-2009 RMSE only (coordinate descent)
+==============================================================================
+shipped params RMSE: 13.6879
+elo_k        shipped=28.0:  [(13.6908, 16), (13.6884, 20), (13.6877, 24), (13.6879, 28), (13.6895, 34), (13.6922, 40)]
+elo_regress  shipped=0.4:  [(13.6883, 0.25), (13.6872, 0.33), (13.6879, 0.4), (13.6914, 0.5)]
+epa_k        shipped=0.02:  [(13.6955, 0.01), (13.6893, 0.015), (13.6879, 0.02), (13.6943, 0.03), (13.7152, 0.045), (13.7381, 0.06), (13.779, 0.1)]
+epa_regress  shipped=0.3:  [(13.7104, 0.0), (13.6922, 0.15), (13.6879, 0.3), (13.6907, 0.45)]
+qb_decay     shipped=0.9:  [(13.6927, 0.85), (13.6879, 0.9), (13.6937, 0.94), (13.7109, 0.97), (13.7426, 1.0)]
+qb_n0        shipped=8.0:  [(13.6981, 2), (13.6923, 4), (13.6893, 6), (13.6879, 8), (13.688, 10), (13.6949, 16)]
+qb_prior_k   shipped=0.05:  [(13.6955, 0.01), (13.6911, 0.02), (13.6879, 0.05)]
+ridge        shipped=200.0:  [(13.6889, 0), (13.6884, 50), (13.6879, 200), (13.6896, 500), (13.6955, 1000)]
+hfa_k        shipped=0.001:  [(13.6834, 0), (13.6861, 0.0005), (13.6879, 0.001), (13.6905, 0.002), (13.6935, 0.004)]
+NOTE hfa_k: the 2003-2009 window prefers no drift (HFA was stable then). hfa_k=0.001 was set by judgement, not tuned.
