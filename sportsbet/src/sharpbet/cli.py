@@ -56,7 +56,8 @@ def cmd_scan(args: argparse.Namespace) -> int:
     rows = ledger.load(path)
     bankroll = args.bankroll + ledger.settled_pnl(rows)
     staked_today = ledger.staked_on(rows, datetime.now().astimezone().date())
-    plays = find_plays(events, now, sharp_book=args.sharp_book, books=set(args.books),
+    plays = find_plays(events, now, sharp_book=args.sharp_book,
+                       books=None if args.sample else set(args.books),
                        min_ev=args.min_ev / 100, max_ev=args.max_ev / 100,
                        max_price=args.max_price, max_age_minutes=args.max_age)
     picks = select_and_size(plays, bankroll, top_n=args.top, kelly_multiplier=args.kelly,
