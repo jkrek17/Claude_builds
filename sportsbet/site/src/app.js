@@ -10,6 +10,17 @@ const TEAMS = {
   TEN: "Titans", WAS: "Commanders",
 };
 
+// Each team's main color, used for the dot beside its name and for the win-chance bar.
+const COLORS = {
+  ARI: "#97233f", ATL: "#a71930", BAL: "#241773", BUF: "#00338d", CAR: "#0085ca", CHI: "#c83803",
+  CIN: "#fb4f14", CLE: "#ff3c00", DAL: "#003594", DEN: "#fb4f14", DET: "#0076b6", GB: "#203731",
+  HOU: "#a71930", IND: "#002c5f", JAX: "#006778", KC: "#e31837", LA: "#003594", LAC: "#0080c6",
+  LV: "#444b52", MIA: "#008e97", MIN: "#4f2683", NE: "#002244", NO: "#b3995d", NYG: "#0b2265",
+  NYJ: "#125740", PHI: "#004c54", PIT: "#ffb612", SEA: "#69be28", SF: "#aa0000", TB: "#d50a0a",
+  TEN: "#4b92db", WAS: "#5a1414",
+};
+const color = (abbr) => COLORS[abbr] || "#8a909c";
+
 const $ = (id) => document.getElementById(id);
 const pct = (x, digits = 1) => (x == null ? "n/a" : (100 * x).toFixed(digits) + "%");
 const rec = ([wins, n]) => `${wins}-${n - wins}`;
@@ -31,14 +42,15 @@ function kickoff(hhmm) {
 function mark(hit) {
   if (hit == null) return "";
   return hit
-    ? `<span class="text-success text-xs font-semibold whitespace-nowrap">✓ Won</span>`
-    : `<span class="text-error text-xs font-semibold whitespace-nowrap">✕ Lost</span>`;
+    ? `<span class="pill pill-won">✓ Won</span>`
+    : `<span class="pill pill-lost">✕ Lost</span>`;
 }
 
 function teamRow(abbr, predicted, actual, picked) {
   const weight = picked ? "font-semibold" : "";
   const final = actual == null ? "" : `<span class="num w-12 text-right font-semibold">${actual}</span>`;
   return `<div class="flex items-center gap-3 py-1">
+    <span class="swatch shrink-0" style="background:${color(abbr)}"></span>
     <span class="w-11 text-base ${weight}">${abbr}</span>
     <span class="flex-1 truncate text-sm muted">${TEAMS[abbr] || ""}</span>
     <span class="num text-sm ${actual == null ? weight : "faint"}">${predicted.toFixed(1)}</span>${final}
@@ -71,7 +83,7 @@ function gameCard(c, breakEven) {
   const scoreHead = c.final
     ? `<span>Model</span><span class="w-12 text-right">Final</span>`
     : `<span>Predicted</span>`;
-  return `<article class="panel p-4">
+  return `<article class="panel game p-4" style="--team:${color(c.ml_pick)}">
     <div class="flex items-center justify-between eyebrow"><span>${head}</span><span class="flex gap-0">${scoreHead}</span></div>
     <div class="mt-1">
       ${teamRow(c.away, c.pred_away_score, c.away_score, !homePicked)}
@@ -83,7 +95,7 @@ function gameCard(c, breakEven) {
         <span class="num text-xs muted">model ${pct(c.ml_pick_prob, 0)} · market ${pct(market, 0)}</span>
       </div>
       <div class="mt-1.5 h-1.5 rounded-full bg-base-300" role="img" aria-label="Model win chance ${pct(c.ml_pick_prob, 0)}">
-        <div class="h-1.5 rounded-full bg-primary" style="width:${(100 * c.ml_pick_prob).toFixed(1)}%"></div>
+        <div class="h-1.5 rounded-full" style="width:${(100 * c.ml_pick_prob).toFixed(1)}%;background:${color(c.ml_pick)}"></div>
       </div>
     </div>
     <div class="mt-3 divide-y divide-base-300 border-t border-base-300">
@@ -94,8 +106,8 @@ function gameCard(c, breakEven) {
   </article>`;
 }
 
-function tile(label, pair) {
-  return `<div class="panel px-3 py-3 text-center">
+function tile(label, pair, accent) {
+  return `<div class="panel tile px-3 py-3 text-center" style="--accent:var(${accent})">
     <p class="eyebrow">${label}</p>
     <p class="num mt-1 text-xl font-semibold">${pair[1] ? rec(pair) : "0-0"}</p>
     <p class="num text-xs muted">${pair[1] ? pct(rate(pair)) : "no games yet"}</p>
@@ -109,7 +121,7 @@ function renderPicks(data, week) {
   $("picks").innerHTML = `
     <p class="eyebrow mb-2">${data.season} season so far</p>
     <div class="grid grid-cols-3 gap-2">
-      ${tile("Winners", data.record.su)}${tile("Spread", data.record.ats)}${tile("Totals", data.record.ou)}
+      ${tile("Winners", data.record.su, "--series-3")}${tile("Spread", data.record.ats, "--series-1")}${tile("Totals", data.record.ou, "--series-2")}
     </div>
     ${noLines ? `<p class="mt-6 text-sm muted">No betting lines are posted for this week yet, so only scores and winners are shown.</p>` : ""}
     ${days.map((day) => `
@@ -221,7 +233,7 @@ function showTab(name, data) {
   for (const btn of $("tabs").children) {
     const on = btn.dataset.tab === name;
     btn.setAttribute("aria-selected", on);
-    btn.className = "rounded-lg py-2 " + (on ? "bg-base-100 shadow-sm" : "muted");
+    btn.className = "rounded-lg py-2 " + (on ? "bg-base-100 text-primary shadow-sm" : "muted");
   }
   if (name === "record") drawChart(data);
 }
@@ -238,9 +250,9 @@ function start(data) {
   select.addEventListener("change", () => show(select.value));
   $("season").textContent = data.season;
   const made = new Date(data.generated_at);
-  $("updated").textContent = "Updated " + made.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  $("updated").textContent = "Updated " + made.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   const b = data.backtest;
-  $("notice").innerHTML = `<strong>No proven edge.</strong> <span class="muted">In testing on ${b.games.toLocaleString()} games the model won ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. Breaking even takes ${pct(data.break_even)}. Read these as informed predictions, not winning bets.</span>`;
+  $("notice").innerHTML = `<strong class="text-warning">No proven edge.</strong> <span class="muted">In testing on ${b.games.toLocaleString()} games the model won ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. Breaking even takes ${pct(data.break_even)}. Read these as informed predictions, not winning bets.</span>`;
   renderRecord(data);
   renderAbout(data);
   $("tabs").addEventListener("click", (e) => e.target.dataset.tab && showTab(e.target.dataset.tab, data));
