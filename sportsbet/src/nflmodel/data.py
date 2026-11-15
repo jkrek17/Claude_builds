@@ -16,6 +16,10 @@ AVAILABILITY_FILES = {
     "injuries_{season}.csv": "https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_{season}.csv",
     "roster_weekly_{season}.csv": "https://github.com/nflverse/nflverse-data/releases/download/weekly_rosters/roster_weekly_{season}.csv",
 }
+# For the props model: offensive snap counts (from 2013) and the player id table that maps them.
+SNAPS_URL = "https://github.com/nflverse/nflverse-data/releases/download/snap_counts/snap_counts_{season}.csv"
+PLAYERS_URL = "https://github.com/nflverse/nflverse-data/releases/download/players/players.csv"
+SNAPS_FIRST = 2013
 FIRST_SEASON = 1999
 DEFAULT_DIR = Path.home() / ".cache" / "nflmodel"
 
@@ -39,6 +43,8 @@ def refresh(data_dir: Path, season: int, max_age_hours: float = 3.0) -> None:
                  for name, url in SEASON_FILES.items()})
     live.update({data_dir / name.format(season=season): url.format(season=season)
                  for name, url in AVAILABILITY_FILES.items()})
+    live[data_dir / f"snap_counts_{season}.csv"] = SNAPS_URL.format(season=season)
+    live[data_dir / "players.csv"] = PLAYERS_URL
     for path, url in live.items():
         if not path.exists() or path.stat().st_mtime < cutoff:
             _fetch(url, path)
@@ -49,6 +55,10 @@ def refresh(data_dir: Path, season: int, max_age_hours: float = 3.0) -> None:
             path = data_dir / name.format(season=year)
             if not path.exists() or (year == season - 1 and path.stat().st_mtime < final_after):
                 _fetch(url.format(season=year), path)
+    for year in range(SNAPS_FIRST, season):
+        path = data_dir / f"snap_counts_{year}.csv"
+        if not path.exists() or (year == season - 1 and path.stat().st_mtime < final_after):
+            _fetch(SNAPS_URL.format(season=year), path)
 
 
 def fetch_availability(data_dir: Path, season: int) -> None:

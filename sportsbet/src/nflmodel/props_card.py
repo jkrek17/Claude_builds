@@ -127,7 +127,8 @@ def _dist(model: P.PropModel, pos: str, mu: float) -> dict:
 
 
 def week_props(offense: pd.DataFrame, games: pd.DataFrame, season: int, week: int,
-               preds: pd.DataFrame | None = None, avail: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict[str, P.PropModel]]:
+               preds: pd.DataFrame | None = None, avail: pd.DataFrame | None = None,
+               snaps: pd.DataFrame | None = None, rookies: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict[str, P.PropModel]]:
     """Predictions for a week. For an unplayed week the players are guessed from recent games; for a
     finished week the players who appeared are scored, with the model fitted only on earlier dates."""
     games = _fill_lines(games, preds)
@@ -147,14 +148,16 @@ def week_props(offense: pd.DataFrame, games: pd.DataFrame, season: int, week: in
                 col = "home_qb_id" if games.loc[row, "home_team"].replace(P.TEAM_MAP).iloc[0] == team else "away_qb_id"
                 games.loc[row, col] = qb
     both = pd.concat([off, target, up], ignore_index=True)
-    panel = P.build_panel(both, games)
-    models = P.fit_all(panel[panel["played"].astype(bool)])
+    panel = P.build_panel(both, games, snaps, rookies)
+    models = P.fit_all(panel)
     cur = panel[~panel["played"].astype(bool)]
     out = []
     for prop in P.PROPS:
         d = cur[P.eligible(cur, prop)]
         mu = models[prop.key].expected(d)
         for (_, r), m in zip(d.iterrows(), mu):
+            if not np.isfinite(m):
+                continue
             s = _summary(models[prop.key], r["position"], float(m))
             row = {"game_id": r["game_id"], "gameday": r["gameday"], "team": r["team"], "opponent": r["opponent_team"],
                    "player_id": r["player_id"], "player": r["player_display_name"], "position": r["position"],

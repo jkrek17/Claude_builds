@@ -1,0 +1,313 @@
+variant,prop,dCRPS%,dMAE%,crps_wins,mae_wins,of
++o_pass_rate,any_td,0.008,0.021,5,6,15
++o_pass_rate,pass_att,-0.016,-0.003,11,9,15
++o_pass_rate,pass_cmp,-0.047,-0.038,11,10,15
++o_pass_rate,pass_tds,-0.017,-0.005,10,9,15
++o_pass_rate,pass_yds,-0.059,-0.033,11,9,15
++o_pass_rate,rec_yds,-0.02,-0.011,9,9,15
++o_pass_rate,receptions,-0.015,-0.015,9,10,15
++o_pass_rate,rush_yds,-0.113,-0.108,10,11,15
++o_plays,any_td,-0.039,-0.044,11,11,15
++o_plays,pass_att,-0.04,-0.024,10,9,15
++o_plays,pass_cmp,-0.1,-0.071,14,10,15
++o_plays,pass_tds,-0.01,-0.026,11,10,15
++o_plays,pass_yds,-0.055,-0.049,10,11,15
++o_plays,rec_yds,-0.001,-0.009,6,10,15
++o_plays,receptions,-0.004,-0.004,9,9,15
++o_plays,rush_yds,-0.037,-0.011,10,10,15
++o_sack_rate,any_td,0.032,0.065,7,5,15
++o_sack_rate,pass_att,0.002,0.007,6,10,15
++o_sack_rate,pass_cmp,0.045,0.034,4,5,15
++o_sack_rate,pass_tds,0.009,-0.014,5,9,15
++o_sack_rate,pass_yds,0.005,0.003,7,7,15
++o_sack_rate,rec_yds,0.001,0.026,8,4,15
++o_sack_rate,receptions,0.016,0.001,4,9,15
++o_sack_rate,rush_yds,0.012,0.128,7,3,15
++o_pass_epa,any_td,0.011,0.054,5,5,15
++o_pass_epa,pass_att,0.019,0.062,6,5,15
++o_pass_epa,pass_cmp,0.085,0.073,4,9,15
++o_pass_epa,pass_tds,0.043,-0.064,3,10,15
++o_pass_epa,pass_yds,-0.005,-0.056,9,8,15
++o_pass_epa,rec_yds,-0.009,-0.015,9,11,15
++o_pass_epa,receptions,-0.002,-0.024,7,13,15
++o_pass_epa,rush_yds,-0.01,0.088,7,5,15
++o_rush_epa,any_td,-0.004,-0.145,9,11,15
++o_rush_epa,pass_att,-0.178,-0.18,10,13,15
++o_rush_epa,pass_cmp,-0.129,-0.265,11,12,15
++o_rush_epa,pass_tds,-0.034,-0.116,9,13,15
++o_rush_epa,pass_yds,-0.255,-0.226,13,13,15
++o_rush_epa,rec_yds,-0.013,-0.099,10,11,15
++o_rush_epa,receptions,-0.03,-0.106,10,12,15
++o_rush_epa,rush_yds,-0.021,0.043,10,3,15
++o_first_downs,any_td,-0.04,-0.204,11,11,15
++o_first_downs,pass_att,-0.01,0.006,11,9,15
++o_first_downs,pass_cmp,-0.126,-0.163,12,14,15
++o_first_downs,pass_tds,-0.02,-0.036,10,9,15
++o_first_downs,pass_yds,-0.108,-0.089,9,10,15
++o_first_downs,rec_yds,-0.0,-0.027,8,10,15
++o_first_downs,receptions,-0.001,-0.016,9,10,15
++o_first_downs,rush_yds,0.036,-0.005,4,7,15
++d_plays,any_td,0.011,0.006,6,4,15
++d_plays,pass_att,0.044,0.004,6,6,15
++d_plays,pass_cmp,0.005,-0.006,7,8,15
++d_plays,pass_tds,0.034,0.029,5,5,15
++d_plays,pass_yds,-0.002,0.037,8,9,15
++d_plays,rec_yds,0.007,-0.013,8,10,15
++d_plays,receptions,0.008,-0.022,5,11,15
++d_plays,rush_yds,-0.04,-0.021,8,7,15
++d_plays_adj,any_td,0.02,-0.047,4,11,15
++d_plays_adj,pass_att,0.004,-0.005,7,9,15
++d_plays_adj,pass_cmp,0.023,-0.0,8,7,15
++d_plays_adj,pass_tds,0.022,0.022,5,6,15
++d_plays_adj,pass_yds,0.015,0.04,7,8,15
++d_plays_adj,rec_yds,0.004,0.013,8,8,15
++d_plays_adj,receptions,0.012,0.008,5,9,15
++d_plays_adj,rush_yds,-0.03,-0.057,9,9,15
++d_pass_rate,any_td,0.018,-0.066,5,13,15
++d_pass_rate,pass_att,0.081,0.044,7,6,15
++d_pass_rate,pass_cmp,-0.031,-0.046,8,9,15
++d_pass_rate,pass_tds,0.03,0.026,7,8,15
++d_pass_rate,pass_yds,0.063,0.063,6,6,15
++d_pass_rate,rec_yds,0.008,0.025,8,6,15
++d_pass_rate,receptions,0.023,0.071,5,3,15
++d_pass_rate,rush_yds,-0.004,0.021,6,7,15
++d_pass_rate_adj,any_td,0.01,0.001,6,9,15
++d_pass_rate_adj,pass_att,-0.041,-0.001,8,7,15
++d_pass_rate_adj,pass_cmp,-0.076,-0.078,9,9,15
++d_pass_rate_adj,pass_tds,0.029,0.003,7,7,15
++d_pass_rate_adj,pass_yds,0.005,-0.02,8,9,15
++d_pass_rate_adj,rec_yds,-0.008,0.011,10,8,15
++d_pass_rate_adj,receptions,0.006,0.035,5,6,15
++d_pass_rate_adj,rush_yds,-0.026,0.036,8,6,15
++d_sack_rate,any_td,0.008,-0.013,6,8,15
++d_sack_rate,pass_att,-0.028,-0.02,8,7,15
++d_sack_rate,pass_cmp,0.003,0.006,7,6,15
++d_sack_rate,pass_tds,0.032,-0.006,8,8,15
++d_sack_rate,pass_yds,0.01,0.018,9,7,15
++d_sack_rate,rec_yds,0.0,0.015,8,3,15
++d_sack_rate,receptions,0.014,0.013,5,6,15
++d_sack_rate,rush_yds,-0.052,0.001,8,7,15
++d_sack_rate_adj,any_td,0.004,-0.023,6,9,15
++d_sack_rate_adj,pass_att,-0.064,-0.028,9,9,15
++d_sack_rate_adj,pass_cmp,0.007,0.004,6,7,15
++d_sack_rate_adj,pass_tds,0.037,0.034,6,6,15
++d_sack_rate_adj,pass_yds,-0.019,0.017,10,7,15
++d_sack_rate_adj,rec_yds,0.004,0.013,6,2,15
++d_sack_rate_adj,receptions,0.016,0.019,4,7,15
++d_sack_rate_adj,rush_yds,-0.029,0.007,8,8,15
++d_hit_rate,any_td,0.007,-0.035,6,10,15
++d_hit_rate,pass_att,-0.023,0.004,9,8,15
++d_hit_rate,pass_cmp,0.021,0.016,4,5,15
++d_hit_rate,pass_tds,0.021,0.012,7,7,15
++d_hit_rate,pass_yds,0.013,0.007,3,6,15
++d_hit_rate,rec_yds,-0.021,0.009,9,4,15
++d_hit_rate,receptions,0.013,0.009,4,7,15
++d_hit_rate,rush_yds,-0.073,-0.04,8,11,15
++d_hit_rate_adj,any_td,0.012,0.012,5,6,15
++d_hit_rate_adj,pass_att,-0.035,-0.002,9,8,15
++d_hit_rate_adj,pass_cmp,0.029,0.02,8,7,15
++d_hit_rate_adj,pass_tds,0.026,0.025,5,7,15
++d_hit_rate_adj,pass_yds,0.02,0.008,4,6,15
++d_hit_rate_adj,rec_yds,-0.016,0.01,8,6,15
++d_hit_rate_adj,receptions,0.016,0.013,6,6,15
++d_hit_rate_adj,rush_yds,-0.03,-0.022,8,8,15
++d_int_rate,any_td,0.014,0.001,5,8,15
++d_int_rate,pass_att,-0.009,0.006,8,6,15
++d_int_rate,pass_cmp,-0.024,-0.031,9,10,15
++d_int_rate,pass_tds,0.0,0.006,7,6,15
++d_int_rate,pass_yds,0.034,0.011,6,8,15
++d_int_rate,rec_yds,0.019,0.01,6,10,15
++d_int_rate,receptions,-0.005,-0.008,9,10,15
++d_int_rate,rush_yds,-0.074,0.034,9,5,15
++d_cmp_rate,any_td,0.028,-0.005,5,9,15
++d_cmp_rate,pass_att,-0.004,0.015,8,7,15
++d_cmp_rate,pass_cmp,-0.256,-0.396,11,12,15
++d_cmp_rate,pass_tds,0.002,0.001,5,7,15
++d_cmp_rate,pass_yds,0.028,0.009,5,6,15
++d_cmp_rate,rec_yds,0.002,0.011,8,6,15
++d_cmp_rate,receptions,-0.043,-0.056,12,11,15
++d_cmp_rate,rush_yds,-0.01,0.068,7,5,15
++d_cmp_rate_adj,any_td,0.026,0.026,5,3,15
++d_cmp_rate_adj,pass_att,-0.011,0.013,7,4,15
++d_cmp_rate_adj,pass_cmp,-0.22,-0.383,10,12,15
++d_cmp_rate_adj,pass_tds,0.003,0.002,7,7,15
++d_cmp_rate_adj,pass_yds,0.03,0.008,6,7,15
++d_cmp_rate_adj,rec_yds,0.013,0.006,4,7,15
++d_cmp_rate_adj,receptions,-0.04,-0.048,9,10,15
++d_cmp_rate_adj,rush_yds,-0.004,0.061,8,5,15
++d_pass_epa,any_td,0.003,-0.022,6,10,15
++d_pass_epa,pass_att,-0.005,0.04,7,6,15
++d_pass_epa,pass_cmp,0.005,-0.02,6,9,15
++d_pass_epa,pass_tds,0.045,0.055,5,5,15
++d_pass_epa,pass_yds,0.032,0.034,6,6,15
++d_pass_epa,rec_yds,-0.009,0.032,9,5,15
++d_pass_epa,receptions,-0.012,-0.015,11,10,15
++d_pass_epa,rush_yds,0.013,0.018,5,7,15
++d_pass_epa_adj,any_td,0.002,-0.025,6,10,15
++d_pass_epa_adj,pass_att,-0.015,0.037,9,5,15
++d_pass_epa_adj,pass_cmp,-0.015,-0.032,7,9,15
++d_pass_epa_adj,pass_tds,0.051,0.074,3,4,15
++d_pass_epa_adj,pass_yds,0.039,0.026,6,4,15
++d_pass_epa_adj,rec_yds,-0.006,0.022,8,7,15
++d_pass_epa_adj,receptions,-0.01,-0.018,10,9,15
++d_pass_epa_adj,rush_yds,0.0,-0.015,7,7,15
++d_rush_epa,any_td,0.024,-0.041,2,10,15
++d_rush_epa,pass_att,-0.05,-0.013,7,7,15
++d_rush_epa,pass_cmp,0.032,-0.014,5,6,15
++d_rush_epa,pass_tds,0.03,0.033,6,5,15
++d_rush_epa,pass_yds,0.056,0.068,4,4,15
++d_rush_epa,rec_yds,0.011,0.017,7,5,15
++d_rush_epa,receptions,0.009,0.036,7,7,15
++d_rush_epa,rush_yds,-0.043,-0.018,8,7,15
++d_rush_epa_adj,any_td,0.03,-0.022,3,9,15
++d_rush_epa_adj,pass_att,-0.068,-0.039,9,8,15
++d_rush_epa_adj,pass_cmp,0.001,-0.042,6,9,15
++d_rush_epa_adj,pass_tds,0.028,0.038,7,7,15
++d_rush_epa_adj,pass_yds,0.027,0.05,8,5,15
++d_rush_epa_adj,rec_yds,0.009,0.013,6,5,15
++d_rush_epa_adj,receptions,0.006,0.027,7,6,15
++d_rush_epa_adj,rush_yds,0.017,-0.01,8,7,15
++d_first_downs,any_td,0.031,-0.095,5,10,15
++d_first_downs,pass_att,0.038,0.034,6,10,15
++d_first_downs,pass_cmp,0.018,0.017,5,7,15
++d_first_downs,pass_tds,0.027,0.027,6,6,15
++d_first_downs,pass_yds,0.023,0.045,6,8,15
++d_first_downs,rec_yds,0.009,0.009,7,8,15
++d_first_downs,receptions,0.012,0.014,3,2,15
++d_first_downs,rush_yds,-0.023,-0.082,7,10,15
++d_first_downs_adj,any_td,0.033,-0.128,5,12,15
++d_first_downs_adj,pass_att,0.011,0.015,8,9,15
++d_first_downs_adj,pass_cmp,0.031,0.022,4,7,15
++d_first_downs_adj,pass_tds,0.024,0.041,7,5,15
++d_first_downs_adj,pass_yds,0.007,0.042,9,7,15
++d_first_downs_adj,rec_yds,0.007,0.005,6,8,15
++d_first_downs_adj,receptions,0.012,0.015,3,4,15
++d_first_downs_adj,rush_yds,-0.028,-0.139,6,10,15
++d_points,any_td,0.005,-0.093,9,10,15
++d_points,pass_att,-0.137,-0.022,11,10,15
++d_points,pass_cmp,0.02,0.017,7,5,15
++d_points,pass_tds,0.045,0.054,5,6,15
++d_points,pass_yds,0.018,0.007,7,6,15
++d_points,rec_yds,0.001,0.003,9,8,15
++d_points,receptions,0.01,0.009,6,7,15
++d_points,rush_yds,-0.002,0.029,7,6,15
++d_points_adj,any_td,0.005,-0.058,8,10,15
++d_points_adj,pass_att,-0.102,-0.019,10,11,15
++d_points_adj,pass_cmp,0.027,0.022,7,7,15
++d_points_adj,pass_tds,0.048,0.09,4,5,15
++d_points_adj,pass_yds,-0.022,0.018,7,5,15
++d_points_adj,rec_yds,-0.001,0.006,6,8,15
++d_points_adj,receptions,0.015,0.017,3,2,15
++d_points_adj,rush_yds,0.035,-0.009,8,8,15
++d_air,any_td,0.03,-0.022,6,8,15
++d_air,pass_att,-0.006,0.009,8,7,15
++d_air,pass_cmp,-0.029,-0.174,9,9,15
++d_air,pass_tds,-0.018,-0.019,10,11,15
++d_air,pass_yds,-0.015,-0.01,9,6,15
++d_air,rec_yds,-0.007,-0.012,8,7,15
++d_air,receptions,0.018,0.042,8,7,15
++d_air,rush_yds,-0.033,-0.016,9,9,15
++oo_plays,any_td,0.011,0.058,7,3,15
++oo_plays,pass_att,-0.01,0.007,8,8,15
++oo_plays,pass_cmp,0.02,0.009,8,4,15
++oo_plays,pass_tds,0.014,0.034,6,4,15
++oo_plays,pass_yds,-0.015,0.012,8,7,15
++oo_plays,rec_yds,-0.004,0.012,8,7,15
++oo_plays,receptions,0.02,0.004,3,8,15
++oo_plays,rush_yds,0.024,0.061,6,5,15
++oo_pass_rate,any_td,0.033,0.014,5,8,15
++oo_pass_rate,pass_att,0.005,0.01,8,6,15
++oo_pass_rate,pass_cmp,-0.011,-0.005,7,7,15
++oo_pass_rate,pass_tds,-0.002,0.028,7,7,15
++oo_pass_rate,pass_yds,0.024,-0.006,5,8,15
++oo_pass_rate,rec_yds,-0.005,0.015,7,6,15
++oo_pass_rate,receptions,0.019,0.016,6,7,15
++oo_pass_rate,rush_yds,-0.013,0.045,7,8,15
++oo_first_downs,any_td,0.002,-0.058,8,8,15
++oo_first_downs,pass_att,0.004,-0.007,8,8,15
++oo_first_downs,pass_cmp,0.034,0.016,6,6,15
++oo_first_downs,pass_tds,0.013,0.037,7,7,15
++oo_first_downs,pass_yds,-0.01,0.006,6,6,15
++oo_first_downs,rec_yds,-0.011,0.017,7,4,15
++oo_first_downs,receptions,0.007,0.007,7,5,15
++oo_first_downs,rush_yds,-0.032,0.015,8,6,15
++oo_rush_epa,any_td,0.013,0.037,5,4,15
++oo_rush_epa,pass_att,-0.006,-0.021,7,10,15
++oo_rush_epa,pass_cmp,-0.009,-0.002,10,7,15
++oo_rush_epa,pass_tds,0.007,-0.02,7,10,15
++oo_rush_epa,pass_yds,-0.042,-0.059,10,10,15
++oo_rush_epa,rec_yds,0.004,-0.026,8,9,15
++oo_rush_epa,receptions,0.002,-0.016,9,9,15
++oo_rush_epa,rush_yds,-0.019,0.02,9,8,15
++od_points,any_td,0.041,-0.022,2,5,15
++od_points,pass_att,-0.104,-0.053,11,9,15
++od_points,pass_cmp,0.03,-0.052,7,8,15
++od_points,pass_tds,-0.002,0.006,8,10,15
++od_points,pass_yds,-0.007,-0.015,9,9,15
++od_points,rec_yds,0.003,0.014,9,8,15
++od_points,receptions,0.012,0.005,7,8,15
++od_points,rush_yds,-0.026,-0.102,8,12,15
++od_plays,any_td,0.007,0.009,7,5,15
++od_plays,pass_att,-0.015,-0.041,7,7,15
++od_plays,pass_cmp,-0.076,-0.065,12,10,15
++od_plays,pass_tds,0.007,0.002,5,5,15
++od_plays,pass_yds,0.003,0.008,7,7,15
++od_plays,rec_yds,0.014,0.013,8,6,15
++od_plays,receptions,-0.007,-0.002,8,8,15
++od_plays,rush_yds,0.017,0.007,4,8,15
++od_first_downs,any_td,0.019,0.016,5,6,15
++od_first_downs,pass_att,-0.01,0.007,6,7,15
++od_first_downs,pass_cmp,0.011,0.009,7,7,15
++od_first_downs,pass_tds,0.01,0.005,6,7,15
++od_first_downs,pass_yds,0.025,0.022,5,5,15
++od_first_downs,rec_yds,0.015,0.015,5,6,15
++od_first_downs,receptions,0.012,0.015,8,7,15
++od_first_downs,rush_yds,-0.069,-0.053,9,9,15
+pass rush: d_sack_rate+d_hit_rate,any_td,0.02,-0.031,6,8,15
+pass rush: d_sack_rate+d_hit_rate,pass_att,-0.026,-0.011,8,7,15
+pass rush: d_sack_rate+d_hit_rate,pass_cmp,0.022,0.023,6,5,15
+pass rush: d_sack_rate+d_hit_rate,pass_tds,0.035,-0.004,6,8,15
+pass rush: d_sack_rate+d_hit_rate,pass_yds,-0.004,0.016,8,6,15
+pass rush: d_sack_rate+d_hit_rate,rec_yds,-0.009,0.018,9,5,15
+pass rush: d_sack_rate+d_hit_rate,receptions,0.019,0.019,4,4,15
+pass rush: d_sack_rate+d_hit_rate,rush_yds,-0.104,-0.037,12,8,15
+pace: o_plays+d_plays+oo_plays,any_td,-0.004,0.046,8,7,15
+pace: o_plays+d_plays+oo_plays,pass_att,-0.02,-0.015,9,10,15
+pace: o_plays+d_plays+oo_plays,pass_cmp,-0.1,-0.089,8,10,15
+pace: o_plays+d_plays+oo_plays,pass_tds,0.042,0.023,5,6,15
+pace: o_plays+d_plays+oo_plays,pass_yds,-0.063,-0.015,8,9,15
+pace: o_plays+d_plays+oo_plays,rec_yds,0.01,-0.019,10,10,15
+pace: o_plays+d_plays+oo_plays,receptions,0.025,-0.031,5,12,15
+pace: o_plays+d_plays+oo_plays,rush_yds,0.007,0.031,8,6,15
+pass tendency: o_pass_rate+d_pass_rate,any_td,0.027,-0.036,5,10,15
+pass tendency: o_pass_rate+d_pass_rate,pass_att,0.056,0.041,6,5,15
+pass tendency: o_pass_rate+d_pass_rate,pass_cmp,-0.115,-0.122,10,9,15
+pass tendency: o_pass_rate+d_pass_rate,pass_tds,0.005,0.025,7,8,15
+pass tendency: o_pass_rate+d_pass_rate,pass_yds,-0.003,0.027,8,6,15
+pass tendency: o_pass_rate+d_pass_rate,rec_yds,-0.002,0.02,9,7,15
+pass tendency: o_pass_rate+d_pass_rate,receptions,0.001,0.06,6,5,15
+pass tendency: o_pass_rate+d_pass_rate,rush_yds,-0.102,-0.092,10,10,15
+EPA defence adj: d_pass_epa_adj+d_rush_epa_adj,any_td,0.032,-0.045,2,8,15
+EPA defence adj: d_pass_epa_adj+d_rush_epa_adj,pass_att,-0.039,-0.005,8,8,15
+EPA defence adj: d_pass_epa_adj+d_rush_epa_adj,pass_cmp,-0.041,-0.112,8,9,15
+EPA defence adj: d_pass_epa_adj+d_rush_epa_adj,pass_tds,0.071,0.1,5,5,15
+EPA defence adj: d_pass_epa_adj+d_rush_epa_adj,pass_yds,0.062,0.074,6,5,15
+EPA defence adj: d_pass_epa_adj+d_rush_epa_adj,rec_yds,0.004,0.038,9,5,15
+EPA defence adj: d_pass_epa_adj+d_rush_epa_adj,receptions,-0.012,-0.002,9,7,15
+EPA defence adj: d_pass_epa_adj+d_rush_epa_adj,rush_yds,0.066,-0.011,5,7,15
+EPA offence: o_pass_epa+o_rush_epa,any_td,0.006,-0.089,5,9,15
+EPA offence: o_pass_epa+o_rush_epa,pass_att,-0.113,-0.103,8,10,15
+EPA offence: o_pass_epa+o_rush_epa,pass_cmp,-0.04,-0.181,10,10,15
+EPA offence: o_pass_epa+o_rush_epa,pass_tds,0.0,-0.214,8,12,15
+EPA offence: o_pass_epa+o_rush_epa,pass_yds,-0.277,-0.349,12,12,15
+EPA offence: o_pass_epa+o_rush_epa,rec_yds,-0.023,-0.121,10,13,15
+EPA offence: o_pass_epa+o_rush_epa,receptions,-0.037,-0.142,9,13,15
+EPA offence: o_pass_epa+o_rush_epa,rush_yds,0.021,0.128,8,4,15
+all of the above,any_td,0.111,-0.025,3,7,15
+all of the above,pass_att,-0.174,-0.163,7,10,15
+all of the above,pass_cmp,-0.438,-0.608,11,11,15
+all of the above,pass_tds,0.065,-0.188,5,12,15
+all of the above,pass_yds,-0.243,-0.319,10,12,15
+all of the above,rec_yds,0.083,-0.008,7,8,15
+all of the above,receptions,0.041,-0.051,7,10,15
+all of the above,rush_yds,0.085,0.098,4,8,15

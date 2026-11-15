@@ -23,6 +23,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 sharpbet = ["sample_odds.json"]
+nflmodel = ["props_backtest.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

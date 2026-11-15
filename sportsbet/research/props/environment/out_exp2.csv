@@ -1,0 +1,105 @@
+variant,prop,dCRPS%,dMAE%,crps_wins,mae_wins,of
++abs_fav,any_td,-0.006,-0.024,7,11,15
++abs_fav,pass_att,0.018,0.02,7,9,15
++abs_fav,pass_cmp,0.056,-0.034,5,9,15
++abs_fav,pass_tds,0.005,0.007,7,9,15
++abs_fav,pass_yds,-0.015,-0.04,9,7,15
++abs_fav,rec_yds,-0.01,0.001,6,6,15
++abs_fav,receptions,0.011,0.022,4,3,15
++abs_fav,rush_yds,-0.059,-0.027,10,10,15
++fav_pos (kink at 0),any_td,-0.006,-0.023,7,11,15
++fav_pos (kink at 0),pass_att,0.02,0.02,7,9,15
++fav_pos (kink at 0),pass_cmp,0.057,-0.034,5,9,15
++fav_pos (kink at 0),pass_tds,0.005,0.007,7,9,15
++fav_pos (kink at 0),pass_yds,-0.014,-0.04,9,7,15
++fav_pos (kink at 0),rec_yds,-0.011,0.001,6,6,15
++fav_pos (kink at 0),receptions,0.011,0.022,4,3,15
++fav_pos (kink at 0),rush_yds,-0.044,-0.03,9,10,15
++fav_big (beyond +-7),any_td,0.011,-0.007,4,6,15
++fav_big (beyond +-7),pass_att,-0.024,-0.012,9,8,15
++fav_big (beyond +-7),pass_cmp,0.003,0.005,6,7,15
++fav_big (beyond +-7),pass_tds,0.015,-0.018,3,10,15
++fav_big (beyond +-7),pass_yds,0.025,-0.002,6,7,15
++fav_big (beyond +-7),rec_yds,-0.005,0.008,9,5,15
++fav_big (beyond +-7),receptions,0.007,0.009,7,4,15
++fav_big (beyond +-7),rush_yds,-0.08,0.024,11,4,15
++fav_sq,any_td,-0.003,-0.02,6,11,15
++fav_sq,pass_att,0.014,-0.005,6,10,15
++fav_sq,pass_cmp,0.014,-0.043,7,10,15
++fav_sq,pass_tds,0.005,0.004,6,6,15
++fav_sq,pass_yds,-0.029,-0.069,9,9,15
++fav_sq,rec_yds,-0.003,0.002,7,6,15
++fav_sq,receptions,0.005,0.013,4,5,15
++fav_sq,rush_yds,-0.085,-0.017,9,9,15
++imp_sq,any_td,0.003,-0.003,6,8,15
++imp_sq,pass_att,-0.031,-0.047,10,10,15
++imp_sq,pass_cmp,-0.038,-0.077,10,11,15
++imp_sq,pass_tds,-0.015,-0.057,8,11,15
++imp_sq,pass_yds,-0.02,-0.044,7,9,15
++imp_sq,rec_yds,-0.004,0.013,7,5,15
++imp_sq,receptions,0.008,0.014,6,4,15
++imp_sq,rush_yds,0.066,0.017,7,9,15
++fav_x_imp,any_td,-0.005,-0.008,7,7,15
++fav_x_imp,pass_att,0.002,-0.024,8,8,15
++fav_x_imp,pass_cmp,-0.004,-0.057,8,12,15
++fav_x_imp,pass_tds,-0.007,-0.024,9,10,15
++fav_x_imp,pass_yds,-0.02,-0.06,8,8,15
++fav_x_imp,rec_yds,-0.0,0.007,7,5,15
++fav_x_imp,receptions,0.008,0.014,7,4,15
++fav_x_imp,rush_yds,-0.007,0.02,9,7,15
++abs_fav+imp_sq+fav_x_imp,any_td,0.012,-0.019,7,9,15
++abs_fav+imp_sq+fav_x_imp,pass_att,0.017,0.001,4,10,15
++abs_fav+imp_sq+fav_x_imp,pass_cmp,0.027,-0.045,8,12,15
++abs_fav+imp_sq+fav_x_imp,pass_tds,0.015,-0.031,6,10,15
++abs_fav+imp_sq+fav_x_imp,pass_yds,-0.016,-0.048,9,7,15
++abs_fav+imp_sq+fav_x_imp,rec_yds,0.022,0.034,4,4,15
++abs_fav+imp_sq+fav_x_imp,receptions,0.033,0.037,5,3,15
++abs_fav+imp_sq+fav_x_imp,rush_yds,0.039,0.012,7,8,15
++fav x level,any_td,-0.103,-0.123,13,13,15
++fav x level,pass_att,-0.003,0.004,9,7,15
++fav x level,pass_cmp,0.013,0.005,4,6,15
++fav x level,pass_tds,-0.033,-0.069,12,11,15
++fav x level,pass_yds,-0.0,0.007,8,7,15
++fav x level,rec_yds,-0.03,-0.023,13,10,15
++fav x level,receptions,-0.004,-0.004,9,7,15
++fav x level,rush_yds,-0.073,-0.021,13,8,15
++implied x level,any_td,-0.153,-0.25,14,13,15
++implied x level,pass_att,-0.005,0.014,7,7,15
++implied x level,pass_cmp,0.014,0.019,4,4,15
++implied x level,pass_tds,-0.051,-0.178,10,14,15
++implied x level,pass_yds,-0.011,0.008,6,5,15
++implied x level,rec_yds,-0.113,-0.101,15,12,15
++implied x level,receptions,-0.048,-0.061,9,10,15
++implied x level,rush_yds,-0.064,-0.023,10,9,15
++fav x level + implied x level,any_td,-0.134,-0.17,11,12,15
++fav x level + implied x level,pass_att,0.012,0.032,6,5,15
++fav x level + implied x level,pass_cmp,0.072,0.062,3,4,15
++fav x level + implied x level,pass_tds,-0.02,-0.175,9,13,15
++fav x level + implied x level,pass_yds,0.031,0.053,7,6,15
++fav x level + implied x level,rec_yds,-0.114,-0.103,13,11,15
++fav x level + implied x level,receptions,-0.05,-0.064,10,9,15
++fav x level + implied x level,rush_yds,-0.114,-0.026,12,9,15
++abs_fav x level,any_td,-0.013,-0.019,8,11,15
++abs_fav x level,pass_att,0.042,0.047,6,9,15
++abs_fav x level,pass_cmp,0.075,-0.009,4,8,15
++abs_fav x level,pass_tds,0.004,0.004,6,6,15
++abs_fav x level,pass_yds,0.012,-0.021,6,7,15
++abs_fav x level,rec_yds,-0.01,0.002,8,7,15
++abs_fav x level,receptions,0.011,0.017,4,4,15
++abs_fav x level,rush_yds,-0.032,-0.001,11,9,15
+"+fav,imp x level + abs_fav",any_td,-0.128,-0.171,12,12,15
+"+fav,imp x level + abs_fav",pass_att,0.04,0.034,4,8,15
+"+fav,imp x level + abs_fav",pass_cmp,0.094,0.013,6,5,15
+"+fav,imp x level + abs_fav",pass_tds,-0.009,-0.148,9,13,15
+"+fav,imp x level + abs_fav",pass_yds,0.041,0.008,6,6,15
+"+fav,imp x level + abs_fav",rec_yds,-0.126,-0.106,14,10,15
+"+fav,imp x level + abs_fav",receptions,-0.04,-0.04,10,9,15
+"+fav,imp x level + abs_fav",rush_yds,-0.11,-0.056,11,8,15
+"+fav,imp x exp volume",any_td,-0.089,-0.22,12,13,15
+"+fav,imp x exp volume",rec_yds,-0.066,-0.045,11,9,15
+"+fav,imp x exp volume",receptions,-0.026,-0.031,8,8,15
+"+fav,imp x exp volume",rush_yds,-0.036,-0.002,11,9,15
+"+fav,imp x level AND x volume",any_td,-0.121,-0.246,11,12,15
+"+fav,imp x level AND x volume",rec_yds,-0.089,-0.083,14,11,15
+"+fav,imp x level AND x volume",receptions,-0.046,-0.056,10,10,15
+"+fav,imp x level AND x volume",rush_yds,-0.084,-0.003,11,8,15

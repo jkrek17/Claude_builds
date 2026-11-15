@@ -6,6 +6,7 @@ Scores, per prop: mean absolute error, CRPS (lower is better; a score for the wh
 and calibration (how often the result lands inside the 50% and 80% bands and above the median).
 Two reference forecasts use the same spread machinery so the comparison isolates the expected value:
 "slow avg" is the player's long-run decayed average, and "position" is one number per position.
+Also rewrites src/nflmodel/props_backtest.json, the summary the web page shows.
 """
 from __future__ import annotations
 
@@ -16,6 +17,9 @@ import numpy as np
 import pandas as pd
 
 from nflmodel import props as P
+
+
+RNG = np.random.default_rng(0)
 
 
 def crps_quantiles(q: np.ndarray, y: float) -> float:
@@ -39,11 +43,12 @@ def score(model: P.PropModel, d: pd.DataFrame, mu: np.ndarray) -> dict:
             crps.append(crps_pmf(p, yi))
             cdf = np.cumsum(p)
             lo = cdf[int(yi) - 1] if yi >= 1 else 0.0
-            pit.append(lo + 0.5 * (cdf[min(int(yi), len(cdf) - 1)] - lo))   # mid-PIT for counts
+            pit.append(lo + RNG.random() * (cdf[min(int(yi), len(cdf) - 1)] - lo))   # randomised PIT for counts
         else:
             q = model.quantiles(po, mi)
             crps.append(crps_quantiles(q, yi))
-            pit.append(float(np.interp(yi, q, P.QUANTILES, left=0.0, right=1.0)))
+            lo, hi = float(np.mean(q < yi)), float(np.mean(q <= yi))     # a tie (often at zero) is spread out
+            pit.append(lo + RNG.random() * (hi - lo) if hi - lo > 0.01 else float(np.interp(yi, q, P.QUANTILES, left=0.0, right=1.0)))
     pit = np.array(pit)
     return {"n": len(y), "mae": float(np.mean(np.abs(y - mu))), "crps": float(np.mean(crps)),
             "bias": float(np.mean(mu - y)), "in50": float(np.mean((pit > 0.25) & (pit < 0.75))),
@@ -119,11 +124,31 @@ def report(res: pd.DataFrame, td_p: np.ndarray, td_y: np.ndarray) -> None:
 
 def load_panel(data_dir: Path) -> pd.DataFrame:
     games = pd.read_csv(data_dir / "games.csv")
-    return P.build_panel(P.load_offense(str(data_dir)), games)
+    d = str(data_dir)
+    return P.build_panel(P.load_offense(d), games, P.load_snaps(d), P.load_rookie_seasons(d))
+
+
+def summary(res: pd.DataFrame) -> dict:
+    """Per-prop numbers for the web page and README."""
+    out = {}
+    for prop in P.PROPS:
+        g = res[(res["prop"] == prop.key) & (res["forecast"] == "model")].set_index("season")
+        b = res[(res["prop"] == prop.key) & (res["forecast"] == "slow avg")].set_index("season")
+        w = lambda f, c: float(np.average(f[c], weights=f["n"]))
+        out[prop.key] = {"n": int(g["n"].sum()), "mae": round(w(g, "mae"), 3), "mae_baseline": round(w(b, "mae"), 3),
+                         "crps": round(w(g, "crps"), 4), "crps_baseline": round(w(b, "crps"), 4),
+                         "coverage_50": round(w(g, "in50"), 3), "coverage_80": round(w(g, "in80"), 3),
+                         "seasons_better": int((g["crps"] < b["crps"]).sum()), "seasons": int(len(g))}
+    return out
 
 
 if __name__ == "__main__":
     data_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path.home() / ".cache" / "nflmodel"
-    first = int(sys.argv[2]) if len(sys.argv) > 2 else 2012
+    first = int(sys.argv[2]) if len(sys.argv) > 2 else 2015
     panel = load_panel(data_dir)
-    run(panel, first, int(panel["season"].max()))
+    last = int(panel["season"].max())
+    res = run(panel, first, last)
+    import json
+    dest = Path(P.__file__).with_name("props_backtest.json")
+    dest.write_text(json.dumps({"first": first, "last": last, "props": summary(res)}, indent=1) + "\n")
+    print(f"\nwrote {dest}")

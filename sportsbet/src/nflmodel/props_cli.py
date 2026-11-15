@@ -73,10 +73,13 @@ def lookup(df: pd.DataFrame, models: dict, player: str, prop: str, line: float) 
 
 
 def to_json(df: pd.DataFrame, season: int, week: int) -> dict:
+    path = Path(__file__).with_name("props_backtest.json")
+    bt = json.loads(path.read_text()) if path.exists() else {}
     recs = json.loads(df.to_json(orient="records", double_precision=4))
     return {"generated_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "season": season, "week": week, "probs": [float(x) for x in C.JSON_PROBS],
-            "props": {p.key: {"label": p.label, "kind": p.kind} for p in P.PROPS}, "rows": recs}
+            "props": {p.key: {"label": p.label, "kind": p.kind} for p in P.PROPS},
+            "backtest": bt.get("props", {}), "backtest_seasons": [bt.get("first"), bt.get("last")], "rows": recs}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,7 +107,8 @@ def main(argv: list[str] | None = None) -> int:
     need_model = this["spread_line"].isna().any() or this["total_line"].isna().any()
     preds = predict_all(games, str(data_dir)) if need_model else None
     avail = availability.for_week(availability.load(str(data_dir), [season]), season, week)
-    df, models = C.week_props(offense, games, season, week, preds, avail)
+    df, models = C.week_props(offense, games, season, week, preds, avail,
+                               P.load_snaps(str(data_dir)), P.load_rookie_seasons(str(data_dir)))
     if df.empty:
         print(f"No games found for {season} week {week}.", file=sys.stderr)
         return 1
