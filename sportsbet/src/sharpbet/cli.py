@@ -17,7 +17,7 @@ from .sizing import select_and_size
 
 DEFAULT_SPORTS = ["americanfootball_nfl", "americanfootball_ncaaf", "basketball_nba",
                   "basketball_ncaab", "icehockey_nhl"]
-DEFAULT_BOOKS = ["draftkings", "fanduel", "betmgm", "williamhill_us", "betrivers"]
+DEFAULT_BOOKS = ["fanduel", "fanatics"]
 DISCLAIMER = ("These are prices that beat the sharp market's fair line, not predictions. Positive expected "
               "value still loses often, and a small bankroll swings a lot. Bet only what you can afford to "
               "lose. If gambling stops being fun, call 1-800-GAMBLER.")

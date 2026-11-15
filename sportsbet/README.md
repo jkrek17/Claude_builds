@@ -64,7 +64,7 @@ Useful `scan` options, all shown by `sharpbet scan --help`:
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--books` | `draftkings,fanduel,betmgm,williamhill_us,betrivers` | Books you can bet at (`williamhill_us` is Caesars) |
+| `--books` | `fanduel,fanatics` | Books you can bet at, by Odds API key. As of November 2026 the API returned no Fanatics odds, so in practice this is FanDuel only |
 | `--sports` | NFL, NCAAF, NBA, NCAAB, NHL | Odds API sport keys |
 | `--min-ev` | 2 | Minimum edge, percent |
 | `--kelly` | 0.25 | Kelly multiplier |
