@@ -116,7 +116,9 @@ def game_card(row: pd.Series, factors: dict | None = None) -> dict:
 
 
 def week_card(preds: pd.DataFrame, season: int, week: int) -> list[dict]:
-    rows = preds[(preds["season"] == season) & (preds["week"] == week)].sort_values(["gameday", "game_id"])
+    # Earliest kickoff first; games at the same time keep a fixed order.
+    order = [c for c in ("gameday", "gametime", "game_id") if c in preds.columns]
+    rows = preds[(preds["season"] == season) & (preds["week"] == week)].sort_values(order)
     if rows.empty:
         return []
     factors = fit_key_factors(preds, before=str(rows["gameday"].min()))

@@ -219,3 +219,14 @@ def test_key_number_distribution_and_push_probability():
     assert card["ou_push"] == 0  # half-point total cannot push
     assert game_card(row())["ats_push"] == 0  # without factors: plain normal, no push
     assert fit_key_factors(games, before="2019-01-01")["margin"] == pytest.approx(1)
+
+
+def test_week_card_lists_games_by_kickoff_time():
+    base = dict(season=2026, week=10, pred_margin=1.0, pred_total=44.0, result=float("nan"), total=float("nan"),
+                spread_line=float("nan"), total_line=float("nan"))
+    games = [("2026_10_BUF_NYJ", "2026-11-15", "13:00"), ("2026_10_NE_DET", "2026-11-15", "09:30"),
+             ("2026_10_PIT_CIN", "2026-11-15", "20:20"), ("2026_10_WAS_NYG", "2026-11-12", "20:15"),
+             ("2026_10_CAR_NO", "2026-11-15", "13:00")]
+    preds = pd.DataFrame([dict(base, game_id=g, gameday=d, gametime=t, away_team=g.split("_")[2],
+                               home_team=g.split("_")[3]) for g, d, t in games])
+    assert [c["away"] for c in week_card(preds, 2026, 10)] == ["WAS", "NE", "BUF", "CAR", "PIT"]
