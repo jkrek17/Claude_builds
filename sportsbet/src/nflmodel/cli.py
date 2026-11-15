@@ -71,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-weather", action="store_true", help="skip the wind forecast and use climatology")
     parser.add_argument("--csv", help="also write the week's predictions to this CSV file")
     parser.add_argument("--json", help="also write the web page's data file (every week, record, backtest)")
+    parser.add_argument("--state-dir", help="weekly loop state to show on the page (see nflmodel-loop)")
     args = parser.parse_args(argv)
 
     data_dir = Path(args.data_dir)
@@ -90,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.csv:
         pd.DataFrame(cards).to_csv(args.csv, index=False)
     if args.json:
-        site.write(args.json, preds, season, week)
+        site.write(args.json, preds, season, week, state_dir=args.state_dir)
     return 0
 
 

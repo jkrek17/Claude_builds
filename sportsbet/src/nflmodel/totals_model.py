@@ -35,6 +35,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from . import params as _params
+
 # Residual SD of (actual total - pred_total), walk-forward 2010-2025 (backtest.py).
 RESID_SD = 13.4
 
@@ -50,11 +52,7 @@ TEAM_MAP = {"OAK": "LV", "SD": "LAC", "STL": "LA"}
 #   rq  : fraction of a QB rating kept across an off-season
 #   q0  : rating given to a QB with no previous start
 #   km  : per-team-game learning rate of the league average
-PARAMS = {
-    "pts":   dict(k=0.020, kq=0.020, r=0.90, rq=0.85, q0=0.0, km=0.002),
-    "epa":   dict(k=0.030, kq=0.050, r=0.75, rq=1.00, q0=-0.04, km=0.002),
-    "plays": dict(k=0.020, kq=0.020, r=0.75, rq=0.70, q0=0.0, km=0.002),
-}
+PARAMS = {m: _params.DEFAULT["totals"][m] for m in ("pts", "epa", "plays")}
 INIT_MU = {"pts": 20.8, "epa": -0.02, "plays": 64.0}   # rough late-1990s levels
 
 WIND_SHRINK = 8.0      # pseudo-games shrinking stadium-month wind towards outdoor mean
@@ -63,7 +61,7 @@ WIND_PRIOR = 8.5       # mph, used before any outdoor game has been seen
 # Features of the final linear layer (intercept added automatically).
 FEATURES = ["base_pts", "off_pts", "def_pts", "off_epa", "def_epa", "pace",
             "indoor", "wind_x", "div_game"]
-RIDGE = 0.02               # ridge penalty (per observation, on standardised features)
+RIDGE = _params.DEFAULT["totals"]["ridge"]  # ridge penalty (per observation, on standardised features)
 
 
 # --------------------------------------------------------------------------- IO
@@ -340,7 +338,8 @@ def walk_forward_predict(feat: pd.DataFrame, features=None, ridge: float | None 
 
 
 def predict_totals(games: pd.DataFrame, team_stats: pd.DataFrame,
-                   wind_forecast: dict | None = None, wind: str = "climatology") -> pd.DataFrame:
+                   wind_forecast: dict | None = None, wind: str = "climatology",
+                   params: dict | None = None) -> pd.DataFrame:
     """One row per game_id for every game from 2003 on (played or not).
 
     pred_total uses only information available before that game's kickoff day.
@@ -354,7 +353,8 @@ def predict_totals(games: pd.DataFrame, team_stats: pd.DataFrame,
       perfect forecast, so use it only to measure the upper bound of what a forecast can add."""
     if wind not in ("climatology", "observed"):
         raise ValueError("wind must be 'climatology' or 'observed'")
-    feat = build_features(games, team_stats)
+    tp = (params or _params.DEFAULT)["totals"]
+    feat = build_features(games, team_stats, tp)
     feat["wind_x_pred"] = feat["wind_x"] if wind == "observed" else feat["clim_wind_x"]
     feat["wind_source"] = np.where(feat["indoor"] > 0, "indoor",
                                    np.where((wind == "observed") & feat["obs_wind_x"].notna(),
@@ -365,7 +365,7 @@ def predict_totals(games: pd.DataFrame, team_stats: pd.DataFrame,
         feat.loc[use, "wind_x_pred"] = fc[use] - WIND_PRIOR
         feat.loc[use, "wind_source"] = "forecast"
     feat["wind_mph"] = np.where(feat["indoor"] > 0, np.nan, feat["wind_x_pred"] + WIND_PRIOR)
-    feat["pred_total"] = walk_forward_predict(feat, predict_with={"wind_x": "wind_x_pred"})
+    feat["pred_total"] = walk_forward_predict(feat, ridge=tp["ridge"], predict_with={"wind_x": "wind_x_pred"})
     cols = ["game_id", "season", "week", "pred_total", "struct_total", "base_pts", "off_pts",
             "def_pts", "off_epa", "def_epa", "pace", "qb_adj", "qb_known", "indoor",
             "clim_wind", "wind_mph", "wind_source", "div_game"]

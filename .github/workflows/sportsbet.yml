@@ -5,15 +5,28 @@ on:
     branches: ["**"]
     paths: ["sportsbet/**", ".github/workflows/sportsbet.yml"]
   pull_request:
+    # ready_for_review: a PR opened by the loop's token starts no CI; the owner marking it ready does.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths: ["sportsbet/**", ".github/workflows/sportsbet.yml"]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run the weekly loop without pushing state or opening a pull request"
+        type: boolean
+        default: false
   schedule:
-    # Rebuild the predictions page: Tuesday 5 AM, then Thursday, Saturday and Sunday 9 AM US Eastern (EST).
-    - cron: "0 10 * * 2"
-    - cron: "0 14 * * 4,6,0"
+    # Every slot runs the same state-driven loop (grade, challenge, freeze) and rebuilds the page.
+    # Tuesday and Wednesday 10:17 UTC: after Monday night; Wednesday catches late nflverse files.
+    - cron: "17 10 * * 2,3"
+    # Thursday, Saturday, Sunday 12:17 UTC (7:17 AM EST, 8:17 AM EDT): before every kickoff that day,
+    # including 9:30 AM Eastern international games.
+    - cron: "17 12 * * 4,6,0"
 
 permissions:
   contents: read
+
+env:
+  STATE_BRANCH: sportsbet-data
 
 jobs:
   test:
@@ -34,9 +47,142 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: python -m pytest -q
 
+  loop:
+    name: Weekly loop (grade, challenge, freeze)
+    needs: test
+    # Scheduled and manual runs only. Real runs are main only; a dry run may use any branch.
+    if: >-
+      github.repository == 'jkrek17/Claude_builds' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' || inputs.dry_run == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # pushes the sportsbet-data branch only
+    concurrency:
+      group: sportsbet-state
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: sportsbet
+    outputs:
+      promote: ${{ steps.run.outputs.promote }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Restore the nflverse data cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/nflmodel
+          key: nflmodel-data-${{ github.run_id }}
+          restore-keys: nflmodel-data-
+      - run: pip install -e ".[model]"
+      - name: Check out the state branch
+        id: open
+        run: |
+          echo "STATE_DIR=$RUNNER_TEMP/state" >> "$GITHUB_ENV"
+          scripts/state.sh open "$RUNNER_TEMP/state"
+      - name: Run the loop
+        id: run
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: nflmodel-loop run --state-dir "$STATE_DIR" --model-commit "$GITHUB_SHA" --run-url "$RUN_URL"
+      - name: Commit and push the state
+        # Also after a failed loop step, so the page's status line can report the failure.
+        if: ${{ !cancelled() && steps.open.outcome == 'success' && inputs.dry_run != true }}
+        run: scripts/state.sh save "$STATE_DIR" "$(nflmodel-loop status --state-dir "$STATE_DIR" --oneline) [run ${{ github.run_id }}]"
+      - name: Keep the dry run's state for inspection
+        if: ${{ !cancelled() && inputs.dry_run == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sportsbet-state-dry-run
+          path: ${{ runner.temp }}/state
+          retention-days: 7
+
+  propose:
+    name: Propose a model promotion
+    needs: loop
+    if: needs.loop.outputs.promote == 'true' && github.ref == 'refs/heads/main' && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write        # pushes the loop/sportsbet-promotion branch
+      pull-requests: write   # opens or updates the draft pull request
+      issues: write          # fallback when Actions may not create pull requests
+    concurrency:
+      group: sportsbet-propose
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: sportsbet
+    env:
+      PR_BRANCH: loop/sportsbet-promotion
+      TITLE: "sportsbet: model promotion proposal"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - name: Check out the state branch
+        run: |
+          echo "STATE_DIR=$RUNNER_TEMP/state" >> "$GITHUB_ENV"
+          scripts/state.sh open "$RUNNER_TEMP/state"
+      - name: Apply the challenger's parameters and test them
+        id: apply
+        run: |
+          cp "$STATE_DIR/proposals/current/params.json" src/nflmodel/params.json
+          if git diff --quiet -- src/nflmodel/params.json; then
+            echo "main already has these parameters"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Nothing to do when the proposal branch already holds exactly these parameters.
+          if git fetch --no-tags --depth=1 origin "$PR_BRANCH" 2>/dev/null &&
+             git diff --quiet FETCH_HEAD -- src/nflmodel/params.json; then
+            echo "the proposal branch is already up to date"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          python -m pytest -q
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Update the proposal branch
+        if: steps.apply.outputs.changed == 'true'
+        run: |
+          git switch -C "$PR_BRANCH"
+          git add src/nflmodel/params.json
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "sportsbet: promote challenger parameters (proposed by the weekly loop)"
+          # The branch is owned by the loop and rebuilt from main each time, so it is overwritten.
+          git push --force origin "$PR_BRANCH"
+      - name: Open or update the draft pull request
+        if: steps.apply.outputs.changed == 'true'
+        run: |
+          body="$STATE_DIR/proposals/current/PR_BODY.md"
+          pr=$(gh pr list --head "$PR_BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/pulls/$pr" -F body=@"$body" --silent
+            echo "Updated pull request #$pr" >> "$GITHUB_STEP_SUMMARY"
+          elif gh pr create --draft --base main --head "$PR_BRANCH" --title "$TITLE" --body-file "$body"; then
+            echo "Opened a draft pull request" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # "Allow GitHub Actions to create and approve pull requests" is off: use one issue instead.
+            link="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$PR_BRANCH?expand=1"
+            { echo "The weekly loop could not open a pull request. Open it here: $link"; echo; cat "$body"; } > "$RUNNER_TEMP/issue.md"
+            issue=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number // empty')
+            if [ -n "$issue" ]; then
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/$issue" -F body=@"$RUNNER_TEMP/issue.md" --silent
+            else
+              gh issue create --title "$TITLE" --body-file "$RUNNER_TEMP/issue.md"
+            fi
+            echo "::warning::Could not open a pull request; wrote the proposal to an issue instead."
+          fi
+
   site:
     name: Build the predictions page
-    needs: test
+    needs: [test, loop]
+    # Runs when the loop was skipped (push, pull request) or failed: the page still rebuilds and shows the status.
+    if: ${{ !cancelled() && needs.test.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -66,11 +212,16 @@ jobs:
           path: ~/.cache/nflmodel
           key: nflmodel-data-${{ github.run_id }}
           restore-keys: nflmodel-data-
+      - name: Check out the state branch (read only)
+        if: env.PUBLISH == 'true'
+        run: |
+          echo "STATE_DIR=$RUNNER_TEMP/state" >> "$GITHUB_ENV"
+          scripts/state.sh open "$RUNNER_TEMP/state"
       - name: Run the model and write the page's data
         if: env.PUBLISH == 'true'
         run: |
           pip install -e ".[model]"
-          nflmodel --json site/dist/data/site.json
+          nflmodel --json site/dist/data/site.json --state-dir "$STATE_DIR"
       - uses: actions/upload-pages-artifact@v3
         if: env.PUBLISH == 'true'
         with:
@@ -79,12 +230,16 @@ jobs:
   publish:
     name: Publish to GitHub Pages
     needs: site
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # !cancelled() is required: without a status function a skipped loop job would skip this job too.
+    if: ${{ !cancelled() && needs.site.result == 'success' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
+    concurrency:
+      group: sportsbet-pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
