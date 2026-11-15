@@ -20,6 +20,7 @@ from nflmodel import props as P
 
 
 RNG = np.random.default_rng(0)
+CONS: list[pd.DataFrame] = []   # per-row consistency scale and PITs, for the steady vs volatile table
 
 
 def crps_quantiles(q: np.ndarray, y: float) -> float:
@@ -33,11 +34,12 @@ def crps_pmf(p: np.ndarray, y: float) -> float:
     return float(np.sum((cdf - (np.arange(len(p)) >= y)) ** 2))
 
 
-def score(model: P.PropModel, d: pd.DataFrame, mu: np.ndarray) -> dict:
+def score(model: P.PropModel, d: pd.DataFrame, mu: np.ndarray, scale: np.ndarray | None = None) -> dict:
     y = d[model.prop.target].to_numpy(float)
     pos = d["position"].to_numpy()
     crps, in50, in80, over, pit = [], [], [], [], []
-    for yi, mi, po in zip(y, mu, pos):
+    scale = np.ones(len(y)) if scale is None else scale
+    for yi, mi, po, sc in zip(y, mu, pos, scale):
         if model.prop.kind == "count":
             p = model.pmf(po, mi)
             crps.append(crps_pmf(p, yi))
@@ -45,7 +47,7 @@ def score(model: P.PropModel, d: pd.DataFrame, mu: np.ndarray) -> dict:
             lo = cdf[int(yi) - 1] if yi >= 1 else 0.0
             pit.append(lo + RNG.random() * (cdf[min(int(yi), len(cdf) - 1)] - lo))   # randomised PIT for counts
         else:
-            q = model.quantiles(po, mi)
+            q = model.quantiles(po, mi, sc)
             crps.append(crps_quantiles(q, yi))
             lo, hi = float(np.mean(q < yi)), float(np.mean(q <= yi))     # a tie (often at zero) is spread out
             pit.append(lo + RNG.random() * (hi - lo) if hi - lo > 0.01 else float(np.interp(yi, q, P.QUANTILES, left=0.0, right=1.0)))
@@ -88,8 +90,14 @@ def run(panel: pd.DataFrame, first: int, last: int, quiet: bool = False) -> pd.D
             m = P.PropModel(prop).fit(train)
             for name, mu in (("model", m.expected(te)), ("slow avg", reference(m, tr, te, REF_COL[prop.key])),
                              ("position", reference(m, tr, te, None))):
-                s = score(m, te, mu)
-                s.pop("pit")
+                sc = m.spread_scale(te) if name == "model" else None
+                s = score(m, te, mu, sc)
+                pit = s.pop("pit")
+                if name == "model" and prop.key in P.SPREAD_MODS:
+                    flat = score(m, te, mu)
+                    CONS.append(pd.DataFrame({"prop": prop.key, "season": season, "scale": sc, "pit": pit,
+                                              "pit_flat": flat.pop("pit")}))
+                    rows.append({"season": season, "prop": prop.key, "forecast": "no consist", **flat})
                 rows.append({"season": season, "prop": prop.key, "forecast": name, **s})
                 if prop.key == "any_td" and name == "model":
                     td_p.extend(1 - np.array([m.pmf(po, mi)[0] for po, mi in zip(te["position"], mu)]))
@@ -113,6 +121,22 @@ def report(res: pd.DataFrame, td_p: np.ndarray, td_y: np.ndarray) -> None:
         a = res[(res["prop"] == prop.key) & (res["forecast"] == "model")].set_index("season")["crps"]
         b = res[(res["prop"] == prop.key) & (res["forecast"] == "slow avg")].set_index("season")["crps"]
         print(f"  {prop.key:<11}{int((a < b).sum())} of {len(a)}   skill {100 * (1 - a.mean() / b.mean()):.1f}%")
+    if CONS:
+        c = pd.concat(CONS, ignore_index=True)
+        print("\nConsistency adjustment (rushing and receiving yards): CRPS and calibration with and without it")
+        for key in P.SPREAD_MODS:
+            a = res[(res["prop"] == key) & (res["forecast"] == "model")].set_index("season")
+            b = res[(res["prop"] == key) & (res["forecast"] == "no consist")].set_index("season")
+            print(f"  {key:<9} CRPS {w(b, 'crps'):.4f} -> {w(a, 'crps'):.4f} ({100 * (w(a, 'crps') / w(b, 'crps') - 1):+.2f}%), "
+                  f"better in {int((a['crps'] < b['crps']).sum())} of {len(a)} seasons")
+            g = c[c["prop"] == key]
+            cuts = g["scale"].quantile([1 / 3, 2 / 3]).to_numpy()
+            for label, sel in (("steadiest third", g["scale"] <= cuts[0]), ("middle third", (g["scale"] > cuts[0]) & (g["scale"] <= cuts[1])),
+                               ("most volatile third", g["scale"] > cuts[1])):
+                t = g[sel]
+                cov = lambda col: ((t[col] > 0.10) & (t[col] < 0.90)).mean()
+                print(f"    {label:<20} n={len(t):>6}  range width x{t['scale'].mean():.2f}   inside 80% band: "
+                      f"{cov('pit_flat'):.3f} without, {cov('pit'):.3f} with")
     print("\nAnytime TD reliability (forecast chance vs how often it happened):")
     edges = [0, .1, .2, .3, .4, .5, .6, .7, 1.0]
     for lo, hi in zip(edges[:-1], edges[1:]):

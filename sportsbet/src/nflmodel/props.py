@@ -34,12 +34,17 @@ FIT_FIRST = 2013             # first season the regressions are fitted on (snap 
 MIN_ROWS = 60                # a position needs this many past lines before the model will price it
 MAX_BINS = 6                 # expected-value bins for the yardage spread (fewer for small positions)
 ANYTD_RIDGE = 25.0
+# Consistency: how much wider or narrower than usual a player's yardage range is, from these pre-game signs.
+SPREAD_MODS = {"rec_yds": ["adot_slow", "cv_rec", "log_history", "early"],
+               "rush_yds": ["cv_rush", "log_history", "early"]}
+SPREAD_CLIP = (0.6, 1.6)
+ADOT_PRIOR = {"WR": 11.0, "TE": 7.9, "RB": 0.9, "QB": 0.9}   # typical target depth, mixed in as 15 targets
 PASS_TD_TRIALS = 9           # passing TDs follow a binomial with this many trials
 QUANTILES = np.round(np.arange(0.005, 1.0, 0.005), 3)
 
 _RAW = ["completions", "attempts", "passing_yards", "passing_tds", "passing_interceptions",
         "carries", "rushing_yards", "rushing_tds", "targets", "receptions", "receiving_yards",
-        "receiving_tds", "rushing_epa"]
+        "receiving_tds", "rushing_epa", "receiving_air_yards"]
 _ID = ["player_id", "player_display_name", "position", "season", "week", "game_id", "team",
        "opponent_team"]
 
@@ -264,6 +269,20 @@ def build_panel(offense: pd.DataFrame, games: pd.DataFrame, snaps: pd.DataFrame 
     d["games_played"] = _decayed(keys, np.ones((len(d), 1)), 1.0)[:, 0]
     d = d.copy()   # defragment after many column inserts
 
+    # Consistency inputs: target depth, and how much the player's own yardage has bounced around.
+    cons = _decayed(keys, np.column_stack([d["receiving_air_yards"].to_numpy(float), d["targets"].to_numpy(float),
+                                           np.ones(len(d)), d["receiving_yards"].to_numpy(float),
+                                           d["receiving_yards"].to_numpy(float) ** 2, d["rushing_yards"].to_numpy(float),
+                                           d["rushing_yards"].to_numpy(float) ** 2]), SLOW)
+    d["adot_slow"] = (cons[:, 0] + 15.0 * d["position"].map(ADOT_PRIOR).to_numpy(float)) / (cons[:, 1] + 15.0)
+    d["log_history"] = np.log1p(cons[:, 2])
+    games_eff = np.maximum(cons[:, 2], 1e-9)
+    for name, a in (("rec", 3), ("rush", 5)):
+        avg = cons[:, a] / games_eff
+        sd = np.sqrt(np.maximum(cons[:, a + 1] / games_eff - avg ** 2, 0.0))
+        d[f"cv_{name}"] = np.where(cons[:, 2] >= 4.0, sd / np.maximum(avg, 1.0), np.nan)   # needs about 4 games
+    d["early"] = (d["week"] <= 4).astype(float)
+
     # Snap share: last game's and the long-run average (zero when never recorded).
     has = d["snap_pct"].notna().to_numpy()
     sp = np.nan_to_num(d["snap_pct"].to_numpy(float))
@@ -400,6 +419,22 @@ def _fit_logistic(z: np.ndarray, y: np.ndarray, ridge: float) -> np.ndarray:
     return w
 
 
+def _fit_log_glm(x: np.ndarray, y: np.ndarray, ridge: float) -> np.ndarray:
+    """Coefficients (intercept first) of a log-link regression of a non-negative ``y`` on ``x``, by Newton steps."""
+    z = np.column_stack([np.ones(len(x)), x])
+    pen = ridge * np.eye(z.shape[1])
+    pen[0, 0] = 0.0
+    b = np.zeros(z.shape[1])
+    b[0] = math.log(max(y.mean(), 1e-6))
+    for _ in range(40):
+        mu = np.exp(np.clip(z @ b, -12, 12))
+        step = np.linalg.solve((z * mu[:, None]).T @ z + pen, z.T @ (y - mu) - pen @ b)
+        b += step
+        if np.abs(step).max() < 1e-9:
+            break
+    return b
+
+
 def _logged(cols: list[str]) -> np.ndarray:
     """Which features are volumes (logged in the anytime-touchdown model)."""
     return np.array([(c.endswith(("_fast", "_slow")) and not c.startswith("new_")) or c.startswith("exp_") for c in cols])
@@ -447,8 +482,40 @@ class PropModel:
                 m["centers"] = np.array([mu[which == b].mean() for b in range(bins)])
                 m["ratios"] = np.vstack([np.quantile(y[which == b] / mu[which == b], QUANTILES)
                                          for b in range(bins)])
+                mods = SPREAD_MODS.get(self.prop.key)
+                if mods:
+                    # How far results land from expectation, as a function of the consistency signs,
+                    # after allowing for the expected value itself.
+                    raw = d[mods].to_numpy(float)
+                    m["mod_mean"], m["mod_sd"] = np.nanmean(raw, 0), np.nanstd(raw, 0) + 1e-9
+                    zz = self._mod_z(m, raw)
+                    lm = np.log(mu)
+                    ctrl = np.column_stack([lm, lm ** 2])
+                    ctrl = (ctrl - ctrl.mean(0)) / (ctrl.std(0) + 1e-9)
+                    b = _fit_log_glm(np.column_stack([ctrl, zz]), np.abs(y / mu - 1.0), RIDGE)
+                    m["mod_coef"] = b[3:]
             self.models[pos] = m
         return self
+
+    @staticmethod
+    def _mod_z(m: dict, raw: np.ndarray) -> np.ndarray:
+        return np.clip(np.nan_to_num((raw - m["mod_mean"]) / m["mod_sd"], nan=0.0), -3.0, 3.0)
+
+    def spread_scale(self, panel: pd.DataFrame) -> np.ndarray:
+        """How wide each row's range is against a typical player with the same expected value.
+
+        1.0 is typical, below 1 a steadier player, above 1 a boom-or-bust one. Always 1.0 for props
+        without a consistency adjustment."""
+        out = np.ones(len(panel))
+        mods = SPREAD_MODS.get(self.prop.key)
+        if not mods:
+            return out
+        for pos, m in self.models.items():
+            sel = (panel["position"] == pos).to_numpy()
+            if sel.any() and "mod_coef" in m:
+                z = self._mod_z(m, panel.loc[sel, mods].to_numpy(float))
+                out[sel] = np.clip(np.exp(z @ m["mod_coef"]), *SPREAD_CLIP)
+        return out
 
     def expected(self, panel: pd.DataFrame) -> np.ndarray:
         """Expected value for each row (for anytime TD: the expected number of touchdowns)."""
@@ -466,13 +533,19 @@ class PropModel:
                 out[sel] = np.maximum(m["icept"] + z @ m["beta"], m["floor"])
         return out
 
-    def quantiles(self, pos: str, mu: float) -> np.ndarray:
-        """Predictive quantiles (at ``QUANTILES``) of a yardage prop; ratio curves are blended between bins."""
+    def quantiles(self, pos: str, mu: float, scale: float = 1.0) -> np.ndarray:
+        """Predictive quantiles (at ``QUANTILES``) of a yardage prop; ratio curves are blended between bins.
+
+        ``scale`` (from :meth:`spread_scale`) stretches the curve about the expected value, keeping its mean."""
         m = self.models[pos]
         c = m["centers"]
         j = int(np.clip(np.searchsorted(c, mu), 1, len(c) - 1))
         w = float(np.clip((mu - c[j - 1]) / (c[j] - c[j - 1] + 1e-9), 0.0, 1.0))
-        return mu * ((1 - w) * m["ratios"][j - 1] + w * m["ratios"][j])
+        r = (1 - w) * m["ratios"][j - 1] + w * m["ratios"][j]
+        if scale != 1.0:
+            wide = np.where(r <= 0, r, np.maximum(1.0 + scale * (r - 1.0), 0.0))
+            r = wide * (r.mean() / max(wide.mean(), 1e-9))
+        return mu * r
 
     def pmf(self, pos: str, mu: float) -> np.ndarray:
         """Probability of each count 0, 1, 2, ... for a count prop."""
@@ -481,12 +554,12 @@ class PropModel:
         a, b = self.models[pos]["disp"]
         return nb_pmf(mu, float(np.clip(a * max(mu, 1e-6) ** b, 1e-4, 5.0)))
 
-    def prob_over(self, pos: str, mu: float, line: float) -> float:
+    def prob_over(self, pos: str, mu: float, line: float, scale: float = 1.0) -> float:
         """Chance the result is above ``line`` (use a half-point line, or expect pushes to count as not over)."""
         if self.prop.kind == "count":
             p = self.pmf(pos, mu)
             return float(p[int(math.floor(line)) + 1:].sum())
-        q = self.quantiles(pos, mu)
+        q = self.quantiles(pos, mu, scale)
         return float(1.0 - np.interp(line, q, QUANTILES, left=0.0, right=1.0))
 
 
