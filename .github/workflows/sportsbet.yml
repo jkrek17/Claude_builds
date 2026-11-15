@@ -71,6 +71,8 @@ jobs:
         run: |
           pip install -e ".[model]"
           nflmodel --json site/dist/data/site.json
+          # Player props for the Props tab. The page shows "not published yet" until this command exists.
+          if command -v nflprops >/dev/null; then nflprops --json site/dist/data/props.json; fi
       - uses: actions/upload-pages-artifact@v3
         if: env.PUBLISH == 'true'
         with:
