@@ -1,3 +1,10 @@
+# SportsBet tools
+
+Two command line tools live here:
+
+- **sharpbet** finds sportsbook prices that beat the sharp market's fair line and sizes the top 3.
+- **nflmodel** predicts the moneyline, spread and total for every NFL game. See [NFL prediction model](#nfl-prediction-model).
+
 # sharpbet
 
 A command line tool that finds sports bets priced better than the sharp market says they should be,
@@ -79,6 +86,61 @@ Useful `scan` options, all shown by `sharpbet scan --help`:
   of the time.
 - Books limit accounts that win this way.
 - Line movement signals and closing line value are not tracked yet. Both need odds history.
+
+# NFL prediction model
+
+`nflmodel` predicts every NFL game's winner, margin and total points without ever looking at a
+betting line, then compares its numbers with the line to give a moneyline, spread and total pick.
+
+```
+pip install -e ".[model]"
+nflmodel                       # the next unplayed week
+nflmodel --season 2026 --week 11 --csv week11.csv
+```
+
+It downloads game results and team stats from [nflverse](https://github.com/nflverse) into
+`~/.cache/nflmodel` and refreshes them when they are more than three hours old.
+
+## What is in the model
+
+- **Margin** (`margin_model.py`): margin-based Elo, opponent-adjusted passing and rushing EPA with
+  recency decay, a starting quarterback rating that travels with the quarterback, home field that
+  drifts over time, and rest. A ridge blend is refit each season on earlier seasons only.
+- **Total** (`totals_model.py`): opponent-adjusted points, offensive and defensive EPA per play, pace,
+  quarterback, roof, stadium wind climatology and divisional games, again fit only on the past.
+- **Card** (`card.py`): win probability from a normal distribution around the predicted margin
+  (SD 13.3), predicted score from margin and total, and the spread and total side the model favors.
+
+## How good it is, honestly
+
+Walk-forward test on 4,363 games, 2010 to 2025. The model never saw a result before predicting it.
+
+| | Model | Closing line |
+|---|---|---|
+| Margin, average miss (points) | 10.30 | 10.05 |
+| Total, average miss (points) | 10.59 | 10.47 |
+| Home win probability, Brier score (lower is better) | 0.2174 | 0.2111 |
+| Against the spread, every game | 2100-2154 (49.4%) | break-even is 52.4% |
+| Over/under, every game | 2208-2110 (51.1%) | break-even is 52.4% |
+
+The model picks winners nearly as well as the market, but it does not beat the closing line. No
+threshold of disagreement with the line produced a win rate that clears 52.4% beyond what luck
+explains, and betting every game at -110 loses about 4.5% of everything staked. When the model and
+the line are combined to predict the result, the model gets a weight of about 0.1 and the line 0.9,
+which is why the "chance" shown on each spread and total pick stays close to 50%.
+
+Use the predictions as an informed opinion on each game. They are not evidence of a betting edge.
+
+The research write-ups and the scripts that reproduce every number are in `research/margin` and
+`research/totals`. Run them from their folder as `python3 backtest.py ~/.cache/nflmodel/`.
+
+## Known limits
+
+- The starting quarterback is taken from nflverse. For games where it is not announced yet, the
+  team's last starter is assumed and the card says so. Other injuries are not modeled.
+- Lines in nflverse are closing lines for past games and current lines for upcoming games. They may
+  differ from your sportsbook's.
+- Weather on game day is not used, only each stadium's typical wind by month.
 
 ## Tests
 

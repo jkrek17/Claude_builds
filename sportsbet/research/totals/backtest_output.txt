@@ -1,0 +1,118 @@
+=== 1. HEADLINE, walk-forward 2010-2025, 4363 games (all played games; all have a line)
+model         MAE 10.588  RMSE 13.427  bias +0.49
+closing line  MAE 10.471  RMSE 13.242  bias +0.52
+struct only   MAE 10.781  RMSE 13.581  bias -0.67  (2*league + ratings, no regression)
+league avg    MAE 10.994  RMSE 13.887  bias +0.13
+MAE gap model-line +0.117 (paired se 0.036)
+corr(model, line) 0.828   corr(model, actual) 0.260   corr(line, actual) 0.305
+SD of predictions: model 3.83  line 4.38  actual 13.90
+residual SD: model 13.42  line 13.23;  skew: model +0.30 line +0.31;  median resid: model -0.26 line +0.00
+actual ~ a + b*line + c*model:  b=0.907 (se 0.082)  c=0.083 (se 0.093)
+
+=== 2. PER SEASON
+season   n  MAE_model MAE_line RMSE_model RMSE_line   all bets (W-L, win%)   |diff|>2 (W-L, win%)
+2010  267    10.91   10.96     13.96     13.85     144-118  55.0%       49- 43  53.3%
+2011  267     9.61    9.42     12.21     12.07     130-134  49.2%       71- 53  57.3%
+2012  267    10.34   10.58     13.37     13.41     146-119  55.1%       68- 44  60.7%
+2013  267    11.06   11.11     14.10     14.07     141-122  53.6%       63- 47  57.3%
+2014  267    10.61   10.62     13.03     12.92     142-122  53.8%       54- 42  56.2%
+2015  267    10.52   10.48     13.38     13.24     135-127  51.5%       54- 47  53.5%
+2016  267    10.13    9.79     12.63     12.27     120-146  45.1%       47- 63  42.7%
+2017  267    11.38   11.26     14.57     14.39     137-130  51.3%       59- 48  55.1%
+2018  267    11.14   10.72     14.40     13.63     129-135  48.9%       66- 63  51.2%
+2019  267    10.78   10.78     13.51     13.40     133-133  50.0%       52- 51  50.5%
+2020  269    10.58   10.30     13.49     13.08     128-136  48.5%       53- 61  46.5%
+2021  285    10.83   10.81     13.36     13.30     145-137  51.4%       56- 51  52.3%
+2022  284    10.67   10.40     13.42     13.21     142-139  50.5%       52- 54  49.1%
+2023  285    10.51   10.17     13.30     13.06     139-142  49.5%       53- 63  45.7%
+2024  285     9.86    9.77     12.78     12.59     147-135  52.1%       56- 57  49.6%
+2025  285    10.50   10.42     13.18     13.24     150-135  52.6%       65- 64  50.4%
+
+=== 3. OVER/UNDER, bet the model's side at the closing total, 2010-2025 (break-even 52.4%)
+|model-line| > 0:  2208-2110 (push  45)  win  51.1%  se  0.8  z vs 52.4% -1.64  ROI@-110  -2.4%
+|model-line| > 1:  1523-1423 (push  31)  win  51.7%  se  0.9  z vs 52.4% -0.74  ROI@-110  -1.3%
+|model-line| > 2:   918- 851 (push  18)  win  51.9%  se  1.2  z vs 52.4% -0.41  ROI@-110  -0.9%
+|model-line| > 3:   491- 428 (push  10)  win  53.4%  se  1.6  z vs 52.4% +0.63  ROI@-110  +2.0%
+|model-line| > 4:   215- 213 (push   5)  win  50.2%  se  2.4  z vs 52.4% -0.89  ROI@-110  -4.1%
+|model-line| > 5:   100-  92 (push   3)  win  52.1%  se  3.6  z vs 52.4% -0.08  ROI@-110  -0.6%
+|model-line| > 6:    37-  45 (push   2)  win  45.1%  se  5.5  z vs 52.4% -1.31  ROI@-110 -13.9%
+model says OVER  (all):  1107-1078 (push  25)  win  50.7%  se  1.1  z vs 52.4% -1.61  ROI@-110  -3.3%
+model says UNDER (all):  1101-1032 (push  20)  win  51.6%  se  1.1  z vs 52.4% -0.71  ROI@-110  -1.5%
+blind UNDER every game: 2179-2139 (push  45)  win  50.5%  se  0.8  z vs 52.4% -2.52  ROI@-110  -3.7%
+
+=== 4. CALIBRATION
+(a) P(over closing line) = Phi((pred - line)/13.42) vs observed (pushes excluded)
+                n  mean_pred  obs_over     se
+(0.0, 0.35]    82      0.319     0.500  0.055
+(0.35, 0.4]   250      0.380     0.440  0.032
+(0.4, 0.45]   703      0.428     0.469  0.019
+(0.45, 0.5]  1098      0.476     0.502  0.015
+(0.5, 0.55]  1109      0.524     0.504  0.015
+(0.55, 0.6]   721      0.572     0.501  0.019
+(0.6, 0.65]   270      0.618     0.522  0.030
+(0.65, 1.0]    85      0.679     0.541  0.054
+(b) distribution shape: P(total > T) = Phi((pred - T)/SD) for fixed T, pooled over T in 30.5..60.5 step 5
+model centre, normal with its own residual SD
+           (0.0, 0.1]  (0.1, 0.2]  (0.2, 0.3]  (0.3, 0.4]  (0.4, 0.5]  (0.5, 0.6]  (0.6, 0.7]  (0.7, 0.8]  (0.8, 0.9]  (0.9, 1.0]
+n            1603.000    4247.000    3650.000    3189.000     2959.00    2945.000    3196.000    3685.000    3897.000    1170.000
+mean_pred       0.076       0.150       0.248       0.349        0.45       0.550       0.651       0.752       0.849       0.926
+obs             0.095       0.155       0.248       0.336        0.44       0.554       0.647       0.759       0.860       0.921
+line  centre, normal with its own residual SD
+           (0.0, 0.1]  (0.1, 0.2]  (0.2, 0.3]  (0.3, 0.4]  (0.4, 0.5]  (0.5, 0.6]  (0.6, 0.7]  (0.7, 0.8]  (0.8, 0.9]  (0.9, 1.0]
+n            2078.000    3918.000    3840.000    2961.000    3067.000    2692.000    2962.000    3874.000    3560.000    1589.000
+mean_pred       0.074       0.150       0.251       0.353       0.454       0.554       0.647       0.750       0.849       0.927
+obs             0.086       0.156       0.248       0.341       0.456       0.550       0.642       0.761       0.856       0.935
+standardised model residual quantiles (normal: -1.645 -0.674 0 0.674 1.645): [-1.549 -0.688 -0.056  0.626  1.742]
+
+=== 5. ABLATIONS, walk-forward 2010-2025 (informational; see REPORT for what was chosen when)
+DELIVERED                                  MAE 10.588  RMSE 13.427  bias +0.49   | 2003-09 RMSE 13.619
+ratings sum only (struct_total)            MAE 10.725  RMSE 13.555  bias +0.09   | 2003-09 RMSE 13.618
+points ratings only                        MAE 10.717  RMSE 13.568  bias +0.51   | 2003-09 RMSE 13.624
++ EPA/play ratings                         MAE 10.643  RMSE 13.496  bias +0.50   | 2003-09 RMSE 13.611
++ pace                                     MAE 10.637  RMSE 13.487  bias +0.56   | 2003-09 RMSE 13.613
++ indoor                                   MAE 10.609  RMSE 13.446  bias +0.50   | 2003-09 RMSE 13.611
++ climatological wind                      MAE 10.600  RMSE 13.440  bias +0.49   | 2003-09 RMSE 13.619
+drop points ratings                        MAE 10.582  RMSE 13.407  bias +0.47   | 2003-09 RMSE 13.698
+drop EPA ratings                           MAE 10.679  RMSE 13.519  bias +0.48   | 2003-09 RMSE 13.623
+drop pace                                  MAE 10.592  RMSE 13.439  bias +0.44   | 2003-09 RMSE 13.618
+drop div_game                              MAE 10.600  RMSE 13.440  bias +0.49   | 2003-09 RMSE 13.619
+add late-season outdoor (Dec-Feb)          MAE 10.589  RMSE 13.428  bias +0.49   | 2003-09 RMSE 13.632
+add playoff flag                           MAE 10.587  RMSE 13.429  bias +0.49   | 2003-09 RMSE 13.617
+add week number                            MAE 10.591  RMSE 13.430  bias +0.51   | 2003-09 RMSE 13.628
+no ridge (OLS)                             MAE 10.590  RMSE 13.429  bias +0.47   | 2003-09 RMSE 13.622
+no QB term in ratings                      MAE 10.640  RMSE 13.502  bias +0.39   | 2003-09 RMSE 13.675
+league-average rate km=0.0003              MAE 10.608  RMSE 13.420  bias +0.07   | 2003-09 RMSE 13.628
+league-average rate km=0.008               MAE 10.591  RMSE 13.452  bias +0.89   | 2003-09 RMSE 13.623
+UPPER BOUND: observed game-day wind/cold   MAE 10.566  RMSE 13.389  bias +0.48   | 2003-09 RMSE 13.584
+(upper bound uses weather observed at the game: NOT knowable in advance, NOT in the delivered model)
+
+=== 6. LEAKAGE CHECKS
+truncate after 2012 wk 5: 14 games that week, max|diff| all output columns = 0.00e+00; all 2480 earlier-or-equal games max|diff| = 0.00e+00
+truncate after 2019 wk12: 14 games that week, max|diff| all output columns = 0.00e+00; all 4448 earlier-or-equal games max|diff| = 0.00e+00
+truncate after 2023 wk17: 16 games that week, max|diff| all output columns = 0.00e+00; all 5633 earlier-or-equal games max|diff| = 0.00e+00
+truncate after 2026 wk10: 14 games that week, max|diff| all output columns = 0.00e+00; all 6382 earlier-or-equal games max|diff| = 0.00e+00
+scramble scores/lines/weather/stats on or after 2012-10-07: 12 games that day, max|pred diff| = 0.00e+00  (later games do move, max 28.5: confirms the scramble bites)
+scramble scores/lines/weather/stats on or after 2019-11-24: 12 games that day, max|pred diff| = 0.00e+00  (later games do move, max 25.0: confirms the scramble bites)
+scramble scores/lines/weather/stats on or after 2023-12-31: 14 games that day, max|pred diff| = 0.00e+00  (later games do move, max 23.8: confirms the scramble bites)
+row-order invariance (shuffled games): max|diff| = 0.00e+00
+
+=== 7. 2026 TO DATE (not in headline) and upcoming
+137 games: model MAE 10.886  RMSE 13.569  bias -0.09 | line MAE 10.551  RMSE 13.213  bias +0.78 | bets all:   67-  70 (push   0)  win  48.9%  se  4.3  z vs 52.4% -0.81  ROI@-110  -6.6%
+unplayed games predicted: 135, NaN predictions: 0, total NaN pred_total in output: 0
+        game_id  pred_total  total_line  qb_known
+ 2026_10_NE_DET        51.9        50.5       1.0
+ 2026_10_KC_ATL        45.3        47.5       1.0
+2026_10_HOU_CLE        40.0        40.5       1.0
+ 2026_10_MIN_GB        40.6        42.5       1.0
+2026_10_MIA_IND        43.3        37.5       1.0
+ 2026_10_CAR_NO        46.6        48.5       1.0
+2026_10_BUF_NYJ        46.8        50.5       1.0
+2026_10_JAX_TEN        44.3        46.5       1.0
+ 2026_10_LA_ARI        45.9        38.5       1.0
+ 2026_10_SEA_LV        44.7        40.5       1.0
+ 2026_10_SF_DAL        53.6        55.5       1.0
+2026_10_PIT_CIN        48.6        49.5       1.0
+2026_10_LAC_BAL        39.5        38.5       1.0
+2026_11_IND_HOU        43.5        44.5       1.0
+2026_11_MIA_BUF        45.2        46.5       1.0
+2026_11_BAL_CAR        44.7        44.5       1.0
