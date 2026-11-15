@@ -179,12 +179,12 @@ function renderPicks(data, week) {
       <h2 class="day">${dayLabel(day)}</h2>
       <div class="grid gap-4 md:grid-cols-2">${cards.filter((c) => c.gameday === day).map((c, i) => gameCard(c, data.break_even, i)).join("")}</div>`).join("")}
     <p class="mt-6 text-xs faint leading-relaxed">The percentage under a spread or total pick is the estimated chance it wins if it does not push.
-      A pick is greyed out as a toss-up unless that chance clears the ${pct(data.break_even)} needed to break even at the usual -110 price (bet 110 to win 100). A model lean is still not a proven edge.</p>`;
+      A pick is greyed out as a toss-up unless that chance clears the ${pct(data.break_even)} needed to break even when you bet $110 to win $100, the usual price. A model lean is still not a proven edge.</p>`;
 }
 
 function recordTable(head, rows) {
   return `<div class="panel overflow-x-auto"><table class="table table-sm num">
-    <thead><tr>${head.map((h, i) => `<th class="${i ? "text-right" : ""}">${h}</th>`).join("")}</tr></thead>
+    <thead><tr>${head.map((h, i) => `<th scope="col" class="${i ? "text-right" : ""}">${h}</th>`).join("")}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${r.map((v, i) => `<td class="${i ? "text-right" : ""}">${v}</td>`).join("")}</tr>`).join("")}</tbody>
   </table></div>`;
 }
@@ -252,7 +252,7 @@ function renderRecord(data) {
     </div>
 
     <h2 class="day">Win rate by season</h2>
-    <p class="lede">The dashed line is the ${pct(data.break_even)} needed to break even at the usual -110 price. Neither series stays above it.</p>
+    <p class="lede">The dashed line is the ${pct(data.break_even)} needed to break even when you bet $110 to win $100. Neither series stays above it.</p>
     <div class="panel p-3">
       <div class="mb-1 flex gap-4 text-xs muted">
         <span><span class="swatch" style="background:var(--series-1)"></span> Spread picks</span>
@@ -348,18 +348,22 @@ function teamProfile(t, teams) {
   const versus = rankVersus && next;
   const cells = RADAR.map(([key, label]) => `<tr><td>${label}</td><td class="num text-right"><b>${ordinal(t[key + "_rank"])}</b></td>${
     versus ? `<td class="num text-right">${ordinal(next[key + "_rank"])}</td>` : ""}</tr>`).join("");
-  const part = (label, v) => `<div><dt>${label}</dt><dd class="num">${signed(v)}</dd></div>`;
-  // Results is shown as what is left after the other rounded parts, so the tiles add up to the power shown.
-  const r1 = (v) => Math.round(v * 10) / 10;
-  const results = r1(r1(t.power) - r1(t.passing) - r1(t.rush_off) - r1(t.pass_def) - r1(t.rush_def));
+  const part = (label, v, key) => `<div class="${key === rankSort ? "sorted" : ""}"><dt>${label}</dt><dd class="num">${signed(v)}</dd></div>`;
+  // Round the five parts so the tiles add up to the power shown, moving each as little as possible:
+  // round all down, then give the spare tenths to the parts that were closest to rounding up.
+  const raw = [t.passing, t.rush_off, t.pass_def, t.rush_def, t.power - t.passing - t.rush_off - t.pass_def - t.rush_def];
+  const tenths = raw.map((v) => Math.floor(v * 10 + 1e-9));
+  const spare = Math.round(t.power * 10) - tenths.reduce((x, y) => x + y, 0);
+  raw.map((v, i) => [v * 10 - tenths[i], i]).sort((x, y) => y[0] - x[0]).slice(0, Math.max(0, spare)).forEach(([, i]) => tenths[i]++);
+  const [pPass, pRush, pPassD, pRushD, results] = tenths.map((v) => v / 10);
   return `<div class="rk-profile">
-    <dl class="rk-parts" aria-label="Parts of the power rating, in points">${part("Pass off", t.passing)}${part("Rush off", t.rush_off)}${part("Pass def", t.pass_def)}${part("Rush def", t.rush_def)}${part("Results", results)}<div class="sum"><dt>Power</dt><dd class="num">${signed(t.power)}</dd></div></dl>
+    <dl class="rk-parts" aria-label="Parts of the power rating, in points">${part("Pass off", pPass, "passing")}${part("Rush off", pRush, "rush_off")}${part("Pass def", pPassD, "pass_def")}${part("Rush def", pRushD, "rush_def")}${part("Results", results, "results")}<div class="sum"><dt>Power</dt><dd class="num">${signed(t.power)}</dd></div></dl>
     ${next ? `<label class="rk-versus"><input type="checkbox" data-versus ${rankVersus ? "checked" : ""}>
       <span>Compare with this week's opponent, ${TEAMS[next.team] || next.team}${t.next.home ? " (home)" : " (away)"}</span></label>` : ""}
     <p class="rk-note">Points against an average team. Pass offense includes the quarterback. Results is what the team's wins, losses and scores add beyond those four parts.</p>
     <div class="rk-radar"><canvas id="rk-radar" role="img" aria-label="League ranks of ${TEAMS[t.team] || t.team} on six measures, listed in the table below"></canvas></div>
     <p class="rk-note">League rank on each measure, not points. Further out is better: the outer ring is 1st and the middle ring 17th. Pace is plays per game: speed, not quality.</p>
-    <table class="rk-ranks"><thead><tr><th>League rank of ${data_teams_count(teams)}</th><th class="text-right">${t.team}</th>${versus ? `<th class="text-right">${next.team}</th>` : ""}</tr></thead><tbody>${cells}</tbody></table>
+    <table class="rk-ranks"><thead><tr><th scope="col">League rank of ${data_teams_count(teams)}</th><th scope="col" class="text-right">${t.team}</th>${versus ? `<th scope="col" class="text-right">${next.team}</th>` : ""}</tr></thead><tbody>${cells}</tbody></table>
   </div>`;
 }
 const data_teams_count = (teams) => teams.length;
@@ -380,7 +384,9 @@ function drawRadar(t, teams) {
     ctx.save(); ctx.fillStyle = ink; ctx.font = "600 10px ui-sans-serif, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     for (const [value, text] of [[100, "1st"], [50, "17th"]]) {
       const d = r.getDistanceFromCenterForValue(value) * Math.cos(Math.PI / 6) - 7;
-      ctx.fillText(text, r.xCenter + d * Math.cos(angle), r.yCenter + d * Math.sin(angle));
+      const x = r.xCenter + d * Math.cos(angle), y = r.yCenter + d * Math.sin(angle);
+      ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.strokeStyle = "#fbf8f0"; ctx.strokeText(text, x, y);
+      ctx.fillText(text, x, y);
     }
     ctx.restore();
   } };
@@ -433,11 +439,11 @@ function renderRankings(data) {
     <div><h3>${title}</h3><p>${body}</p></div></article>`;
   const hf = r.home_field == null ? "" : ` Home field is currently worth ${r.home_field.toFixed(1)} points.`;
   $("rankings").innerHTML = `
-    <p class="lede">Each team's rating in points against an average team on a neutral field, as of the last game played. The gap between two teams, plus home field, is the model's predicted margin. Tap a team for the five parts that add up to its power and for its profile chart.</p>
+    <p class="lede">Points against an average team. The gap between two teams, plus home field, is the predicted margin. Tap a team for its parts.</p>
     <div class="pr-chips rk-sorts" role="group" aria-label="Rank by">${Object.entries(SORTS).map(([k, label]) =>
       `<button type="button" class="pr-chip ${k === rankSort ? "on" : ""}" data-sort="${k}" aria-pressed="${k === rankSort}" aria-label="${label}">${SHORT_SORT[k] || label}</button>`).join("")}</div>
-    ${rankSort === "power" ? "" : `<p class="rk-sortnote">${isForm ? "Ordered by how well each starting quarterback has been playing lately: his expected points added per dropback against the league average. This is not in spread points and is not overall strength." : `Ordered by ${SORTS[rankSort].toLowerCase()} only, not by overall strength.${rankSort === "results" ? " Results is built from wins, losses and margins of victory, turned into points." : rankSort === "passing" ? " Pass offense includes the starting quarterback." : ""}`} Each team's power rank is shown under its name.${isForm ? "" : " Two decimals are shown to split ties."}</p>`}
-    <p class="rk-head eyebrow"><span>Rank and team</span><span>${isForm ? "Per dropback" : `Points · longest bar ${top.toFixed(1)}`}</span></p>
+    ${rankSort === "power" ? "" : `<p class="rk-sortnote">${isForm ? "How well each starting quarterback has played lately, per dropback against the league average. Not overall strength." : `${SORTS[rankSort]} only, not overall strength.${rankSort === "results" ? " Built from wins, losses and margins." : rankSort === "passing" ? " Includes the quarterback." : ""}`} Power rank is under each name.${isForm ? "" : " Two decimals split ties."}</p>`}
+    <p class="rk-head eyebrow"><span>Rank and team</span><span>${isForm ? "Per dropback" : "Points"}</span></p>
     <ol class="panel rk-list">${teams.map(row).join("")}</ol>
     <h2 class="day">What goes into the rating</h2>
     <div class="grid gap-3 md:grid-cols-2">
