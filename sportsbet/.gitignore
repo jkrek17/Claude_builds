@@ -1,0 +1,7 @@
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+# Your personal bet ledger and API key stay local.
+picks.csv
+.env
