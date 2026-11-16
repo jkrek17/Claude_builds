@@ -69,6 +69,28 @@ legs win 74.3%; half a point better, 76.3%. The two-point swing is larger than t
 and a -134 teaser. Check the app's line is inside the range when you bet, and prefer +2.5 and -7.5
 over the far ends when there is a choice of timing.
 
+## Three-team teasers
+
+`three_team.py` builds three-leg teasers from the same legs (`three_team_output.txt`). Asked for after
+the rulebook was written, so this is a report, not a tested rule.
+
+| 3-team price | Each leg must win | Return if legs win 75.3% independently | One teaser a week, 2003-2026 (221 teasers) |
+|---|---|---|---|
+| +130 | 75.8% | -1.8% | +6.7% (±7.7) |
+| +140 | 74.7% | +2.5% | +11.3% (±8.0) |
+| +150 | 73.7% | +6.7% | +15.8% (±8.3) |
+| +160 | 72.7% | +11.0% | +20.4% (±8.7) |
+
+- The backtest column is higher than the plain arithmetic because all three legs won 45.7% of the
+  time against the 42.7% that independent 75.3% legs give. Most of that is the good 2015-2022 stretch
+  having more three-leg weeks. Trust the arithmetic column, not the backtest column.
+- By era the one-a-week teaser at +150 returned -24% (2003-14), +37% (2015-19), +38% (2020-22) and
+  +30% (2023-26), each give or take 14 to 20 points. It is a much bumpier bet: it loses more than half
+  the time.
+- Only about 9 weeks a season have three qualifying games.
+- At +150 or better a three-team teaser is a better deal than a two-team at -134 or even -120. At
+  +140 it is about the same as a two-team at -125. At +130 or worse, skip it.
+
 ## On each book's own lines (2025 and 2026 only)
 
 `book_lines.py` scores the same legs on FanDuel's and Fanatics' own spreads, taken 30 minutes before
