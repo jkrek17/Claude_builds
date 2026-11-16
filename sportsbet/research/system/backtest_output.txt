@@ -1,0 +1,86 @@
+FanDuel main lines, receiving yards and receptions: 14143 in 979 games; weeks 76
+blend weight on the model, fitted on (2023, 2024): 0.340
+
+== Step 1. Candidate changes on the design seasons (every qualifying bet, $1 each)
+rule                                        2023    2024   both design seasons
+B  base rule (unders, edge >= 5%)          +4.2%   +1.6%    2769 bets  win 54.0%  return +2.9% (±4.3%)  
+C1 both sides                              +2.4%   +2.0%    4123 bets  win 53.4%  return +2.2% (±3.4%)  reject
+C2 edge >= 10%                             +4.8%   +3.2%    1922 bets  win 54.3%  return +4.0% (±5.1%)  ADOPT
+C3 drop edge > 25%                         +3.0%   +0.8%    2356 bets  win 53.7%  return +1.9% (±4.6%)  reject
+C5 skip first 8 games with a new team      +4.5%   +0.3%    2468 bets  win 53.8%  return +2.4% (±4.5%)  reject
+C6 1 per player, 2 per game                +6.7%   +3.9%     994 bets  win 54.3%  return +5.3% (±6.0%)  ADOPT
+C7a receptions only                        +4.8%   +0.0%    1392 bets  win 53.7%  return +2.3% (±5.1%)  reject
+C7b receiving yards only                   +3.7%   +3.3%    1377 bets  win 54.2%  return +3.5% (±5.0%)  reject
+   (the bets C5 would skip:   301 bets  win 55.8%  return +6.9% (±12.6%))
+
+== Step 2. C4, ranking by blended edge instead of model edge (best 10 a week, design seasons)
+  by model edge:   2023 +5.3%  2024 +5.9%
+  by blended edge: 2023 +6.3%  2024 +6.4%   ADOPT
+
+Adopted on the design seasons: C2, C6, C4
+
+== Step 3. Weekly cap of 10
+qualifying bets a week on the design seasons: median 23
+W-live score cut T = 0.031 (blended edge), fixed from the design seasons
+
+-- DESIGN 2023-2024 (choices were made here)
+  every bet the system allows:       1922 bets  win 54.3%  return +4.0% (±5.1%)
+  W-live, 10 a week in kickoff order:   377 bets  win 55.7%  return +8.7% (±9.5%)   (8.8 bets a week)
+      season 2023:   198 bets  win 53.5%  return +4.8% (±13.8%)
+      season 2024:   179 bets  win 58.1%  return +13.0% (±12.9%)
+  W-best, top 10 of the week:          407 bets  win 56.5%  return +10.0% (±9.4%)
+  W-random, 10 random qualifying bets a week: middle +4.9%, 90% of draws between -1.5% and +11.1%
+  10 blind unders a week:                     middle -1.9%, 90% of draws between -8.8% and +5.0%
+  W-live beats 99% of blind-under draws and 84% of random qualifying draws
+  W-live in dollars at $5 a bet: staked $1,885, profit $+164
+
+-- JUDGING 2025-2026 (scored once)
+  every bet the system allows:       1452 bets  win 56.2%  return +6.7% (±6.1%)
+  W-live, 10 a week in kickoff order:   272 bets  win 59.9%  return +16.9% (±12.3%)   (8.5 bets a week)
+      season 2025:   183 bets  win 59.6%  return +15.6% (±15.1%)
+      season 2026:    89 bets  win 60.7%  return +19.4% (±21.2%)
+  W-best, top 10 of the week:          294 bets  win 56.8%  return +10.6% (±11.5%)
+  W-random, 10 random qualifying bets a week: middle +6.9%, 90% of draws between -1.0% and +14.5%
+  10 blind unders a week:                     middle -1.3%, 90% of draws between -9.8% and +6.9%
+  W-live beats 100% of blind-under draws and 99% of random qualifying draws
+  W-live in dollars at $5 a bet: staked $1,360, profit $+229
+
+== Step 3b. Did each adopted change hold up on the judging seasons? (every qualifying bet)
+  B  base rule (unders, edge >= 5%)        2012 bets  win 57.2%  return +7.8% (±5.2%)  
+  C1 both sides                            3276 bets  win 54.2%  return +3.1% (±4.0%)  rejected
+  C2 edge >= 10%                           1452 bets  win 56.2%  return +6.7% (±6.1%)  adopted
+  C3 drop edge > 25%                       1657 bets  win 58.1%  return +8.9% (±5.2%)  rejected
+  C5 skip first 8 games with a new team    1752 bets  win 56.7%  return +7.1% (±5.5%)  rejected
+  C6 1 per player, 2 per game               741 bets  win 59.5%  return +14.0% (±6.8%)  adopted
+  C7a receptions only                      1091 bets  win 58.1%  return +9.5% (±5.8%)  rejected
+  C7b receiving yards only                  921 bets  win 56.0%  return +5.9% (±6.3%)  rejected
+
+== Step 3c. How much W-live depends on the score cut (shown for honesty, not used to choose)
+  cut 0.000: design   407 bets  win 54.3%  return +4.9% (±9.3%) | judging   293 bets  win 61.1%  return +18.4% (±11.4%)
+  cut 0.020: design   399 bets  win 55.1%  return +7.2% (±9.6%) | judging   288 bets  win 57.6%  return +11.6% (±11.8%)
+  cut 0.031: design   377 bets  win 55.7%  return +8.7% (±9.5%) | judging   272 bets  win 59.9%  return +16.9% (±12.3%)
+  cut 0.050: design   285 bets  win 54.4%  return +6.6% (±11.5%) | judging   218 bets  win 57.3%  return +12.4% (±13.8%)
+  cut 0.080: design   138 bets  win 60.1%  return +18.0% (±16.3%) | judging    96 bets  win 50.0%  return -1.1% (±20.6%)
+
+== Step 4. Line shopping: FanDuel against Fanatics for the system's bets, 2025-2026
+  every bet the system allows: Fanatics lists the player on 55%; better line 13.8%, same line at a better price 9.2%
+      FanDuel only:         1452 bets  win 56.2%  return +6.7% (±6.1%)
+      better of the two:    1452 bets  win 57.4%  return +6.3% (±5.9%)
+      where both list him, FanDuel +6.1% against the better of the two +5.3% (n=802)
+  W-live bets: Fanatics lists the player on 56%; better line 18.4%, same line at a better price 8.8%
+      FanDuel only:          272 bets  win 59.9%  return +16.9% (±12.3%)
+      better of the two:     272 bets  win 61.4%  return +15.0% (±11.6%)
+      where both list him, FanDuel +10.5% against the better of the two +7.2% (n=152)
+
+== Step 5. Staking on the W-live bets, all four seasons
+  flat $5                                  return +12.1% (±7.6%), profit $+393, worst week $-22, losing weeks 39%, deepest drop $51
+  Kelly-shaped, average $5, at most ~$10   return +13.2% (±7.8%), profit $+428, worst week $-22, losing weeks 37%, deepest drop $64
+
+== Step 6. One season of 10 bets a week at $5 (18 weeks, $900 staked), by luck alone
+true return                   5% worst   middle  5% best  lose money  $150 pause  retire at 200
+-4.5% (no skill, pay the vig)      -149      -41      +67         73%         12%            22%
+0%                                -108       +0     +108         50%          4%             8%
++3% (the hoped-for edge)           -80      +29     +136         33%          1%             3%
++6%                                -55      +54     +162         21%          1%             1%
+
+A 95% range on the return from 272 bets is about ±12%; from one season of 180 bets it is about ±15%.
