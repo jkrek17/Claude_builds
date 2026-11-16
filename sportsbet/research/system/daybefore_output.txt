@@ -1,0 +1,22 @@
+games with day-before prices: 996
+
+== Frozen rules at FanDuel prices 30 minutes before
+  2023-2024: ten a week   378 bets  win 55.6%  return +8.4% (±9.5%) | every allowed bet  1920 bets  win 54.3%  return +3.9% (±5.1%)
+  2025-2026: ten a week   273 bets  win 60.1%  return +17.2% (±12.3%) | every allowed bet  1452 bets  win 56.2%  return +6.7% (±6.1%)
+  all four: ten a week   651 bets  win 57.5%  return +12.1% (±7.6%) | every allowed bet  3372 bets  win 55.1%  return +5.1% (±3.9%)
+  every FanDuel under, no model: 14126 bets  win 52.1%  return -2.1% (±2.0%)
+
+== Frozen rules at FanDuel prices day before
+  2023-2024: ten a week   303 bets  win 56.1%  return +9.0% (±11.0%) | every allowed bet  1407 bets  win 54.8%  return +4.1% (±5.9%)
+  2025-2026: ten a week   264 bets  win 60.2%  return +16.9% (±12.6%) | every allowed bet  1333 bets  win 57.8%  return +9.3% (±6.5%)
+  all four: ten a week   567 bets  win 58.0%  return +12.7% (±8.3%) | every allowed bet  2740 bets  win 56.2%  return +6.6% (±4.3%)
+  every FanDuel under, no model: 12692 bets  win 52.0%  return -3.1% (±2.0%)
+
+== Did the market move toward the day-before bets? (closing line value)
+  ten a week: still listed late 98% (n=558); line moved down (our way) 17%, up 11%, mean move -0.15
+      at an unchanged line the book's under chance went 47.8% -> 48.6% (n=405)
+  every allowed bet: still listed late 98% (n=2691); line moved down (our way) 17%, up 13%, mean move -0.13
+      at an unchanged line the book's under chance went 49.2% -> 49.6% (n=1874)
+  every FanDuel under, for comparison: line moved down 13%, up 16%, mean move +0.06 (n=12458)
+
+allowed bets: both times 2329, day before only 411, 30 minutes only 1043
