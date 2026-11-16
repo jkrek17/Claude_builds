@@ -1,0 +1,12 @@
+all                                            n= 8726 pts-model +0.27 (se 0.10)  pts-market +0.26  margin err model +0.00 line +0.00
+nth distinct starter = 1                       n= 6948 pts-model +0.46 (se 0.11)  pts-market +0.40  margin err model +0.21 line +0.24
+nth distinct starter = 2                       n= 1392 pts-model -0.59 (se 0.25)  pts-market -0.42  margin err model -1.07 line -1.10
+nth distinct starter = 3+                      n=  386 pts-model -0.00 (se 0.46)  pts-market +0.30  margin err model +0.02 line -0.32
+backup (nth>=2), career starts 0-0             n=  142 pts-model -1.31 (se 0.77)  pts-market -0.27  margin err model -0.19 line +0.14
+backup (nth>=2), career starts 1-3             n=  313 pts-model -0.99 (se 0.50)  pts-market -0.42  margin err model -0.65 line -0.64
+backup (nth>=2), career starts 4-15            n=  556 pts-model -0.63 (se 0.40)  pts-market -0.57  margin err model -1.04 line -1.23
+backup (nth>=2), career starts 16-47           n=  318 pts-model -0.70 (se 0.50)  pts-market -0.62  margin err model -1.08 line -1.20
+backup (nth>=2), career starts 48-999          n=  449 pts-model +0.57 (se 0.43)  pts-market +0.49  margin err model -0.74 line -0.92
+first start for this team this season, nth>=2  n=  558 pts-model -0.90 (se 0.39)  pts-market -0.41  margin err model -0.70 line -0.82
+first start this season nth>=3                 n=  155 pts-model -0.52 (se 0.69)  pts-market +0.16  margin err model +0.31 line +0.07
+starter threw < 10 dropbacks (left early)      n=  156 pts-model -1.59 (se 0.78)  pts-market -1.07  margin err model -2.97 line -2.50

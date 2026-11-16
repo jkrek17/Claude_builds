@@ -86,16 +86,29 @@ def synthetic(seed=0, seasons=range(1999, 2006), weeks=14):
                         stats.append(dict(season=season, week=week, team=team, opponent_team=opp, game_id=gid,
                                           passing_epa=(pts - 21) / 3 + rng.normal(0, 2), rushing_epa=rng.normal(0, 2),
                                           attempts=34, carries=27, sacks_suffered=2))
-                        players.append(dict(player_id=f"qb_{team}", position="QB", game_id=gid, attempts=34,
+                        players.append(dict(player_id=f"qb_{team}", position="QB", game_id=gid, team=team, attempts=34,
                                             sacks_suffered=2, carries=3, passing_epa=(pts - 21) / 3,
                                             rushing_epa=rng.normal(0, 1)))
     return pd.DataFrame(games), pd.DataFrame(stats), pd.DataFrame(players)
 
 
+def backup_story(games, players):
+    """Give one team a backup for a stretch of 2004 and have a starter leave a game early."""
+    games = games.copy()
+    team = TEAMS[0]
+    for side in ("home", "away"):
+        m = (games.season == 2004) & (games.week.between(3, 6)) & (games[f"{side}_team"] == team)
+        games.loc[m, f"{side}_qb_id"] = "qb_backup"
+    gid = games.loc[(games.season == 2004) & (games.week == 8) & ((games.home_team == team) | (games.away_team == team)), "game_id"].iloc[0]
+    return games, {(gid, team): [(f"qb_{team}", 0.2), ("qb_backup", 0.8)]}
+
+
 def test_models_cover_every_game_and_ignore_the_future_and_the_market():
     games, stats, players = synthetic()
     m = margin_model.predict_margins(games, stats, players).set_index("game_id")["pred_margin"]
-    t = totals_model.predict_totals(games, stats).set_index("game_id")["pred_total"]
+    games, shares = backup_story(games, players)
+    m = margin_model.predict_margins(games, stats, players, qb_shares=shares).set_index("game_id")["pred_margin"]
+    t = totals_model.predict_totals(games, stats, player_stats=players, qb_shares=shares).set_index("game_id")["pred_total"]
     expected = set(games.loc[games.season >= 2003, "game_id"])
     assert set(m.index) == expected and set(t.index) == expected
     assert m.notna().all() and t.notna().all()
@@ -107,8 +120,9 @@ def test_models_cover_every_game_and_ignore_the_future_and_the_market():
     p2 = players[players.game_id.isin(g2.game_id)]
     for col in ("spread_line", "total_line", "home_moneyline", "away_moneyline"):
         g2[col] = g2[col] * 3 + 11  # the betting market must not matter
-    m2 = margin_model.predict_margins(g2, s2, p2).set_index("game_id")["pred_margin"]
-    t2 = totals_model.predict_totals(g2, s2).set_index("game_id")["pred_total"]
+    sh2 = {k: v for k, v in shares.items() if k[0] in set(g2.game_id)}
+    m2 = margin_model.predict_margins(g2, s2, p2, qb_shares=sh2).set_index("game_id")["pred_margin"]
+    t2 = totals_model.predict_totals(g2, s2, player_stats=p2, qb_shares=sh2).set_index("game_id")["pred_total"]
     assert np.allclose(m.loc[past_ids], m2.loc[past_ids], atol=1e-9)
     assert np.allclose(t.loc[past_ids], t2.loc[past_ids], atol=1e-9)
 
@@ -269,3 +283,55 @@ def test_week_card_lists_games_by_kickoff_time():
     preds = pd.DataFrame([dict(base, game_id=g, gameday=d, gametime=t, away_team=g.split("_")[2],
                                home_team=g.split("_")[3]) for g, d, t in games])
     assert [c["away"] for c in week_card(preds, 2026, 10)] == ["WAS", "NE", "BUF", "CAR", "PIT"]
+
+
+def test_qb_depth_corrects_starters_and_flags_backups():
+    from nflmodel import qb_depth
+    row = dict(season=2026, gameday="2026-09-13", home_score=20.0, away_score=17.0)
+    games = pd.DataFrame([
+        dict(row, game_id="g1", week=1, home_team="AAA", away_team="BBB", home_qb_id="a1", away_qb_id="b1"),
+        dict(row, game_id="g2", week=2, gameday="2026-09-20", home_team="BBB", away_team="AAA", home_qb_id="b1", away_qb_id="a1"),
+        dict(row, game_id="g3", week=3, gameday="2026-09-27", home_team="AAA", away_team="BBB", home_qb_id="a1", away_qb_id="b1"),
+        dict(row, game_id="g4", week=4, gameday="2026-10-04", home_team="AAA", away_team="BBB", home_qb_id="a2", away_qb_id="b1",
+             home_score=np.nan, away_score=np.nan),
+    ])
+    qb = lambda gid, team, pid, att: dict(game_id=gid, team=team, player_id=pid, position="QB", attempts=att, sacks_suffered=0)
+    players = pd.DataFrame([
+        qb("g1", "AAA", "a1", 30), qb("g1", "BBB", "b1", 30),
+        qb("g2", "AAA", "a1", 5), qb("g2", "AAA", "a2", 25), qb("g2", "BBB", "b1", 30),   # a1 left early
+        qb("g3", "AAA", "a2", 30), qb("g3", "BBB", "b1", 30),                              # a1 listed, never played
+    ])
+    fixed, shares = qb_depth.prepare(games, players)
+    assert list(fixed.home_qb_id) == ["a1", "b1", "a2", "a2"]     # g3 corrected to the quarterback who played
+    assert fixed.away_qb_id[1] == "a1"                             # a starter who left early keeps the start
+    assert set(shares) == {("g2", "AAA")}
+    assert dict(shares[("g2", "AAA")]) == pytest.approx({"a1": 5 / 30, "a2": 25 / 30})
+
+    sides = qb_depth.side_table(fixed).set_index("game_id")
+    assert sides.loc["g3", ["home_backup", "home_new", "home_nth", "home_starts"]].tolist() == [1, 1, 2, 0]
+    assert sides.loc["g4", ["home_backup", "home_new", "home_starts"]].tolist() == [1, 0, 1]   # second start of the stint
+    assert sides.loc["g4", ["away_backup", "away_new", "away_starts"]].tolist() == [0, 0, 3]
+    feats = qb_depth.depth_features(fixed).set_index("game_id")
+    assert feats.loc["g3", "qb_new_diff"] == 1 and feats.loc["g3", "qb_greenbk_sum"] == 1
+    assert feats.loc["g4", "qb_new_diff"] == 0 and feats.loc["g4", "qb_greenbk_sum"] == pytest.approx(7 / 8)
+
+
+def test_expected_starters_replaces_a_starter_who_is_out():
+    from nflmodel import qb_depth
+    games = pd.DataFrame([
+        dict(game_id="2026_09_BBB_AAA", season=2026, week=9, gameday="2026-11-08", home_team="AAA", away_team="BBB",
+             home_qb_id="a1", away_qb_id="b1", home_qb_name="A One", away_qb_name="B One", home_score=20.0, away_score=17.0),
+        dict(game_id="2026_10_AAA_BBB", season=2026, week=10, gameday="2026-11-15", home_team="BBB", away_team="AAA",
+             home_qb_id="b1", away_qb_id="a1", home_qb_name="B One", away_qb_name="A One", home_score=np.nan, away_score=np.nan),
+    ])
+    qb = lambda pid, name, team, out, first: dict(gsis_id=pid, full_name=name, position="QB", team=team, out=out, first_week=first)
+    avail = pd.DataFrame([qb("a1", "A One", "AAA", True, 1), qb("a2", "A Two", "AAA", False, 1),
+                          qb("a3", "A Three", "AAA", False, 10), qb("b1", "B One", "BBB", False, 1)])
+    players = pd.DataFrame([dict(game_id="2026_09_BBB_AAA", team="AAA", player_id="a1", position="QB", attempts=30, sacks_suffered=1)])
+    new, changes = qb_depth.expected_starters(games, avail, players, 2026, 10)
+    assert changes == [{"game_id": "2026_10_AAA_BBB", "team": "AAA", "was": "a1", "now": "a2"}]   # longest on the roster
+    assert new.away_qb_id[1] == "a2" and new.away_qb_name[1] == "A Two" and new.home_qb_id[1] == "b1"
+    assert new.home_qb_id[0] == "a1"                                                              # played games untouched
+    played = pd.concat([players, pd.DataFrame([dict(game_id="2026_09_BBB_AAA", team="AAA", player_id="a3", position="QB",
+                                                    attempts=9, sacks_suffered=0)])])
+    assert qb_depth.expected_starters(games, avail, played, 2026, 10)[1][0]["now"] == "a3"        # played most recently

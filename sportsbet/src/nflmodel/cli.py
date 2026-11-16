@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import data, ratings, site, weather
+from . import data, qb_depth, qb_form, ratings, site, weather
 from .card import BREAK_EVEN, next_week, predict_all, season_record, week_card
 
 NOTE = ("How to read this: the model was tested on 4,363 games from 2010 to 2025 without ever seeing a\n"
@@ -30,8 +30,12 @@ def _push(p: float | None) -> str:
     return f", push {p:.1%}" if p and p >= 0.005 else ""
 
 
-def render(cards: list[dict], season: int, week: int, record: dict) -> str:
+def render(cards: list[dict], season: int, week: int, record: dict, swaps: list[dict] | None = None) -> str:
     out = [f"NFL {season} week {week}: model predictions", ""]
+    for s in swaps or []:
+        out.append(f"{s['team']}: listed starter {s['was_name']} is out; the model assumes {s['now_name']} starts")
+    if swaps:
+        out.append("")
     for c in cards:
         day = dt.date.fromisoformat(c["gameday"]).strftime("%a %b %d")
         out.append(f"{c['away']} @ {c['home']}  ({day})"
@@ -80,13 +84,15 @@ def main(argv: list[str] | None = None) -> int:
     games = pd.read_csv(data_dir / "games.csv")
     season, week = next_week(games)
     season, week = args.season or season, args.week or week
+    # A listed starter who is on injured reserve or ruled out is replaced before anything is predicted.
+    games, swaps = qb_depth.check_week(games, str(data_dir), qb_form.load_player_stats(str(data_dir)), season, week)
     winds = {} if args.offline or args.no_weather else weather.forecast_winds(games)
     preds = predict_all(games, str(data_dir), wind_forecast=winds)
     cards = week_card(preds, season, week)
     if not cards:
         print(f"No games found for {season} week {week}.", file=sys.stderr)
         return 1
-    print(render(cards, season, week, season_record(preds, season)))
+    print(render(cards, season, week, season_record(preds, season), swaps))
     if args.csv:
         pd.DataFrame(cards).to_csv(args.csv, index=False)
     if args.json:

@@ -86,13 +86,19 @@ def norm_cdf(x):
 
 
 def compute_features(games: pd.DataFrame, team_stats: pd.DataFrame,
-                     params: dict | None = None, state: dict | None = None) -> pd.DataFrame:
+                     params: dict | None = None, state: dict | None = None,
+                     qb_shares: dict | None = None) -> pd.DataFrame:
     """Pre-game features for every game in `games` (all seasons), one row per
     game_id.  Row i only depends on games played on earlier calendar dates.
 
     If `state` is a dict it is filled with the ratings as they stand after the
     last played game (Elo, EPA ratings, each quarterback's value, home field),
-    for display; see ratings.py."""
+    for display; see ratings.py.
+
+    `qb_shares` maps (game_id, team) to [(quarterback, share of the team's dropbacks), ...]. When a
+    game is listed there, its passing result is credited to the quarterbacks who played, in those
+    shares, and not all to the starter (see `qb_depth.dropback_shares`)."""
+    qb_shares = qb_shares or {}
     p = dict(PARAMS)
     if params:
         p.update(params)
@@ -226,12 +232,12 @@ def compute_features(games: pd.DataFrame, team_stats: pd.DataFrame,
             for (off, dfn, q, pe, re_, e_p, e_r, qobs) in epa_upd:
                 op[off] += p["epa_k"] * e_p; dp[dfn] += p["epa_k"] * e_p
                 orr[off] += p["epa_k"] * e_r; dr[dfn] += p["epa_k"] * e_r
-                if q is not None:
+                for q, w in qb_shares.get((gid_a[k], off)) or ([(q, 1.0)] if q is not None else []):
                     if qb_n.get(q, 0) < 8:
-                        qb_prior += p["qb_prior_k"] * (qobs - qb_prior)
-                    qb_sw[q] = qb_sw.get(q, 0.0) * p["qb_decay"] + 1.0
-                    qb_swx[q] = qb_swx.get(q, 0.0) * p["qb_decay"] + qobs
-                    qb_n[q] = qb_n.get(q, 0) + 1
+                        qb_prior += p["qb_prior_k"] * w * (qobs - qb_prior)
+                    qb_sw[q] = qb_sw.get(q, 0.0) * p["qb_decay"] ** w + w
+                    qb_swx[q] = qb_swx.get(q, 0.0) * p["qb_decay"] ** w + w * qobs
+                    qb_n[q] = qb_n.get(q, 0) + w
                 lg_pass += p["lg_k"] * (pe - lg_pass)
                 lg_rush += p["lg_k"] * (re_ - lg_rush)
             if isinstance(hq, str):
@@ -284,7 +290,7 @@ def blend_walk_forward(feats: pd.DataFrame, features=None, ridge=None,
 
 
 def predict_margins(games: pd.DataFrame, team_stats: pd.DataFrame,
-                    player_stats: pd.DataFrame | None = None) -> pd.DataFrame:
+                    player_stats: pd.DataFrame | None = None, qb_shares: dict | None = None) -> pd.DataFrame:
     """One row per game_id for every game from 2003 on (played or not) with
     `pred_margin` (home minus away, points) and its component features.
 
@@ -294,13 +300,15 @@ def predict_margins(games: pd.DataFrame, team_stats: pd.DataFrame,
 
     With `player_stats` (quarterback rows of nflverse weekly player stats) the
     blend also uses each starter's own rolling efficiency and an in-season
-    backup flag, see `qb_form`."""
-    feats = compute_features(games, team_stats)
+    backup flag, see `qb_form`, and whether a backup is making the first start
+    of a stint, see `qb_depth`.  `qb_shares` is passed to `compute_features`."""
+    feats = compute_features(games, team_stats, qb_shares=qb_shares)
     features = list(FEATURES)
     if player_stats is not None:
-        from . import qb_form
+        from . import qb_depth, qb_form
         feats = feats.merge(qb_form.qb_form_features(games, player_stats), on="game_id", how="left")
-        features += qb_form.FEATURES
+        feats = feats.merge(qb_depth.depth_features(games), on="game_id", how="left")
+        features += qb_form.FEATURES + qb_depth.MARGIN_FEATURES
     pred, _ = blend_walk_forward(feats, features=features)
     feats["pred_margin"] = pred
     feats["home_win_prob"] = norm_cdf(pred / RESID_SD)
