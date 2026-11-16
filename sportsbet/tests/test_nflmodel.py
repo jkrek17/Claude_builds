@@ -335,3 +335,44 @@ def test_expected_starters_replaces_a_starter_who_is_out():
     played = pd.concat([players, pd.DataFrame([dict(game_id="2026_09_BBB_AAA", team="AAA", player_id="a3", position="QB",
                                                     attempts=9, sacks_suffered=0)])])
     assert qb_depth.expected_starters(games, avail, played, 2026, 10)[1][0]["now"] == "a3"        # played most recently
+
+
+def test_slots_due_finds_games_kicking_off_soon():
+    from nflmodel import slots
+    rows = [dict(game_id="early", gameday="2026-11-22", gametime="13:00", home_score=""),
+            dict(game_id="late1", gameday="2026-11-22", gametime="16:05", home_score=""),
+            dict(game_id="late2", gameday="2026-11-22", gametime="16:25", home_score=""),
+            dict(game_id="done", gameday="2026-11-22", gametime="16:25", home_score="21")]
+    at = lambda h, m: dt.datetime(2026, 11, 22, h, m, tzinfo=dt.timezone.utc)   # 17:20 UTC is 12:20 Eastern
+    assert slots.due(rows, at(17, 20)) == ["early"]
+    assert slots.due(rows, at(16, 20)) == [] and slots.due(rows, at(18, 20)) == []
+    assert slots.due(rows, at(20, 20)) == ["late1", "late2"]          # one rebuild covers both late kickoffs
+    summer = [dict(game_id="sept", gameday="2026-09-13", gametime="13:00", home_score="")]
+    assert slots.due(summer, dt.datetime(2026, 9, 13, 16, 20, tzinfo=dt.timezone.utc)) == ["sept"]   # daylight time
+
+
+def test_depth_live_takes_the_first_quarterback_who_is_not_out():
+    from nflmodel import depth_live
+    assert depth_live.pick(["A One", "A Two", "A Three"], {"A One": "Injured Reserve", "A Two": "Questionable"}) == "A Two"
+    assert depth_live.pick(["A One Jr."], {"a one": "Out"}) is None
+
+    def fake(url):
+        if "scoreboard" in url:
+            team = lambda i, a: {"team": {"id": i, "abbreviation": a}}
+            return {"events": [
+                {"id": "1", "competitions": [{"status": {"type": {"state": "pre"}}, "competitors": [team("7", "AAA"), team("8", "LAR")]}]},
+                {"id": "2", "competitions": [{"status": {"type": {"state": "post"}}, "competitors": [team("9", "CCC"), team("10", "DDD")]}]}]}
+        if "summary" in url:
+            return {"injuries": [{"injuries": [{"athlete": {"displayName": "A One"}, "status": "Out"}]}]}
+        if "/teams/7/" in url:
+            return {"depthchart": [{"positions": {"qb": {"athletes": [{"displayName": "A One"}, {"displayName": "A Two"}]}}}]}
+        raise OSError("down")
+    live = depth_live.starters(["2026-11-15"], get=fake)
+    assert live == {"AAA": "A Two"}                                  # the failed team and the finished game are skipped
+
+    games = pd.DataFrame([dict(game_id="g", season=2026, week=10, home_team="AAA", away_team="LA", home_qb_id="a1",
+                               away_qb_id="b1", home_qb_name="A One", away_qb_name="B One", home_score=np.nan)])
+    new, changes = depth_live.apply(games, 2026, 10, live, {"A Two": "a2"})
+    assert new.home_qb_id[0] == "a2" and new.home_qb_name[0] == "A Two" and new.away_qb_id[0] == "b1"
+    assert [(c["team"], c["was_name"], c["now_name"]) for c in changes] == [("AAA", "A One", "A Two")]
+    assert depth_live.apply(games, 2026, 10, {"AAA": "Nobody Known"}, {"A Two": "a2"})[1] == []   # unmatched name: no change

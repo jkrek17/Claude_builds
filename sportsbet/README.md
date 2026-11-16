@@ -109,9 +109,13 @@ It downloads game results and team stats from [nflverse](https://github.com/nflv
   quarterback, the quarterback's own rolling EPA per dropback, a flag for an in-season backup,
   another for a backup making the first start of a stint, home field that drifts over time, and
   rest. A ridge blend is refit each season on earlier seasons only.
-- **Who is really at quarterback** (`qb_depth.py`): before a week is predicted, a listed starter who
-  is on injured reserve or ruled out is replaced by the available quarterback who last played for
-  the team, and the card says so. After a game, the start goes to the quarterback who actually
+- **Who is really at quarterback** (`qb_depth.py`, `depth_live.py`): before a week is predicted, the
+  starter is taken from ESPN's current depth chart, skipping anyone its injury list has out. If
+  ESPN cannot be reached, a listed starter who is on injured reserve or ruled out in the nflverse
+  files (refreshed overnight) is replaced by the available quarterback who last played for the
+  team. The card says when the starter was changed. The page is rebuilt 20 to 80 minutes before
+  every kickoff slot (`slots.py` and the hourly schedule), so each slot gets this check after
+  inactives are announced. After a game, the start goes to the quarterback who actually
   played when nflverse lists one who did not, and a game the starter left before half his team's
   dropbacks is credited to the quarterbacks who played it.
 - **Total** (`totals_model.py`, `weather.py`): opponent-adjusted points, offensive and defensive EPA
@@ -213,9 +217,9 @@ no wind.
 
 ## Known limits
 
-- The starting quarterback is taken from nflverse and checked against the roster and injury report.
-  When the listed starter is out, the replacement is a guess (right about four times in five in
-  2019 to 2026). For games where no starter is listed yet, the team's last starter is assumed and
+- The starting quarterback comes from ESPN's depth chart, which is a team's stated order and not a
+  confirmed starter. The fallback rule from rosters was right about four times in five in 2019 to
+  2026. For games where no starter is listed yet, the team's last starter is assumed and
   the card says so. Other injuries are not modeled.
 - A team down to an emergency quarterback is still rated too kindly. On average a new or
   inexperienced backup costs a team one to three points, and that is all the model takes off; the

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import data, qb_depth, qb_form, ratings, site, weather
+from . import data, depth_live, qb_depth, qb_form, ratings, site, weather
 from .card import BREAK_EVEN, next_week, predict_all, season_record, week_card
 
 NOTE = ("How to read this: the model was tested on 4,363 games from 2010 to 2025 without ever seeing a\n"
@@ -33,7 +33,8 @@ def _push(p: float | None) -> str:
 def render(cards: list[dict], season: int, week: int, record: dict, swaps: list[dict] | None = None) -> str:
     out = [f"NFL {season} week {week}: model predictions", ""]
     for s in swaps or []:
-        out.append(f"{s['team']}: listed starter {s['was_name']} is out; the model assumes {s['now_name']} starts")
+        was = f"listed starter {s['was_name']} is not expected to play" if s["was_name"] else "no starter is listed"
+        out.append(f"{s['team']}: {was}; the model assumes {s['now_name']} starts")
     if swaps:
         out.append("")
     for c in cards:
@@ -66,6 +67,28 @@ def render(cards: list[dict], season: int, week: int, record: dict, swaps: list[
     return "\n".join(out)
 
 
+def expected_starters(games: pd.DataFrame, data_dir: str, season: int, week: int, live: bool = True):
+    """Replace a listed starter who will not play, before anything is predicted.
+
+    First the roster and injury report (refreshed overnight), then, when `live`, ESPN's depth chart
+    and injury list as they stand now, which win where they differ. Returns (games, changes)."""
+    listed = games
+    games, _ = qb_depth.check_week(games, data_dir, qb_form.load_player_stats(data_dir), season, week)
+    if live:
+        todo = listed[(listed["season"] == season) & (listed["week"] == week) & listed["home_score"].isna()]
+        found = depth_live.starters(todo["gameday"].astype(str).tolist())
+        games, _ = depth_live.apply(games, season, week, found, depth_live.name_ids(data_dir))
+    changes = []
+    for i in games.index[(games["season"] == season) & (games["week"] == week)]:
+        for s in ("home", "away"):
+            was, now = listed.at[i, f"{s}_qb_id"], games.at[i, f"{s}_qb_id"]
+            if isinstance(now, str) and now != was:
+                was_name = listed.at[i, f"{s}_qb_name"] if isinstance(was, str) else None
+                changes.append({"game_id": games.at[i, "game_id"], "team": games.at[i, f"{s}_team"],
+                                "was_name": was_name, "now_name": games.at[i, f"{s}_qb_name"] or now})
+    return games, changes
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="nflmodel", description=__doc__)
     parser.add_argument("--data-dir", default=str(data.DEFAULT_DIR), help="where nflverse files are cached")
@@ -84,8 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     games = pd.read_csv(data_dir / "games.csv")
     season, week = next_week(games)
     season, week = args.season or season, args.week or week
-    # A listed starter who is on injured reserve or ruled out is replaced before anything is predicted.
-    games, swaps = qb_depth.check_week(games, str(data_dir), qb_form.load_player_stats(str(data_dir)), season, week)
+    games, swaps = expected_starters(games, str(data_dir), season, week, live=not args.offline)
     winds = {} if args.offline or args.no_weather else weather.forecast_winds(games)
     preds = predict_all(games, str(data_dir), wind_forecast=winds)
     cards = week_card(preds, season, week)
