@@ -16,7 +16,8 @@ python research/system/backtest.py ODDS_DIR
 3. The edge after mixing the model with the book's own chance (weight 0.34 on the model) is at least 3.1%.
 4. At most one bet per player and two per game.
 5. Bet in kickoff order, **$5 flat**, until 10 are placed in the week ($50).
-6. Bet in the half hour before kickoff, after the inactive list is out. That is the only timing tested.
+6. Bet from the day before kickoff onward, after the final injury report. Both the day before and the
+   last half hour were tested and did equally well.
 
 `nflbets` (see the main README) prints the bets that pass these rules from live FanDuel prices.
 
@@ -88,9 +89,35 @@ holds props only.
   +3% edge. Both protect the bankroll; neither can prove the edge is gone, and a bettor with no skill
   passes the retire check about three times in four.
 
+## Betting the day before (added 2026-11-16)
+
+Day-before FanDuel prices for the two props were pulled for all 996 games and the frozen rules were
+applied without re-choosing anything ([daybefore_output.txt](daybefore_output.txt),
+`python research/system/daybefore.py ODDS_DIR score` then `report`). The model was refitted knowing
+only what is known the day before: everyone on the 53-man roster counts as playing unless the final
+injury report says Out or Doubtful.
+
+| Ten a week, all four seasons | Bets | Win rate | Return | 95% range |
+|---|---|---|---|---|
+| 30 minutes before kickoff | 651 | 57.5% | +12.1% | +4.5% to +19.7% |
+| Day before | 567 | 58.0% | +12.7% | +4.4% to +21.0% |
+
+Every allowed bet: +5.1% late (3,372 bets) against +6.6% the day before (2,740 bets).
+
+- **The system does not need the last half hour.** It did as well on day-before prices and without
+  the inactive list. These are mostly the same players and the same games, so this is not a second
+  independent confirmation of the edge, only of the timing.
+- **The market moved toward the bets, a little.** Between the day before and 30 minutes before, the
+  line dropped on 17% of the system's unders and rose on 13%; for all unders it was 13% down and 16%
+  up. That is the first evidence here that does not depend on game results, and it is small.
+- A bet on a player who is later ruled inactive is refunded. The model still used the closing game
+  spread and total, which can differ slightly from the day-before numbers.
+
+Rule 6 becomes: bet any time from the day before, after the final injury report (Friday afternoon
+for Sunday games).
+
 ## Not tested, and what could break it
 
-- Betting earlier than 30 minutes before kickoff (needs about 40,000 Odds API credits).
+- Prices earlier in the week than the day before.
 - Prices moving between the scan and the bet. `nflbets` prints the worst price still worth taking.
 - FanDuel limiting an account that keeps winning on props.
-- The model was fitted with the real active list, which is known about 90 minutes before kickoff.

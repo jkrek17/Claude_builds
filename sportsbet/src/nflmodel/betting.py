@@ -172,7 +172,7 @@ def render(picks: list[dict], placed: int) -> str:
                      f"  [{c['game']}, {when}]")
         lines.append(f"    model {c['p_model']:.0%}, book {c['p_book']:.0%}; skip if the price is worse than "
                      f"{american(c['worst_price'])} or the line is lower than {c['line']:g}")
-    lines += ["", "FanDuel only. Bet in the half hour before kickoff, after the inactive list is out.",
+    lines += ["", "FanDuel only. Bet from the day before kickoff, after the final injury report.",
               "The edge behind these rules is small and not proven; expect losing weeks."]
     return "\n".join(lines)
 

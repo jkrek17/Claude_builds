@@ -104,3 +104,5 @@ Added 2026-11-15 after the backtest (details in `README.md`).
   Success test passed. The size is not believable as a forecast; plan on +3% to +7%.
 - C2 did slightly worse than the base rule on the judging seasons. It stays, as fixed in advance.
 - Line shopping at Fanatics: not shown to help. Staking: flat $5 stays.
+- 2026-11-16, timing: Jason approved the credits. Frozen rules on day-before prices with a day-before
+  line-up: 567 bets, +12.7% (±8.3%), against +12.1% at 30 minutes. Betting the day before is allowed.
