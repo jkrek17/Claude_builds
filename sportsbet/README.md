@@ -1,10 +1,11 @@
 # SportsBet tools
 
-Three command line tools live here:
+Four command line tools live here:
 
 - **sharpbet** finds sportsbook prices that beat the sharp market's fair line and sizes the top 3.
 - **nflmodel** predicts the moneyline, spread and total for every NFL game. See [NFL prediction model](#nfl-prediction-model).
 - **nflprops** predicts each player's passing, rushing and receiving line as a full range of outcomes. See [NFL player props](#nfl-player-props).
+- **nflteasers** lists the week's classic 6-point teaser legs and says whether your app's price is good enough. See [NFL teasers](#nfl-teasers).
 
 # sharpbet
 
@@ -345,6 +346,23 @@ What this does and does not show:
   props, receptions and touchdowns have no per-player adjustment.
 - Not modelled yet: weather for passing props, how props move together within a game (needed for
   same-game parlays), first touchdown scorer, kickers and defences.
+
+# NFL teasers
+
+```
+nflteasers --fanduel -134 --fanatics -120
+```
+
+A teaser moves two spreads 6 points your way and both must win. The classic rule keeps only legs that
+cross 3 and 7: underdogs of +1.5 to +2.5 and favourites of -7.5 to -8.5. On closing lines from 2003
+to 2026 those legs won 75.3% (914-300), which breaks even at a price of -131. So the command is
+mostly a price check: it lists the week's qualifying legs, pairs them (at most 2 teasers, one leg per
+game) and says BET only when the price you type in needs each leg to win at least a point less than
+the rule's past record, about -123 or better today.
+
+The game model was tested as a way to pick the better legs and did not help; its opinion is shown but
+is not evidence. Rules, backtest and the full result: [research/teasers](research/teasers/README.md).
+`--no-model` skips the model and runs in a second.
 
 # Tests
 

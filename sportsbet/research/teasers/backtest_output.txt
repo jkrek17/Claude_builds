@@ -1,0 +1,128 @@
+Games with a closing spread, 2003 to 2026 week 10: 6381
+Each leg must win: -110 72.4%, -120 73.9%, -125 74.5%, -130 75.2%, -134 75.7%
+
+BASE RULE: classic legs (dog +1.5 to +2.5, fav -7.5 to -8.5), 6 points
+  2003-2014  all 309-111-3  73.6% (±2.2%)   dogs 189-73-2  72.1% (±2.8%)   favs 120-38-1  75.9% (±3.4%)
+  2015-2019  all 230-70-2  76.7% (±2.4%)   dogs 146-42-2  77.7% (±3.0%)   favs 84-28  75.0% (±4.1%)
+  2020-2022  all 150-43  77.7% (±3.0%)   dogs 87-28  75.7% (±4.0%)   favs 63-15  80.8% (±4.5%)
+  2023-2026  all 225-76  74.8% (±2.5%)   dogs 174-47  78.7% (±2.8%)   favs 51-29  63.7% (±5.4%)
+  2003-2026  all 914-300-5  75.3% (±1.2%)   dogs 596-190-4  75.8% (±1.5%)   favs 318-110-1  74.3% (±2.1%)
+  by season:
+    2003  25-10  71.4% (±7.6%)
+    2004  35-15  70.0% (±6.5%)
+    2005  41-12  77.4% (±5.7%)
+    2006  18-7  72.0% (±9.0%)
+    2007  16-3  84.2% (±8.4%)
+    2008  16-7  69.6% (±9.6%)
+    2009  8-4  66.7% (±13.6%)
+    2010  28-6-2  82.4% (±6.5%)
+    2011  21-7  75.0% (±8.2%)
+    2012  23-9  71.9% (±7.9%)
+    2013  41-14  74.5% (±5.9%)
+    2014  37-17-1  68.5% (±6.3%)
+    2015  49-13  79.0% (±5.2%)
+    2016  55-10-1  84.6% (±4.5%)
+    2017  50-17-1  74.6% (±5.3%)
+    2018  46-18  71.9% (±5.6%)
+    2019  30-12  71.4% (±7.0%)
+    2020  49-12  80.3% (±5.1%)
+    2021  54-10  84.4% (±4.5%)
+    2022  47-21  69.1% (±5.6%)
+    2023  61-19  76.2% (±4.8%)
+    2024  56-19  74.7% (±5.0%)
+    2025  72-27  72.7% (±4.5%)
+    2026  36-11  76.6% (±6.2%)
+  all seasons: 75.29% (±1.24%), fair price -131; one SE either way -121 to -141
+
+ALL SAME-WEEK PAIRS (return per teaser, ± bootstrap SE over weeks)
+  seasons    teasers    won          -110          -120          -125          -130          -134
+  2003-2014      460  51.7%   -1.4% ±7.4%   -5.2% ±7.1%   -6.9% ±7.0%   -8.5% ±6.9%   -9.6% ±6.8%
+  2015-2019      467  62.6%  +19.1% ±7.5%  +14.5% ±7.2%  +12.4% ±7.1%  +10.5% ±7.0%   +9.1% ±6.9%
+  2020-2022      318  64.2%  +22.5% ±10.0%  +17.6% ±9.6%  +15.5% ±9.5%  +13.5% ±9.3%  +12.0% ±9.2%
+  2023-2026      630  56.5%   +7.9% ±8.7%   +3.6% ±8.3%   +1.7% ±8.2%   -0.0% ±8.0%   -1.3% ±7.9%
+  2003-2026     1875  58.1%  +10.9% ±4.5%   +6.5% ±4.3%   +4.6% ±4.2%   +2.8% ±4.1%   +1.5% ±4.1%
+
+MODEL FILTER (gap = model margin for the team minus the margin its spread implies)
+  gap on qualifying legs: mean +0.77, SD 2.52, share >= 0: 63.6%
+  M1 gap >= 0
+    2010-2014  kept 97-34-2  74.0% (±3.8%)   dropped 53-19-1  73.6% (±5.2%)   difference +0.4% (z +0.07)
+    2015-2019  kept 130-40-1  76.5% (±3.3%)   dropped 100-30-1  76.9% (±3.7%)   difference -0.5% (z -0.09)
+    2010-2019  kept 227-74-3  75.4% (±2.5%)   dropped 153-49-2  75.7% (±3.0%)   difference -0.3% (z -0.08)
+    keeps 60% of legs  ->  fails the adoption test
+  M2 gap >= 1
+    2010-2014  kept 71-27-2  72.4% (±4.5%)   dropped 79-26-1  75.2% (±4.2%)   difference -2.8% (z -0.45)
+    2015-2019  kept 105-27  79.5% (±3.5%)   dropped 125-43-2  74.4% (±3.4%)   difference +5.1% (z +1.06)
+    2010-2019  kept 176-54-2  76.5% (±2.8%)   dropped 204-69-3  74.7% (±2.6%)   difference +1.8% (z +0.47)
+    keeps 46% of legs  ->  fails the adoption test
+  M3 gap >= 2
+    2010-2014  kept 49-19-1  72.1% (±5.4%)   dropped 101-34-2  74.8% (±3.7%)   difference -2.8% (z -0.42)
+    2015-2019  kept 80-16  83.3% (±3.8%)   dropped 150-54-2  73.5% (±3.1%)   difference +9.8% (z +2.00)
+    2010-2019  kept 129-35-1  78.7% (±3.2%)   dropped 251-88-4  74.0% (±2.4%)   difference +4.6% (z +1.16)
+    keeps 33% of legs  ->  fails the adoption test
+  M4 gap > -2
+    2010-2014  kept 134-46-3  74.4% (±3.3%)   dropped 16-7  69.6% (±9.6%)   difference +4.9% (z +0.48)
+    2015-2019  kept 189-59-2  76.2% (±2.7%)   dropped 41-11  78.8% (±5.7%)   difference -2.6% (z -0.42)
+    2010-2019  kept 323-105-5  75.5% (±2.1%)   dropped 57-18  76.0% (±4.9%)   difference -0.5% (z -0.10)
+    keeps 85% of legs  ->  fails the adoption test
+  ADOPTED ON DESIGN SEASONS: none (base rule, no model filter)
+
+JUDGING SEASONS 2020-2026 (scored once)
+  base rule  375-119  75.9% (±1.9%)
+  M1 gap >= 0  kept 255-78  76.6% (±2.3%)   dropped 120-41  74.5% (±3.4%)   difference +2.0% (z +0.49)
+  M2 gap >= 1  kept 180-59  75.3% (±2.8%)   dropped 195-60  76.5% (±2.7%)   difference -1.2% (z -0.30)
+  M3 gap >= 2  kept 110-40  73.3% (±3.6%)   dropped 265-79  77.0% (±2.3%)   difference -3.7% (z -0.87)
+  M4 gap > -2  kept 334-106  75.9% (±2.0%)   dropped 41-13  75.9% (±5.8%)   difference -0.0% (z -0.00)
+  correlation of gap with (margin + line) on qualifying legs 2010 on: +0.035 (n=1002)
+  win rate of ANY 6-point teased leg by gap, 2010 on (does the model help outside the classic range?):
+    gap -99 to -3  666-320-20  67.5% (±1.5%)
+    gap  -3 to -1  1382-626-39  68.8% (±1.0%)
+    gap  -1 to 1   2024-844-50  70.6% (±0.9%)
+    gap   1 to 3   1419-608-20  70.0% (±1.0%)
+    gap   3 to 99  718-278-10  72.1% (±1.4%)
+
+LIVE RULE, base legs ranked by gap, at most 2 teasers a week (2010 on has the model; earlier ranks by line)
+  seasons    teasers    won          -110          -120          -125          -130          -134
+  2003-2014      158  57.4%   +9.4% ±7.7%   +5.2% ±7.4%   +3.3% ±7.3%   +1.6% ±7.1%   +0.3% ±7.0%
+  2015-2019      114  56.6%   +8.1% ±8.4%   +3.8% ±8.1%   +1.9% ±7.9%   +0.2% ±7.8%   -1.1% ±7.7%
+  2020-2022       76  59.2%  +13.0% ±11.5%   +8.6% ±11.1%   +6.6% ±10.9%   +4.8% ±10.7%   +3.4% ±10.6%
+  2023-2026      108  57.4%   +9.6% ±9.9%   +5.2% ±9.5%   +3.3% ±9.3%   +1.6% ±9.2%   +0.2% ±9.0%
+  2003-2026      456  57.5%   +9.7% ±4.6%   +5.4% ±4.5%   +3.5% ±4.4%   +1.8% ±4.3%   +0.4% ±4.3%
+
+PRICE GATE, walk-forward: the past record each season started with and the price it allowed
+  2015: past record 73.6% on 420 legs -> bet at -111 or better   (-134: no bet, -120: no bet)
+  2016: past record 74.3% on 482 legs -> bet at -116 or better   (-134: no bet, -120: no bet)
+  2017: past record 75.5% on 547 legs -> bet at -125 or better   (-134: no bet, -120: bet)
+  2018: past record 75.4% on 614 legs -> bet at -124 or better   (-134: no bet, -120: bet)
+  2019: past record 75.1% on 678 legs -> bet at -122 or better   (-134: no bet, -120: bet)
+  2020: past record 74.9% on 720 legs -> bet at -120 or better   (-134: no bet, -120: bet)
+  2021: past record 75.3% on 781 legs -> bet at -123 or better   (-134: no bet, -120: bet)
+  2022: past record 76.0% on 845 legs -> bet at -128 or better   (-134: no bet, -120: bet)
+  2023: past record 75.5% on 913 legs -> bet at -124 or better   (-134: no bet, -120: bet)
+  2024: past record 75.5% on 993 legs -> bet at -125 or better   (-134: no bet, -120: bet)
+  2025: past record 75.5% on 1068 legs -> bet at -124 or better   (-134: no bet, -120: bet)
+  2026: past record 75.2% on 1167 legs -> bet at -123 or better   (-134: no bet, -120: bet)
+
+HALF-POINT CHECK (base legs; the line you actually bet differs from the close)
+  half a point worse   2003-2026  881-305-33  74.3% (±1.3%)
+  half a point worse   2015-2026  578-191-27  75.2% (±1.6%)
+  closing line         2003-2026  914-300-5  75.3% (±1.2%)
+  closing line         2015-2026  605-189-2  76.2% (±1.5%)
+  half a point better  2003-2026  919-286-14  76.3% (±1.2%)
+  half a point better  2015-2026  607-177-12  77.4% (±1.5%)
+
+REPORTED, NOT CHOSEN (all seen before the rulebook was written)
+  6.5 points, dogs +1.5 to +2.5, favs -9 to -7.5:  1011-324-14  75.7% (±1.2%)   2015 on 617-183-12  77.1% (±1.5%)
+  7 points, dogs +1.5 to +2.5, favs -9.5 to -7.5:  1137-352-5  76.4% (±1.1%)   2015 on 668-193-1  77.6% (±1.4%)
+  6 points, dogs +1 to +3, favs -9 to -7:  2375-855-61  73.5% (±0.8%)   2015 on 1216-420-25  74.3% (±1.1%)
+  home               488-169-2  74.3% (±1.7%)   2015 on 322-114-1  73.9% (±2.1%)
+  away               426-131-3  76.5% (±1.8%)   2015 on 283-75-1  79.1% (±2.2%)
+  total 42 or less   290-95-3  75.3% (±2.2%)   2015 on 153-53-1  74.3% (±3.0%)
+  total 42.5 to 47   376-110-2  77.4% (±1.9%)   2015 on 265-69-1  79.3% (±2.2%)
+  total above 47     248-95  72.3% (±2.4%)   2015 on 187-67  73.6% (±2.8%)
+  division game      316-106-2  74.9% (±2.1%)   2015 on 210-66  76.1% (±2.6%)
+  other game         598-194-3  75.5% (±1.5%)   2015 on 395-123-2  76.3% (±1.9%)
+  home dog           261-83-1  75.9% (±2.3%)   2015 on 185-58-1  76.1% (±2.7%)
+  away dog           335-107-3  75.8% (±2.0%)   2015 on 222-59-1  79.0% (±2.4%)
+  home fav           227-86-1  72.5% (±2.5%)   2015 on 137-56  71.0% (±3.3%)
+  away fav           91-24  79.1% (±3.8%)   2015 on 61-16  79.2% (±4.6%)
+  three-team teaser, each leg must win: +160 72.7%, +150 73.7%, +140 74.7%

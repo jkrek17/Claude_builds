@@ -116,4 +116,12 @@ system's $50 a week, not inside it.
 
 ## Verdicts
 
-(added after the backtest)
+Added 2026-11-16 after the backtest (`backtest_output.txt`).
+
+- **Model filter: none adopted.** M1 to M4 all failed the adoption test on 2010-2019. On 2020-2026 no
+  candidate separated kept from dropped legs (differences +2.0, -1.2, -3.7 and 0.0 points). The model
+  is used only to order the week's pairs.
+- **Base rule:** 914-300, 75.3% (±1.2), fair price -131. All pairs returned +1.5% (±4.1) at -134 and
+  +6.5% (±4.3) at -120.
+- **Price gate:** for 2026 the past record is 75.2%, so the gate allows -123 or better.
+- A fresh look at any rule here belongs on seasons after 2026, not on these again.

@@ -17,6 +17,7 @@ dev = ["pytest>=8", "numpy>=1.26", "pandas>=2.1"]
 sharpbet = "sharpbet.cli:main"
 nflmodel = "nflmodel.cli:main"
 nflprops = "nflmodel.props_cli:main"
+nflteasers = "nflmodel.teasers:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
