@@ -5,7 +5,7 @@ import math
 
 import pandas as pd
 
-from . import margin_model, qb_form, scoredist, totals_model
+from . import margin_model, qb_depth, qb_form, scoredist, totals_model
 
 # How much of the gap between model and betting line survives when both are used to predict the result.
 # From the 2010-2025 backtest, regressing (result - line) on (model - line) gives 0.107 (SE 0.073) for
@@ -37,11 +37,15 @@ def market_home_prob(home_ml: float, away_ml: float) -> float | None:
 
 
 def predict_all(games: pd.DataFrame, data_dir: str, wind_forecast: dict | None = None) -> pd.DataFrame:
-    """games plus pred_margin, pred_total and the wind used for each total, for 2003 onward."""
-    margins = margin_model.predict_margins(games, margin_model.load_team_stats(data_dir),
-                                           qb_form.load_player_stats(data_dir))
+    """games plus pred_margin, pred_total and the wind used for each total, for 2003 onward.
+
+    Played games use the quarterback who actually started, and a game the starter left early is
+    credited to the quarterbacks who played it (see qb_depth)."""
+    players = qb_form.load_player_stats(data_dir)
+    games, shares = qb_depth.prepare(games, players)
+    margins = margin_model.predict_margins(games, margin_model.load_team_stats(data_dir), players, qb_shares=shares)
     totals = totals_model.predict_totals(games, totals_model.load_team_stats(data_dir),
-                                         wind_forecast=wind_forecast)
+                                         wind_forecast=wind_forecast, player_stats=players, qb_shares=shares)
     out = games.merge(margins[["game_id", "pred_margin", "qb_assumed"]], on="game_id")
     return out.merge(totals[["game_id", "pred_total", "wind_mph", "wind_source"]], on="game_id")
 

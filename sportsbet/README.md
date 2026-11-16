@@ -105,12 +105,23 @@ It downloads game results and team stats from [nflverse](https://github.com/nflv
 
 ## What is in the model
 
-- **Margin** (`margin_model.py`, `qb_form.py`): margin-based Elo, opponent-adjusted passing and
-  rushing EPA with recency decay, a starting quarterback rating that travels with the quarterback,
-  the quarterback's own rolling EPA per dropback, a flag for an in-season backup, home field that
-  drifts over time, and rest. A ridge blend is refit each season on earlier seasons only.
+- **Margin** (`margin_model.py`, `qb_form.py`, `qb_depth.py`): margin-based Elo, opponent-adjusted
+  passing and rushing EPA with recency decay, a starting quarterback rating that travels with the
+  quarterback, the quarterback's own rolling EPA per dropback, a flag for an in-season backup,
+  another for a backup making the first start of a stint, home field that drifts over time, and
+  rest. A ridge blend is refit each season on earlier seasons only.
+- **Who is really at quarterback** (`qb_depth.py`, `depth_live.py`): before a week is predicted, the
+  starter is taken from ESPN's current depth chart, skipping anyone its injury list has out. If
+  ESPN cannot be reached, a listed starter who is on injured reserve or ruled out in the nflverse
+  files (refreshed overnight) is replaced by the available quarterback who last played for the
+  team. The card says when the starter was changed. The page is rebuilt 20 to 80 minutes before
+  every kickoff slot (`slots.py` and the hourly schedule), so each slot gets this check after
+  inactives are announced. After a game, the start goes to the quarterback who actually
+  played when nflverse lists one who did not, and a game the starter left before half his team's
+  dropbacks is credited to the quarterbacks who played it.
 - **Total** (`totals_model.py`, `weather.py`): opponent-adjusted points, offensive and defensive EPA
-  per play, pace, quarterback, roof, wind and divisional games, again fit only on the past. The wind
+  per play, pace, quarterback, the two starters' form, how inexperienced a backup starter is, roof,
+  wind and divisional games, again fit only on the past. The wind
   effect is learned from the wind recorded at past outdoor games (about a quarter point less scoring
   per mph). For an upcoming outdoor game the model uses the National Weather Service hourly forecast
   at kickoff, and falls back to the stadium's typical wind for the month when no forecast is
@@ -128,12 +139,12 @@ Walk-forward test on 4,363 games, 2010 to 2025. The model never saw a result bef
 
 | | Model | Closing line |
 |---|---|---|
-| Margin, average miss (points) | 10.27 | 10.05 |
-| Total, average miss (points) | 10.59 | 10.47 |
-| Straight-up winners picked | 65.2% | 66.4% |
-| Home win probability, Brier score (lower is better) | 0.217 | 0.211 |
-| Against the spread, every game | 2123-2131 (49.9%) | break-even is 52.4% |
-| Over/under, every game | 2214-2104 (51.3%) | break-even is 52.4% |
+| Margin, average miss (points) | 10.26 | 10.05 |
+| Total, average miss (points) | 10.57 | 10.47 |
+| Straight-up winners picked | 65.0% | 66.4% |
+| Home win probability, Brier score (lower is better) | 0.216 | 0.211 |
+| Against the spread, every game | 2138-2116 (50.3%) | break-even is 52.4% |
+| Over/under, every game | 2229-2089 (51.6%) | break-even is 52.4% |
 
 The model picks winners a little worse than the market, and it does not beat the closing line. No
 threshold of disagreement with the line produced a win rate that clears 52.4% beyond what luck
@@ -151,8 +162,13 @@ Four reviews tested about 100 candidate features and methods on the same walk-fo
 had a real effect and are now in the model:
 
 - **Quarterback form.** Lowered the margin miss from 10.30 to 10.27 and improved 13 of 16 seasons.
+- **Backup and injured quarterbacks** (added later, see `research/backup_qb`). Using the quarterback
+  who really played, crediting a game the starter left early to whoever finished it, and marking
+  down new and inexperienced backups lowered the margin miss from 10.27 to 10.26 and the total miss
+  from 10.59 to 10.57, each better in 14 of 16 seasons. Ignoring a game the starter left early was
+  also tested and made the model worse.
 - **Wind.** With the wind actually observed at each game, which is the best a forecast could do, the
-  total miss falls from 10.59 to 10.57 and the over/under record rises to 2233-2085 (51.7%). In
+  total miss falls from 10.57 to 10.55 and the over/under record rises to 2275-2043 (52.7%). In
   outdoor games with 15 mph or more of wind the under won 194 of 354 (54.8%, standard error 2.7
   points): 52.8% in 2010 to 2017 and 57.2% in 2018 to 2025. That is suggestive, not proven, and a
   forecast will do somewhat worse than the observed wind used here. The card flags these games.
@@ -217,8 +233,13 @@ no wind.
 
 ## Known limits
 
-- The starting quarterback is taken from nflverse. For games where it is not announced yet, the
-  team's last starter is assumed and the card says so. Other injuries are not modeled.
+- The starting quarterback comes from ESPN's depth chart, which is a team's stated order and not a
+  confirmed starter. The fallback rule from rosters was right about four times in five in 2019 to
+  2026. For games where no starter is listed yet, the team's last starter is assumed and
+  the card says so. Other injuries are not modeled.
+- A team down to an emergency quarterback is still rated too kindly. On average a new or
+  inexperienced backup costs a team one to three points, and that is all the model takes off; the
+  betting line often takes off much more.
 - Lines in nflverse are closing lines for past games and current lines for upcoming games. They may
   differ from your sportsbook's.
 - Wind is the only weather input. Temperature and rain are not used. Retractable-roof stadiums are

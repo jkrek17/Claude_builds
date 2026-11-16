@@ -1,0 +1,39 @@
+A. STARTER CORRECTION
+  games with a corrected starter: 55 (46 in the window)
+ margin
+  as listed                                    MAE 10.273  RMSE 13.2230  vs line 49.9%
+  corrected                                    MAE 10.269  RMSE 13.2174  vs line 50.1%  d(MSE) +0.150 (se 0.108), better in 10/16 seasons
+ total
+  as listed                                    MAE 10.590  RMSE 13.4227  vs line 51.3%
+  corrected                                    MAE 10.588  RMSE 13.4203  vs line 51.2%  d(MSE) +0.064 (se 0.050), better in 7/16 seasons
+  margin 2024-2025 only, as listed             MAE 10.058  RMSE 12.7928  vs line 47.4%
+  margin 2024-2025 only, corrected             MAE 10.025  RMSE 12.7541  vs line 48.5%  d(MSE) +0.989 (se 0.775), better in 2/2 seasons
+  total 2024-2025 only, as listed              MAE 10.197  RMSE 12.9922  vs line 53.1%
+  total 2024-2025 only, corrected              MAE 10.189  RMSE 12.9787  vs line 52.6%  d(MSE) +0.351 (se 0.376), better in 1/2 seasons
+
+B. EXTRA FACTS ABOUT THE STARTER (on corrected starters)
+ margin
+  + qb_new_diff                                MAE 10.268  RMSE 13.2114  vs line 50.3%  d(MSE) +0.158 (se 0.145), better in 9/16 seasons | on the 540 affected games d(MSE) +1.30
+  + qb_green_diff                              MAE 10.270  RMSE 13.2191  vs line 50.4%  d(MSE) -0.045 (se 0.061), better in 7/16 seasons | on the 1031 affected games d(MSE) -0.01
+  + qb_greenbk_diff                            MAE 10.270  RMSE 13.2195  vs line 50.3%  d(MSE) -0.056 (se 0.100), better in 7/16 seasons | on the 604 affected games d(MSE) +0.20
+  + qb_third_diff                              MAE 10.270  RMSE 13.2208  vs line 50.3%  d(MSE) -0.090 (se 0.076), better in 5/16 seasons | on the 419 affected games d(MSE) -0.52
+  + new + greenbk                              MAE 10.268  RMSE 13.2138  vs line 50.2%  d(MSE) +0.095 (se 0.167), better in 9/16 seasons | on the 868 affected games d(MSE) +0.52
+ total
+  + qb_form_sum                                MAE 10.575  RMSE 13.4056  vs line 51.7%  d(MSE) +0.393 (se 0.234), better in 12/16 seasons
+  + qb_backup_sum                              MAE 10.589  RMSE 13.4186  vs line 51.3%  d(MSE) +0.046 (se 0.110), better in 10/16 seasons | on the 1250 affected games d(MSE) -0.05
+  + qb_new_sum                                 MAE 10.586  RMSE 13.4128  vs line 51.5%  d(MSE) +0.202 (se 0.134), better in 11/16 seasons | on the 540 affected games d(MSE) +0.96
+  + qb_green_sum                               MAE 10.581  RMSE 13.4135  vs line 51.4%  d(MSE) +0.182 (se 0.117), better in 11/16 seasons | on the 1031 affected games d(MSE) +0.31
+  + qb_greenbk_sum                             MAE 10.577  RMSE 13.4104  vs line 51.3%  d(MSE) +0.266 (se 0.117), better in 12/16 seasons | on the 604 affected games d(MSE) +1.47
+  + qb_third_sum                               MAE 10.591  RMSE 13.4199  vs line 51.2%  d(MSE) +0.010 (se 0.155), better in 11/16 seasons | on the 419 affected games d(MSE) -0.92
+  + form + backup                              MAE 10.578  RMSE 13.4073  vs line 51.7%  d(MSE) +0.348 (se 0.246), better in 11/16 seasons | on the 1250 affected games d(MSE) +1.15
+  + form + backup + greenbk                    MAE 10.574  RMSE 13.4049  vs line 51.7%  d(MSE) +0.413 (se 0.251), better in 12/16 seasons | on the 1250 affected games d(MSE) +1.32
+  + form + greenbk                             MAE 10.570  RMSE 13.4027  vs line 51.7%  d(MSE) +0.472 (se 0.249), better in 13/16 seasons | on the 604 affected games d(MSE) +2.58
+  + form + new                                 MAE 10.575  RMSE 13.4020  vs line 51.3%  d(MSE) +0.489 (se 0.260), better in 11/16 seasons | on the 540 affected games d(MSE) +2.39
+
+C. CREDIT A GAME THE STARTER LEFT EARLY TO THE QUARTERBACKS WHO PLAYED IT (on corrected starters)
+  starter share < 0.5: margin                  MAE 10.264  RMSE 13.2112  vs line 50.3%  d(MSE) +0.165 (se 0.113), better in 10/16 seasons | on the 207 affected games d(MSE) +0.87
+  starter share < 0.5: margin + qb_new_diff    MAE 10.263  RMSE 13.2055  vs line 50.3%  d(MSE) +0.313 (se 0.183), better in 11/16 seasons | on the 207 affected games d(MSE) +2.65
+  starter share < 0.5: total                   MAE 10.587  RMSE 13.4183  vs line 51.3%  d(MSE) +0.053 (se 0.060), better in 10/16 seasons | on the 207 affected games d(MSE) -0.44
+  starter share < 0.9: margin                  MAE 10.265  RMSE 13.2116  vs line 50.4%  d(MSE) +0.154 (se 0.135), better in 8/16 seasons | on the 667 affected games d(MSE) +0.31
+  starter share < 0.9: margin + qb_new_diff    MAE 10.263  RMSE 13.2062  vs line 50.0%  d(MSE) +0.297 (se 0.198), better in 10/16 seasons | on the 667 affected games d(MSE) +0.82
+  starter share < 0.9: total                   MAE 10.585  RMSE 13.4152  vs line 51.2%  d(MSE) +0.136 (se 0.079), better in 10/16 seasons | on the 667 affected games d(MSE) +0.26
