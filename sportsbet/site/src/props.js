@@ -16,8 +16,11 @@ const Props = (() => {
   let data, site, players = new Map(), saved = { lines: {} }, game = "all", query = "", open = null;
   let market = null;  // which prop of the open player is showing
   let unfolded = new Set();  // games whose players are showing; the rest are folded to a heading
-  let view = "players", rankAll = false;  // "players" lists every prop by game, "td" ranks anytime touchdown chances
-  const RANK_SHOWN = 25;
+  // "top" ranks the plays that pass the betting rules at FanDuel's prices, "players" lists every prop by
+  // game, "td" ranks anytime touchdown chances.
+  let view = "players", rankAll = false;
+  let plays = null;  // data/plays.json, or null when live prices were not published
+  const RANK_SHOWN = 25, TOP_SHOWN = 10;
 
   // ---- Probability ----------------------------------------------------------------------------
 
@@ -311,6 +314,45 @@ const Props = (() => {
       ${played.length ? `<h2 class="day">Already played</h2><ol class="panel pr-ranklist">${played.map((r, i) => line(r, i, true)).join("")}</ol>` : ""}`;
   }
 
+  // Plays whose game has not kicked off, best first. Pure, so it can be tested.
+  function openPlays(file, now) {
+    return ((file && file.plays) || []).filter((p) => !p.kickoff || new Date(p.kickoff).getTime() > now)
+      .sort((a, b) => b.edge - a.edge);
+  }
+
+  const stamp = (iso) => new Date(iso).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit" });
+  const PLAY = { rec_yds: "rec yards", receptions: "catches" };
+  const signed = (x) => (x >= 0 ? "+" : "−") + show(Math.abs(Math.round(x * 100)));
+
+  // The week's best bets under the betting rules, from FanDuel's prices at the last update. The search
+  // box and game filter are hidden in this view, so the list starts near the top of a phone screen.
+  function topPlays() {
+    const head = "";
+    if (!plays) return `${head}<div class="panel p-4"><p class="display text-xl">Live prices are not connected</p>
+      <p class="lede mt-2">Top plays compares the model with FanDuel's lines, and no prices were published with this update. Every prop is still under All props.</p></div>`;
+    const rows = openPlays(plays, Date.now()).filter((b) => players.has(b.player_id));
+    const made = stamp(plays.generated_at);
+    const about = `<details class="panel notice pr-notice text-sm leading-relaxed"><summary><span><strong class="text-primary">Small edge, not proven.</strong> <span class="muted">${esc(plays.book)} prices from ${made}.</span></span></summary>
+      <p class="muted">These are ${esc(plays.book)} receiving yards and receptions unders, the only props where the model held up against real prices. A play needs the model's chance to beat the price by ${Math.round(plays.rules.min_model_edge * 100)}% or more, with at most one per player and ${plays.rules.per_game} per game. Edge is the expected return per $1 after leaning the model most of the way toward the book. In testing these rules returned about 3% to 7%, and a losing season is normal. The system bets a flat stake on up to ${plays.rules.week_bets} a week. Lines move: check the line and price in the app. Skip the bet if the line is lower than shown or the price is worse than the skip number. Tap a play to see the player's full range.</p></details>`;
+    if (!rows.length) return `${head}${about}<div class="panel p-4"><p class="display text-xl">No plays right now</p>
+      <p class="lede mt-2">${plays.games_priced ? `Nothing passed the rules at ${esc(plays.book)}'s prices for the ${plays.games_priced} of ${plays.games_open} games with lines posted.` : `${esc(plays.book)} had not posted receiving lines when this was checked.`} Lines usually appear a day or two before kickoff, and this list is rebuilt before each kickoff slot.</p></div>`;
+    const shown = rankAll ? rows : rows.slice(0, TOP_SHOWN);
+    const line = (b, i) => { const p = players.get(b.player_id); return `<li>
+      <button type="button" class="pr-rankrow pr-play" data-act="goto" data-player="${esc(p.id)}" data-prop="${esc(b.prop)}" data-line="${b.line}">
+        <span class="pr-rank-n display num">${i + 1}</span>
+        ${window.teamLogo ? window.teamLogo(p.team) : ""}
+        <span class="pr-name"><span class="display">${esc(p.name)}</span>
+          <span class="pr-bet num">Under ${fmt(b.line)} ${esc(PLAY[b.prop] || label(b.prop).toLowerCase())} <strong>${esc(b.price)}</strong></span>
+          <span class="pr-meta num">${p.team} vs ${p.opponent}${b.kickoff ? " · " + stamp(b.kickoff) : ""}${p.status ? ` · <strong class="pr-status">${esc(p.status)}</strong>` : ""}</span>
+          <span class="pr-meta num">Model ${show(Math.round(b.p_model * 100))} · book ${show(Math.round(b.p_book * 100))}</span>
+          <span class="pr-meta num">Skip if worse than ${esc(b.worst_price)}</span></span>
+        <span class="pr-rank-num"><span class="display num">${signed(b.edge)}</span><span class="pr-meta">edge</span></span>
+      </button></li>`; };
+    return `${head}${about}
+      <ol class="panel pr-ranklist">${shown.map(line).join("")}</ol>
+      ${rows.length > shown.length ? `<button type="button" class="pr-chip mt-3" data-act="rankall">Show all ${rows.length}</button>` : ""}`;
+  }
+
   // ---- Page ------------------------------------------------------------------------------------
 
   function games() {
@@ -337,12 +379,13 @@ const Props = (() => {
       </div>
       <div class="pr-filters">
         <div class="pr-views" role="group" aria-label="View">
+          <button type="button" class="${view === "top" ? "on" : ""}" data-act="view" data-view="top" aria-pressed="${view === "top"}">Top plays</button>
           <button type="button" class="${view === "players" ? "on" : ""}" data-act="view" data-view="players" aria-pressed="${view === "players"}">All props</button>
-          <button type="button" class="${view === "td" ? "on" : ""}" data-act="view" data-view="td" aria-pressed="${view === "td"}">Touchdown ranking</button>
+          <button type="button" class="${view === "td" ? "on" : ""}" data-act="view" data-view="td" aria-pressed="${view === "td"}">Touchdowns</button>
         </div>
         <div class="pr-chips" role="group" aria-label="Game">${chip("all", "All games")}${list.map((g) => chip(g.id, `${g.away} @ ${g.home}`, g.final)).join("")}</div>
       </div>
-      <details class="panel notice pr-notice text-sm leading-relaxed"><summary><span><strong class="text-primary">Model only, no sportsbook lines.</strong> <span class="muted" data-role="hint">Tap a game, then a player, then set the line.</span></span></summary>
+      <details class="panel notice pr-notice text-sm leading-relaxed" data-role="notice"><summary><span><strong class="text-primary">Model only, no sportsbook lines.</strong> <span class="muted" data-role="hint">Tap a game, then a player, then set the line.</span></span></summary>
         <p class="muted">Week ${data.week} props, updated ${made}. Type the line your book shows and the page gives the model's chance. A book's line usually sits near the model's median, so expect numbers close to 50%. This is not proof of an edge. Players may be inactive: check before you bet. Players marked steady or boom or bust have results that spread less or more than usual; search "steady" or "boom" to list them.</p></details>
       <div data-role="rank" hidden></div>
       ${list.map((g) => {
@@ -378,10 +421,12 @@ const Props = (() => {
 
   function filter() {
     const root = document.getElementById("props"), words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    const rank = root.querySelector('[data-role="rank"]'), td = view === "td";
+    const rank = root.querySelector('[data-role="rank"]'), td = view !== "players";  // a ranked view hides the game list
     rank.hidden = !td;
-    rank.innerHTML = td ? ranking() : "";
+    rank.innerHTML = view === "td" ? ranking() : view === "top" ? topPlays() : "";
     root.querySelector('[data-role="hint"]').hidden = td;
+    root.querySelector('[data-role="notice"]').hidden = view === "top";
+    root.classList.toggle("pr-top", view === "top");
     root.querySelectorAll(".pr-views button").forEach((b) => { const on = b.dataset.view === view; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
     let any = false;
     root.querySelectorAll(".pr-game").forEach((section) => {
@@ -471,7 +516,18 @@ const Props = (() => {
       document.querySelectorAll(".pr-chip").forEach((c) => c.classList.toggle("on", c.dataset.game === "all"));
       if (open === el.dataset.player) open = null;
       unfolded.add(players.get(el.dataset.player).game);
-      return toggle(el.dataset.player, true);
+      const pick = players.get(el.dataset.player).rows[el.dataset.prop];
+      if (pick) setEntry(pick, { line: Number(el.dataset.line) });  // a top play opens on the book's line
+      toggle(el.dataset.player, true);
+      if (pick) {
+        market = el.dataset.prop;
+        const card = document.querySelector(`#props .pr-player[data-player="${CSS.escape(el.dataset.player)}"] .pr-body`);
+        if (card) card.innerHTML = body(players.get(el.dataset.player));
+      }
+      // The player's card only has a place on the page once the game list is showing again.
+      const target = document.querySelector(`#props .pr-player[data-player="${CSS.escape(el.dataset.player)}"]`);
+      if (target) requestAnimationFrame(() => target.scrollIntoView({ block: "start", behavior: "smooth" }));
+      return;
     }
     if (act === "unpin") {
       const [id, prop] = el.dataset.key.split("|"), row = players.get(id).rows[prop];
@@ -557,10 +613,13 @@ const Props = (() => {
     site = siteData;
     const root = document.getElementById("props");
     root.innerHTML = `<p class="lede">Loading props…</p>`;
-    fetch("data/props.json", { cache: "no-store" })
-      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then((json) => {
+    // Top plays need live sportsbook prices. Without them the tab opens on the full list, as before.
+    const prices = fetch("data/plays.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    Promise.all([fetch("data/props.json", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }), prices])
+      .then(([json, top]) => {
         data = json;
+        plays = top && top.season === json.season && top.week === json.week && Array.isArray(top.plays) ? top : null;
+        view = plays ? "top" : "players";
         index(); loadSaved(); render();
         root.addEventListener("click", onClick);
         root.addEventListener("input", onInput);
@@ -580,7 +639,7 @@ const Props = (() => {
       });
   }
 
-  return { open: openTab, _test: { cdf, quantile, chances, wholePercents, implied, fairPrice, setData: (d) => { data = d; } } };
+  return { open: openTab, _test: { openPlays, cdf, quantile, chances, wholePercents, implied, fairPrice, setData: (d) => { data = d; } } };
 })();
 
 if (typeof module !== "undefined") module.exports = Props;

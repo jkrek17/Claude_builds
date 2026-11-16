@@ -223,6 +223,12 @@ time it is opened. Each row carries the model's full distribution for one player
 out the chance of over, under and push for any line typed in, in the browser. There are no sportsbook prop
 lines in the data. If the props file is missing the tab says so.
 
+The Props tab opens on **Top plays** when `data/plays.json` is there: this week's FanDuel receiving yards and
+receptions unders that pass the betting rules in `src/nflmodel/betting.py`, ranked by edge. The publish job
+writes it with `python -m nflmodel.plays props.json plays.json` when the repository has an `ODDS_API_KEY`
+secret (about 2 Odds API credits for each game that has not kicked off, on every rebuild). Without the secret
+the tab opens on the full list, as before.
+
 The `site` and `publish` jobs in `.github/workflows/sportsbet.yml` rerun the model and publish the page
 to GitHub Pages on Tuesday, Thursday, Saturday and Sunday mornings US Eastern, and whenever a change to
 `sportsbet/` lands on `main`. The page is published at https://jkrek17.github.io/Claude_builds/nfl/, and
