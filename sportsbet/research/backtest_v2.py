@@ -10,7 +10,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-from nflmodel import margin_model as mm, qb_form, scoredist, totals_model as tm
+from nflmodel import margin_model as mm, qb_depth, qb_form, scoredist, totals_model as tm
 from nflmodel.card import LINE_SD_MARGIN, LINE_SD_TOTAL
 
 FIRST, LAST = 2010, 2025
@@ -38,22 +38,33 @@ def main(data_dir: str) -> None:
     team, players = mm.load_team_stats(data_dir), qb_form.load_player_stats(data_dir)
     tstats = tm.load_team_stats(data_dir)
 
+    listed = games
+    # Played games use the quarterback who really started; a game the starter left early is credited
+    # to the quarterbacks who played it (research/backup_qb).
+    games, shares = qb_depth.prepare(listed, players)
+
     print(f"MARGIN, {FIRST} to {LAST}")
-    base = window(games.merge(mm.predict_margins(games, team)[["game_id", "pred_margin"]], on="game_id"))
-    full = window(games.merge(mm.predict_margins(games, team, players)[["game_id", "pred_margin"]], on="game_id"))
+    base = window(listed.merge(mm.predict_margins(listed, team)[["game_id", "pred_margin"]], on="game_id"))
+    full = window(games.merge(mm.predict_margins(games, team, players, qb_shares=shares)[["game_id", "pred_margin"]], on="game_id"))
     print(f"  games: {len(full)}")
     line("closing spread", full.spread_line, full.result, None)
     line("model without quarterback form", base.pred_margin, base.result, base.spread_line)
-    line("model with quarterback form", full.pred_margin, full.result, full.spread_line)
+    line("model with quarterback form and depth", full.pred_margin, full.result, full.spread_line)
     d = (base.result - base.pred_margin) ** 2 - (full.result - full.pred_margin) ** 2
     by_season = d.groupby(full.season.to_numpy()).mean()
-    print(f"  quarterback form lowered squared error in {(by_season > 0).sum()} of {len(by_season)} seasons")
+    print(f"  quarterback form and depth lowered squared error in {(by_season > 0).sum()} of {len(by_season)} seasons")
 
     print(f"\nTOTAL, {FIRST} to {LAST}")
     cols = ["game_id", "pred_total", "indoor"]
-    clim = window(games.merge(tm.predict_totals(games, tstats)[cols], on="game_id"))
-    obs = window(games.merge(tm.predict_totals(games, tstats, wind="observed")[cols], on="game_id"))
+    kw = dict(player_stats=players, qb_shares=shares)
+    plain = window(listed.merge(tm.predict_totals(listed, tstats)[cols], on="game_id"))
+    clim = window(games.merge(tm.predict_totals(games, tstats, **kw)[cols], on="game_id"))
+    obs = window(games.merge(tm.predict_totals(games, tstats, wind="observed", **kw)[cols], on="game_id"))
     line("closing total", clim.total_line, clim.total, None)
+    line("model without quarterback form and depth", plain.pred_total, plain.total, plain.total_line)
+    d = (plain.total - plain.pred_total) ** 2 - (clim.total - clim.pred_total) ** 2
+    by_season = d.groupby(clim.season.to_numpy()).mean()
+    print(f"  quarterback form and depth lowered squared error in {(by_season > 0).sum()} of {len(by_season)} seasons")
     line("model, stadium wind climatology", clim.pred_total, clim.total, clim.total_line)
     line("model, wind observed at the game*", obs.pred_total, obs.total, obs.total_line)
     print("  * a perfect forecast: the upper bound of what a kickoff wind forecast can add")
@@ -80,21 +91,24 @@ def main(data_dir: str) -> None:
         print(f"  k={k:2d}  n={len(test):4d}  actual {actual:.1%}  key-number distribution {keyed:.1%}  normal curve {plain:.1%}")
 
     print("\nLOOK-AHEAD CHECK (remove every game after a date; earlier predictions must not change)")
-    full_m = mm.predict_margins(games, team, players).set_index("game_id").pred_margin
-    full_t = tm.predict_totals(games, tstats).set_index("game_id").pred_total
+    def both(g, t_, ts_, p_):
+        g, sh = qb_depth.prepare(g, p_)
+        return (mm.predict_margins(g, t_, p_, qb_shares=sh).set_index("game_id").pred_margin,
+                tm.predict_totals(g, ts_, player_stats=p_, qb_shares=sh).set_index("game_id").pred_total)
+
+    games = listed
+    full_m, full_t = both(games, team, tstats, players)
     for cut in ("2012-10-21", "2019-12-01", "2024-10-06"):
         g2 = games[games.gameday <= cut]
         keep = g2.game_id
-        m2 = mm.predict_margins(g2, team[team.game_id.isin(keep)], players[players.game_id.isin(keep)]).set_index("game_id").pred_margin
-        t2 = tm.predict_totals(g2, tstats[tstats.game_id.isin(keep)]).set_index("game_id").pred_total
+        m2, t2 = both(g2, team[team.game_id.isin(keep)], tstats[tstats.game_id.isin(keep)], players[players.game_id.isin(keep)])
         print(f"  cut {cut}: max change margin {np.abs(full_m.loc[m2.index] - m2).max():.1e}, total {np.abs(full_t.loc[t2.index] - t2).max():.1e}")
         g3 = games.copy()  # blank the cut day's own results too: same-day games must not inform each other
         late = g3.gameday >= cut
         g3.loc[late, ["home_score", "away_score", "result", "total", "wind", "temp"]] = np.nan
         ids = g3.loc[g3.gameday == cut, "game_id"]
         gone = g3.loc[late, "game_id"]
-        m3 = mm.predict_margins(g3, team[~team.game_id.isin(gone)], players[~players.game_id.isin(gone)]).set_index("game_id").pred_margin
-        t3 = tm.predict_totals(g3, tstats[~tstats.game_id.isin(gone)]).set_index("game_id").pred_total
+        m3, t3 = both(g3, team[~team.game_id.isin(gone)], tstats[~tstats.game_id.isin(gone)], players[~players.game_id.isin(gone)])
         print(f"      same-day check ({len(ids)} games): margin {np.abs(full_m.loc[ids] - m3.loc[ids]).max():.1e}, total {np.abs(full_t.loc[ids] - t3.loc[ids]).max():.1e}")
 
 

@@ -11,13 +11,37 @@ on:
     # Rebuild the predictions page: Tuesday 5 AM, then Thursday, Saturday and Sunday 9 AM US Eastern (EST).
     - cron: "0 10 * * 2"
     - cron: "0 14 * * 4,6,0"
+    # Every hour from 8 AM to 10 PM Eastern: rebuild only when a kickoff slot starts in 20 to 80 minutes,
+    # so each slot's starting quarterbacks are checked after inactives are out (see the slot job).
+    - cron: "20 12-23,0-3 * * *"
 
 permissions:
   contents: read
 
 jobs:
+  slot:
+    name: Is a kickoff slot coming up?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          # Only the hourly schedule is gated; every other trigger always runs.
+          if [ "$SCHEDULE" = "20 12-23,0-3 * * *" ]; then
+            python3 sportsbet/src/nflmodel/slots.py >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Test (Python ${{ matrix.python }})
+    needs: slot
+    if: needs.slot.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
