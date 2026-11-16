@@ -45,7 +45,7 @@ def simulate_week(games: pd.DataFrame, data_dir: str, season: int, week: int | N
     shape = gs.fit_shape(rows, games, season)
     km = np.arange(gs.MARGIN_LO, gs.MARGIN_HI + 1)
     out = []
-    for r in table[(table["season"] == season) & (table["week"] == week)].itertuples(index=False):
+    for r in table[(table["season"] == season) & (table["week"] == week) & table["home_points"].isna()].itertuples(index=False):
         g = info.loc[r.game_id]
         h, a = gs.simulate(r.mu_home, r.mu_away, r.var_home, r.var_away, shape, n=n, seed=zlib.crc32(r.game_id.encode()))
         pm, pt = gs.pmfs(h, a)

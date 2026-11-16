@@ -194,8 +194,7 @@ nflsim                 # the next unplayed week
 nflsim --week 12 --json
 ```
 
-On 2018 to 2026 it matched the current model (margin miss 10.06 against 10.12 points, 65.4% winners
-for both) and had no edge against closing lines. Its uncertainty bands are honest but do not say
+On 2018 to 2026 it matched the current model (margin miss 10.06 against 10.12 points, 65.4% against 65.2% winners) and had no edge against closing lines. Its uncertainty bands are honest but do not say
 which games will be missed, and its raw key-number chances are too low until calibrated. It is not
 used by the web page. Details: [research/stochastic/REPORT.md](research/stochastic/REPORT.md).
 

@@ -270,6 +270,13 @@ def test_key_number_distribution_and_push_probability():
     card = game_card(row(spread_line=3.0, pred_margin=5.0), fit_key_factors(games))
     assert card["ats_pick"] == "HOM -3" and card["ats_push"] > 0.05 and 0.5 < card["ats_prob"] < BREAK_EVEN
     assert card["ou_push"] == 0  # half-point total cannot push
+    half = card["ats_half"]  # on a key number, half a point either way moves the chance by about the push
+    assert half["better_line"] == "-2.5" and half["worse_line"] == "-3.5"
+    assert half["better"] - half["worse"] == pytest.approx(card["ats_push"], abs=1e-9) and half["better"] > 0.5
+    dog = game_card(row(spread_line=3.0, pred_margin=1.0), fit_key_factors(games))["ats_half"]
+    assert dog["better_line"] == "+3.5" and dog["worse_line"] == "+2.5" and dog["better"] > dog["worse"]
+    assert game_card(row(spread_line=4.0, pred_margin=5.0), fit_key_factors(games))["ats_half"] is None
+    assert game_card(row(spread_line=3.0))["ats_half"] is None  # needs the key-number distribution
     assert game_card(row())["ats_push"] == 0  # without factors: plain normal, no push
     assert fit_key_factors(games, before="2019-01-01")["margin"] == pytest.approx(1)
 

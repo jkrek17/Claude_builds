@@ -39,18 +39,18 @@ is saved in `backtest_output.txt`.
 |---|---|---|---|
 | Margin, average miss (points) | 9.81 | 10.12 | 10.06 |
 | Total, average miss (points) | 10.42 | 10.62 | 10.62 |
-| Picks the winner | 66.5% | 65.4% | 65.4% |
+| Picks the winner | 66.5% | 65.2% | 65.4% |
 | Win chance log loss (lower is better) | 0.609 | 0.624 | 0.624 |
 | Against the spread, every game | | 48.3% | 48.8% |
-| Against the spread, bets that beat the vig | | 48.4%, return -6.1% | 49.4%, return -4.4% |
+| Against the spread, bets that beat the vig | | 48.2%, return -6.6% | 49.4%, return -4.4% |
 | Against the total, bets that beat the vig | | 50.1%, return -2.8% | 50.2%, return -2.7% |
-| Moneyline, bets that beat the vig | | return -7.5% | return -9.1% |
+| Moneyline, bets that beat the vig | | return -7.0% | return -9.1% |
 
 Each return has a standard error of 2 to 3 points, so the two models cannot be told apart and both
 lose about the vig. Asking for a bigger edge before betting (3% or 6%) does not help either model.
 
 **Margin forecast.** The simulation's margin is slightly better than the current model's (squared
-error lower in 7 of 9 seasons, t = 2.4), but the two forecasts are 98% correlated and the gain is
+error lower in 7 of 9 seasons, t = 2.0), but the two forecasts are 98% correlated and the gain is
 0.06 points against a 0.25 point gap to the closing line. Next to the closing line the simulation
 adds nothing (weight 0.04, standard error 0.10).
 
@@ -84,8 +84,8 @@ itself, not doubt about the teams.
 | | Team-games | Closing line | Current model | Simulation |
 |---|---|---|---|---|
 | First starter | 3,755 | +0.4 | +0.4 | +0.3 |
-| Second starter | 783 | -0.4 | -1.0 | -0.9 |
-| Third or later | 214 | +1.1 | +0.4 | +1.0 |
+| Second starter | 783 | -0.4 | -0.9 | -0.9 |
+| Third or later | 214 | +1.1 | +0.5 | +1.0 |
 
 Teams on their second quarterback scored about a point less than either model expected, which is a
 real miss (standard error 0.3), and the closing line had most of it. Teams on a third quarterback
@@ -93,7 +93,7 @@ did not score less than forecast on average in this window (standard error 0.7),
 general "third string" penalty left to add, although single games can miss badly. The weight the
 score model learned for a third starter is -0.9 points, and it is already included.
 
-**2025 and 2026 only (434 games).** Same picture: margin miss 9.91 against 9.92 for the current
+**2025 and 2026 only (434 games).** Same picture: margin miss 9.91 against 9.94 for the current
 model and 9.64 for the line; 49.5% against the spread on bets that beat the vig.
 
 ## What this means

@@ -68,13 +68,14 @@ function side(abbr, picked, align) {
   </div>`;
 }
 
-function pickTile(label, pick, prob, push, hit, breakEven) {
+function pickTile(label, pick, prob, push, hit, breakEven, half) {
   if (!pick) return `<div class="pick empty"><p class="eyebrow">${label}</p><p class="pick-main faint">No line yet</p></div>`;
   const clears = prob > breakEven;
   return `<div class="pick ${clears ? "clears" : "tossup"}">
     <p class="eyebrow flex items-center justify-between"><span>${label}</span>${mark(hit)}</p>
     <p class="pick-main">${pick}</p>
     <p class="num text-xs muted">${pct(prob)} chance${push >= 0.005 ? `<br>push ${pct(push)}` : ""}</p>
+    ${half ? `<p class="half num"><span>Half point matters</span>${pct(half.better, 0)} at ${half.better_line}<br>${pct(half.worse, 0)} at ${half.worse_line}</p>` : ""}
     <p class="pick-tag">${clears ? "Model lean" : "Toss-up"}</p>
   </div>`;
 }
@@ -133,7 +134,7 @@ function gameCard(c, breakEven, index) {
       </div>
       ${whyLine(c)}
       <div class="mt-3 grid grid-cols-2 gap-2">
-        ${pickTile("Spread", c.ats_pick, c.ats_prob, c.ats_push, c.ats_hit, breakEven)}
+        ${pickTile("Spread", c.ats_pick, c.ats_prob, c.ats_push, c.ats_hit, breakEven, c.final ? null : c.ats_half)}
         ${pickTile("Total", c.ou_pick, c.ou_prob, c.ou_push, c.ou_hit, breakEven)}
       </div>
       ${chips.length ? `<div class="mt-3 flex flex-wrap gap-2">${chips.join("")}</div>` : ""}`;
@@ -329,6 +330,7 @@ function renderAbout(data) {
     ${item("It has no proven edge", `Over ${b.games.toLocaleString()} games from ${b.first} to ${b.last} it went ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. You need ${pct(data.break_even)} to break even at -110. The closing line was the more accurate forecast of both margin and total. Betting every pick would have lost about 4% of the money staked.`, "key")}
     ${item("Model win chance", `The split bar shows the model's chance for each team. Open "The numbers behind it" to see the market's chance, taken from the moneylines with the bookmaker's cut removed. The market's number has been the more accurate one, so a gap between the two is not an edge.`)}
     ${item("The chance on a spread or total pick", `This is the chance the pick wins if it does not push. It leans mostly on the line and only slightly on the model, which is why it stays close to 50%. Values this close to 50% are not statistically different from a coin flip. A pick is outlined in gold only when its chance clears ${pct(data.break_even)}.`)}
+    ${item("Half point matters", `Shown on a spread pick when the line is exactly 3, 7 or 10, the margins games land on most often. It gives the pick's chance if you can get the line half a point better, and half a point worse. A large gap means it is worth shopping for the better number.`)}
     ${item("Push chance", `Shown when a line sits on a whole number. NFL games land on margins such as 3 and 7 far more often than a smooth curve suggests, and the push chance accounts for that.`)}
     ${item("Wind", `Outdoor games use the National Weather Service forecast at kickoff when one is available. A game is marked windy at ${data.windy_mph} mph or more. In the backtest, unders won 54.8% of those games, which is suggestive but not proven.`)}
     ${item("Limits", `Injuries other than the starting quarterback are not modeled. Lines are the ones published by nflverse and may differ from your sportsbook's. Rain and temperature are not used.`)}
