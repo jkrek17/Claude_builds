@@ -5,7 +5,7 @@ import math
 
 import pandas as pd
 
-from . import margin_model, qb_form, scoredist, totals_model
+from . import margin_model, qb_depth, qb_form, scoredist, totals_model
 
 # How much of the gap between model and betting line survives when both are used to predict the result.
 # From the 2010-2025 backtest, regressing (result - line) on (model - line) gives 0.107 (SE 0.073) for
@@ -37,11 +37,15 @@ def market_home_prob(home_ml: float, away_ml: float) -> float | None:
 
 
 def predict_all(games: pd.DataFrame, data_dir: str, wind_forecast: dict | None = None) -> pd.DataFrame:
-    """games plus pred_margin, pred_total and the wind used for each total, for 2003 onward."""
-    margins = margin_model.predict_margins(games, margin_model.load_team_stats(data_dir),
-                                           qb_form.load_player_stats(data_dir))
+    """games plus pred_margin, pred_total and the wind used for each total, for 2003 onward.
+
+    Played games use the quarterback who actually started, and a game the starter left early is
+    credited to the quarterbacks who played it (see qb_depth)."""
+    players = qb_form.load_player_stats(data_dir)
+    games, shares = qb_depth.prepare(games, players)
+    margins = margin_model.predict_margins(games, margin_model.load_team_stats(data_dir), players, qb_shares=shares)
     totals = totals_model.predict_totals(games, totals_model.load_team_stats(data_dir),
-                                         wind_forecast=wind_forecast)
+                                         wind_forecast=wind_forecast, player_stats=players, qb_shares=shares)
     out = games.merge(margins[["game_id", "pred_margin", "qb_assumed"]], on="game_id")
     return out.merge(totals[["game_id", "pred_total", "wind_mph", "wind_source"]], on="game_id")
 
@@ -71,6 +75,18 @@ def _bet_probs(center: float, line: float, over: bool, sd: float, factors, rng) 
     return win / (above + below), push
 
 
+HALF_POINT_LINES = (3.0, 7.0, 10.0)  # spreads where half a point changes the bet the most
+
+
+def _half_point(center: float, line: float, home_side: bool, sd: float, factors, rng) -> tuple[float, float]:
+    """Chance the picked side wins with half a point more in its favour, and with half a point less."""
+    center += scoredist.balanced_center(line, sd, factors, *rng) - line
+    pmf = scoredist.keyed_pmf(center, sd, factors, *rng)
+    easier, harder = (line - 0.5, line + 0.5) if home_side else (line + 0.5, line - 0.5)
+    pick = 0 if home_side else 2  # line_probs gives (home side, push, away side)
+    return scoredist.line_probs(pmf, easier, rng[0])[pick], scoredist.line_probs(pmf, harder, rng[0])[pick]
+
+
 def game_card(row: pd.Series, factors: dict | None = None) -> dict:
     """Predictions and picks for one game. spread_line is positive when the home team is favored.
 
@@ -89,7 +105,7 @@ def game_card(row: pd.Series, factors: dict | None = None) -> dict:
         "ml_pick": home if home_prob >= 0.5 else away,
         "ml_pick_prob": max(home_prob, 1 - home_prob),
         "qb_assumed": bool(row.get("qb_assumed", 0)),
-        "spread_line": None, "ats_pick": None, "ats_gap": None, "ats_prob": None, "ats_push": None,
+        "spread_line": None, "ats_pick": None, "ats_gap": None, "ats_prob": None, "ats_push": None, "ats_half": None,
         "total_line": None, "ou_pick": None, "ou_gap": None, "ou_prob": None, "ou_push": None,
         "wind_mph": None if pd.isna(row.get("wind_mph")) else float(row["wind_mph"]),
         "wind_source": row.get("wind_source"),
@@ -105,6 +121,12 @@ def game_card(row: pd.Series, factors: dict | None = None) -> dict:
         prob, push = _bet_probs(float(line) + MARGIN_WEIGHT * gap, float(line), gap >= 0, LINE_SD_MARGIN,
                                 factors.get("margin"), scoredist.MARGIN_RANGE)
         card.update(spread_line=float(line), ats_pick=pick, ats_gap=abs(gap), ats_prob=prob, ats_push=push)
+        if factors.get("margin") is not None and abs(float(line)) in HALF_POINT_LINES:
+            better, worse = _half_point(float(line) + MARGIN_WEIGHT * gap, float(line), gap >= 0, LINE_SD_MARGIN,
+                                        factors["margin"], scoredist.MARGIN_RANGE)
+            shown = -float(line) if gap >= 0 else float(line)  # the pick's own number, e.g. -3 or +3
+            card["ats_half"] = {"better_line": f"{shown + 0.5:+g}", "better": better,
+                                "worse_line": f"{shown - 0.5:+g}", "worse": worse}
     tline = row.get("total_line")
     if not pd.isna(tline):
         gap = total - float(tline)

@@ -161,11 +161,16 @@ def _nan(x):
 
 
 def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict | None = None,
-                   state: dict | None = None) -> pd.DataFrame:
+                   state: dict | None = None, qb_shares: dict | None = None) -> pd.DataFrame:
     """Pre-kickoff features for every game in `games` (all seasons, played or not).
 
     If `state` is a dict it is filled with each team's pace rating after the last played game
-    (offensive plays per game against the league average), for display; see ratings.py."""
+    (offensive plays per game against the league average), for display; see ratings.py.
+
+    `qb_shares` maps (game_id, team) to [(quarterback, share of the team's dropbacks), ...]; a game
+    listed there moves the ratings of the quarterbacks who played, in those shares, and not only the
+    starter's (see `qb_depth.dropback_shares`)."""
+    qb_shares = qb_shares or {}
     params = params or PARAMS
     g = _prep(games, team_stats)
     R = {m: _Rating(m, params[m]) for m in ("pts", "epa", "plays")}
@@ -181,6 +186,7 @@ def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict |
             "qb_adj", "clim_wind", "home_pts_hat", "away_pts_hat"]}
     out["qb_known"] = np.zeros(n)
 
+    gids = g["game_id"].to_numpy()
     col = {c: g[c].to_numpy() for c in
            ["season", "home", "away", "home_score", "away_score", "home_epa", "away_epa",
             "home_plays", "away_plays", "played", "home_qb_id", "away_qb_id", "roof",
@@ -258,7 +264,7 @@ def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict |
                     continue
                 eh = r.residual(h, a, hq, vh, hs)
                 ea = r.residual(a, h, aq, va, -hs)
-                deltas.append((m, h, a, hq, aq, eh, ea, vh, va, hs))
+                deltas.append((m, h, a, hq, aq, eh, ea, vh, va, hs, gids[x]))
             if hq is not None:
                 last_qb[h] = hq
             if aq is not None:
@@ -266,7 +272,7 @@ def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict |
             w = col["wind"][x]
             if col["roof"][x] in ("outdoors", "open") and not _nan(float(w)):
                 wind_pending.append(((col["stadium_id"][x], int(months[x])), float(w)))
-        for m, h, a, hq, aq, eh, ea, vh, va, hs in deltas:
+        for m, h, a, hq, aq, eh, ea, vh, va, hs, gid in deltas:
             r = R[m]
             k, kq, km = r.p["k"], r.p["kq"], r.p["km"]
             r.O[h] = r.O.get(h, 0.0) + k * eh
@@ -274,10 +280,9 @@ def build_features(games: pd.DataFrame, team_stats: pd.DataFrame, params: dict |
             r.O[a] = r.O.get(a, 0.0) + k * ea
             r.D[h] = r.D.get(h, 0.0) + k * ea
             if kq > 0:
-                if hq is not None:
-                    r.Q[hq] = r.Q.get(hq, r.p["q0"]) + kq * eh
-                if aq is not None:
-                    r.Q[aq] = r.Q.get(aq, r.p["q0"]) + kq * ea
+                for team, starter, e in ((h, hq, eh), (a, aq, ea)):
+                    for q, w in qb_shares.get((gid, team)) or ([(starter, 1.0)] if starter is not None else []):
+                        r.Q[q] = r.Q.get(q, r.p["q0"]) + kq * w * e
             r.mu += km * ((vh - r.mu) + (va - r.mu))
             if hs:
                 r.hfa += 0.002 * ((vh - va) / 2.0 - r.hfa)
@@ -345,7 +350,8 @@ def walk_forward_predict(feat: pd.DataFrame, features=None, ridge: float | None 
 
 
 def predict_totals(games: pd.DataFrame, team_stats: pd.DataFrame,
-                   wind_forecast: dict | None = None, wind: str = "climatology") -> pd.DataFrame:
+                   wind_forecast: dict | None = None, wind: str = "climatology",
+                   player_stats: pd.DataFrame | None = None, qb_shares: dict | None = None) -> pd.DataFrame:
     """One row per game_id for every game from 2003 on (played or not).
 
     pred_total uses only information available before that game's kickoff day.
@@ -356,10 +362,20 @@ def predict_totals(games: pd.DataFrame, team_stats: pd.DataFrame,
     * a game in `wind_forecast` ({game_id: forecast mph at kickoff}) uses that forecast;
     * otherwise the stadium's typical wind for the month, from earlier seasons (`wind="climatology"`);
     * `wind="observed"` instead uses the wind recorded at the game where there is one. That is a
-      perfect forecast, so use it only to measure the upper bound of what a forecast can add."""
+      perfect forecast, so use it only to measure the upper bound of what a forecast can add.
+
+    With `player_stats` (quarterback rows of nflverse weekly player stats) the linear layer also uses
+    the two starters' own form and how inexperienced a backup starter is, see `qb_depth`.
+    `qb_shares` is passed to `build_features`."""
     if wind not in ("climatology", "observed"):
         raise ValueError("wind must be 'climatology' or 'observed'")
-    feat = build_features(games, team_stats)
+    feat = build_features(games, team_stats, qb_shares=qb_shares)
+    features = list(FEATURES)
+    if player_stats is not None:
+        from . import qb_depth, qb_form
+        form = qb_form.qb_form_features(games, player_stats)[["game_id", "qb_form_sum"]]
+        feat = feat.merge(form, on="game_id", how="left").merge(qb_depth.depth_features(games), on="game_id", how="left")
+        features += qb_depth.TOTAL_FEATURES
     feat["wind_x_pred"] = feat["wind_x"] if wind == "observed" else feat["clim_wind_x"]
     feat["wind_source"] = np.where(feat["indoor"] > 0, "indoor",
                                    np.where((wind == "observed") & feat["obs_wind_x"].notna(),
@@ -370,7 +386,7 @@ def predict_totals(games: pd.DataFrame, team_stats: pd.DataFrame,
         feat.loc[use, "wind_x_pred"] = fc[use] - WIND_PRIOR
         feat.loc[use, "wind_source"] = "forecast"
     feat["wind_mph"] = np.where(feat["indoor"] > 0, np.nan, feat["wind_x_pred"] + WIND_PRIOR)
-    feat["pred_total"] = walk_forward_predict(feat, predict_with={"wind_x": "wind_x_pred"})
+    feat["pred_total"] = walk_forward_predict(feat, features=features, predict_with={"wind_x": "wind_x_pred"})
     cols = ["game_id", "season", "week", "pred_total", "struct_total", "base_pts", "off_pts",
             "def_pts", "off_epa", "def_epa", "pace", "qb_adj", "qb_known", "indoor",
             "clim_wind", "wind_mph", "wind_source", "div_game"]

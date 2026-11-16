@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from . import margin_model, qb_form, totals_model
+from . import margin_model, qb_depth, qb_form, totals_model
 
 PARTS = ("results", "offense", "defense", "qb")
 SPLITS = ("pass_off", "rush_off", "pass_def", "rush_def")  # offense and defense, each split by play type
@@ -49,13 +49,14 @@ def _next_games(this: pd.DataFrame) -> dict:
 
 
 def build(games: pd.DataFrame, team_stats: pd.DataFrame, player_stats: pd.DataFrame, season: int,
-          pace: dict | None = None) -> dict:
+          pace: dict | None = None, qb_shares: dict | None = None) -> dict:
     """`teams`: one row per team, best first. `games`: game_id -> the parts of that game's predicted margin
     (home minus away points). `pace` is the totals model's plays-per-game rating by team, if wanted."""
     model, form = {}, {}
-    feats = margin_model.compute_features(games, team_stats, state=model)
+    feats = margin_model.compute_features(games, team_stats, state=model, qb_shares=qb_shares)
     feats = feats.merge(qb_form.qb_form_features(games, player_stats, state=form), on="game_id", how="left")
-    features = margin_model.FEATURES + qb_form.FEATURES
+    feats = feats.merge(qb_depth.depth_features(games), on="game_id", how="left")
+    features = margin_model.FEATURES + qb_form.FEATURES + qb_depth.MARGIN_FEATURES
     _, weights = margin_model.blend_walk_forward(feats, features=features)
     if season not in weights:
         return {"teams": [], "games": {}}
@@ -102,7 +103,8 @@ def build(games: pd.DataFrame, team_stats: pd.DataFrame, player_stats: pd.DataFr
     for r in rows.itertuples(index=False):
         breakdown[r.game_id] = {
             "team": w["elo_diff"] * r.elo_diff + w["pass_diff"] * r.pass_diff + w["rush_diff"] * r.rush_diff,
-            "qb": w["qb_diff"] * r.qb_diff + w["qb_form_diff"] * r.qb_form_diff + w["qb_backup_diff"] * r.qb_backup_diff,
+            "qb": (w["qb_diff"] * r.qb_diff + w["qb_form_diff"] * r.qb_form_diff
+                   + w["qb_backup_diff"] * r.qb_backup_diff + w["qb_new_diff"] * r.qb_new_diff),
             "home": w["hfa"] * r.hfa,
             "rest": w["rest_diff"] * r.rest_diff,
         }
@@ -111,6 +113,8 @@ def build(games: pd.DataFrame, team_stats: pd.DataFrame, player_stats: pd.DataFr
 
 def load(games: pd.DataFrame, data_dir: str, season: int) -> dict:
     totals: dict = {}
-    totals_model.build_features(games, totals_model.load_team_stats(data_dir), state=totals)
-    return build(games, margin_model.load_team_stats(data_dir), qb_form.load_player_stats(data_dir), season,
-                 pace=totals["pace"])
+    players = qb_form.load_player_stats(data_dir)
+    games, shares = qb_depth.prepare(games, players)
+    totals_model.build_features(games, totals_model.load_team_stats(data_dir), state=totals, qb_shares=shares)
+    return build(games, margin_model.load_team_stats(data_dir), players, season,
+                 pace=totals["pace"], qb_shares=shares)

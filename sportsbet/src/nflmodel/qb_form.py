@@ -23,7 +23,7 @@ DECAY = 0.97         # per-appearance decay of a quarterback's history
 PRIOR_WEIGHT = 200.0  # dropbacks of new-quarterback prior
 PRIOR_START = -0.10  # initial EPA per dropback assumed for a quarterback with no history
 FEATURES = ["qb_form_diff", "qb_backup_diff"]
-_COLS = ["player_id", "position", "game_id", "attempts", "sacks_suffered", "carries",
+_COLS = ["player_id", "player_display_name", "position", "game_id", "team", "attempts", "sacks_suffered", "carries",
          "passing_epa", "rushing_epa"]
 
 
@@ -34,7 +34,7 @@ def load_player_stats(data_dir: str) -> pd.DataFrame:
         raise FileNotFoundError(f"no stats_player_week_*.csv in {data_dir}")
     parts = []
     for f in files:
-        d = pd.read_csv(f, usecols=_COLS, low_memory=False)
+        d = pd.read_csv(f, usecols=lambda c: c in _COLS, low_memory=False)
         parts.append(d[d["position"] == "QB"])
     return pd.concat(parts, ignore_index=True)
 
@@ -70,6 +70,7 @@ def qb_form_features(games: pd.DataFrame, player_stats: pd.DataFrame, state: dic
     last_qb: dict[str, str] = {}
     form = np.zeros(len(g))
     backup = np.zeros(len(g))
+    form_sum = np.zeros(len(g))
 
     def side(team, qb, season):
         if not isinstance(qb, str):
@@ -92,7 +93,7 @@ def qb_form_features(games: pd.DataFrame, player_stats: pd.DataFrame, state: dic
         for k in range(i, j):
             fh, bh, qh = side(home[k], hq[k], seasons[k])
             fa, ba, qa = side(away[k], aq[k], seasons[k])
-            form[k], backup[k] = fh - fa, bh - ba
+            form[k], backup[k], form_sum[k] = fh - fa, bh - ba, fh + fa
             todays.append((k, qh, qa))
         for k, qh, qa in todays:  # update only after every game of the day has its features
             if not played[k]:
@@ -117,4 +118,5 @@ def qb_form_features(games: pd.DataFrame, player_stats: pd.DataFrame, state: dic
     if state is not None:
         state.update(form={q: (total[q] + PRIOR_WEIGHT * prior) / (weight[q] + PRIOR_WEIGHT) - league for q in weight},
                      new_qb=prior - league)
-    return pd.DataFrame({"game_id": gids, "qb_form_diff": form, "qb_backup_diff": backup})
+    return pd.DataFrame({"game_id": gids, "qb_form_diff": form, "qb_backup_diff": backup,
+                         "qb_form_sum": form_sum})
