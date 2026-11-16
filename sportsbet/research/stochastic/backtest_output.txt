@@ -1,0 +1,350 @@
+
+================ judging 2018-2026: 2376 games ================
+POINT FORECASTS (mean absolute error / root mean square error)
+    closing line             margin 9.813 / 12.713   total 10.418 / 13.183
+    current model            margin 10.119 / 12.986   total 10.616 / 13.422
+    simulation               margin 10.062 / 12.932   total 10.617 / 13.417
+WINNER (ties count half; Brier and log loss: lower is better)
+    market (moneylines, vig removed)   right 66.5%  Brier 0.2108  log loss 0.6091
+    current model                      right 65.4%  Brier 0.2175  log loss 0.6244
+    simulation, raw                    right 65.3%  Brier 0.2174  log loss 0.6243
+    simulation, calibrated             right 65.4%  Brier 0.2175  log loss 0.6244
+CALIBRATION OF THE WIN CHANCE (favourite's chance by the model, and how often it won)
+    current model
+        50%-55%: said 52.4%, won 55.2% (n=498)
+        55%-60%: said 57.4%, won 57.7% (n=504)
+        60%-65%: said 62.5%, won 63.7% (n=430)
+        65%-70%: said 67.5%, won 71.8% (n=330)
+        70%-80%: said 74.6%, won 74.7% (n=446)
+        80%-100%: said 84.3%, won 87.4% (n=159)
+    simulation, calibrated
+        50%-55%: said 52.4%, won 54.3% (n=492)
+        55%-60%: said 57.3%, won 57.4% (n=498)
+        60%-65%: said 62.4%, won 63.7% (n=408)
+        65%-70%: said 67.4%, won 72.5% (n=338)
+        70%-80%: said 74.5%, won 74.9% (n=443)
+        80%-100%: said 84.5%, won 83.5% (n=188)
+AGAINST THE CLOSING SPREAD (home covers when result > spread)
+  current model
+    every game                    2376 bets  1119-1199  win 48.3%  return -6.4% (SE 2.0%)
+    beats the vig                 1941 bets  921-981  win 48.4%  return -6.1% (SE 2.2%)
+    beats it by 3%+               1596 bets  749-817  win 47.8%  return -7.2% (SE 2.4%)
+    beats it by 6%+               1270 bets  595-650  win 47.8%  return -7.2% (SE 2.7%)
+  simulation, raw
+    every game                    2376 bets  1122-1196  win 48.4%  return -6.1% (SE 2.0%)
+    beats the vig                 1891 bets  894-950  win 48.5%  return -5.8% (SE 2.2%)
+    beats it by 3%+               1480 bets  691-750  win 48.0%  return -6.7% (SE 2.5%)
+    beats it by 6%+               1111 bets  531-558  win 48.8%  return -5.2% (SE 2.9%)
+  simulation, calibrated
+    every game                    2376 bets  1132-1186  win 48.8%  return -5.4% (SE 2.0%)
+    beats the vig                 1946 bets  942-965  win 49.4%  return -4.4% (SE 2.2%)
+    beats it by 3%+               1570 bets  762-781  win 49.4%  return -4.3% (SE 2.4%)
+    beats it by 6%+               1216 bets  588-606  win 49.2%  return -4.6% (SE 2.8%)
+AGAINST THE CLOSING TOTAL
+  current model
+    every game                    2376 bets  1181-1173  win 50.2%  return -2.9% (SE 2.0%)
+    beats the vig                 1933 bets  960-955  win 50.1%  return -2.8% (SE 2.2%)
+    beats it by 3%+               1537 bets  768-754  win 50.5%  return -2.1% (SE 2.5%)
+    beats it by 6%+               1185 bets  577-595  win 49.2%  return -4.4% (SE 2.8%)
+  simulation, raw
+    every game                    2376 bets  1181-1173  win 50.2%  return -2.9% (SE 2.0%)
+    beats the vig                 1882 bets  939-925  win 50.4%  return -2.3% (SE 2.2%)
+    beats it by 3%+               1490 bets  740-735  win 50.2%  return -2.7% (SE 2.5%)
+    beats it by 6%+               1149 bets  580-558  win 51.0%  return -1.1% (SE 2.9%)
+  simulation, calibrated
+    every game                    2376 bets  1179-1175  win 50.1%  return -3.0% (SE 2.0%)
+    beats the vig                 1896 bets  942-936  win 50.2%  return -2.7% (SE 2.2%)
+    beats it by 3%+               1515 bets  754-747  win 50.2%  return -2.6% (SE 2.5%)
+    beats it by 6%+               1186 bets  592-582  win 50.4%  return -2.1% (SE 2.8%)
+MONEYLINE AT CLOSING PRICES
+  current model
+    beats the vig                 1986 bets  739-1239  win 37.4%  return -7.5% (SE 3.1%)
+    beats it by 3%+               1660 bets  571-1081  win 34.6%  return -8.0% (SE 3.5%)
+    beats it by 6%+               1403 bets  465-931  win 33.3%  return -5.8% (SE 4.0%)
+  simulation, raw
+    beats the vig                 1911 bets  738-1165  win 38.8%  return -8.7% (SE 3.0%)
+    beats it by 3%+               1567 bets  561-1000  win 35.9%  return -9.1% (SE 3.5%)
+    beats it by 6%+               1272 bets  427-839  win 33.7%  return -9.2% (SE 4.0%)
+  simulation, calibrated
+    beats the vig                 1923 bets  706-1210  win 36.8%  return -9.1% (SE 3.1%)
+    beats it by 3%+               1605 bets  555-1043  win 34.7%  return -8.3% (SE 3.5%)
+    beats it by 6%+               1331 bets  438-888  win 33.0%  return -8.5% (SE 4.0%)
+WHOLE DISTRIBUTION (average log chance given to the exact result; higher is better)
+    market line + key numbers          margin -3.8321   total -3.9706
+    current model, normal curve        margin -3.9838
+    current model + key numbers        margin -3.8544   total -3.9889
+    simulation, raw                    margin -3.9060   total -3.9869
+    simulation, calibrated             margin -3.8569   total -3.9853
+    simulation, same band every game   margin -3.9022
+KEY NUMBERS (how often a game ended on this margin, and the chance each model gave it)
+    by  3: actual 14.9%   current 14.9%  raw 8.6%  calibrated 13.5%
+    by  7: actual 8.5%   current 9.1%  raw 6.3%  calibrated 8.3%
+    by 10: actual 4.7%   current 5.6%  raw 5.3%  calibrated 5.2%
+    by  6: actual 6.7%   current 5.8%  raw 5.9%  calibrated 6.5%
+    by 14: actual 5.1%   current 4.9%  raw 4.4%  calibrated 4.6%
+    by  4: actual 4.8%   current 4.8%  raw 6.0%  calibrated 5.0%
+    by  1: actual 4.5%   current 4.0%  raw 5.0%  calibrated 4.3%
+    by  0: actual 0.4%   current 0.2%  raw 0.2%  calibrated 0.2%
+PUSHES AND HALF POINTS (games with a whole-number closing spread: chance of landing exactly on it)
+    spread  3: n= 339  actual 9.4% (SE 1.6%)   market+key 8.6%  current 8.2%  sim raw 4.8%  sim calibrated 7.6%
+    spread  7: n= 130  actual 6.9% (SE 2.2%)   market+key 5.7%  current 5.5%  sim raw 3.9%  sim calibrated 5.1%
+    spread 10: n=  62  actual 9.7% (SE 3.8%)   market+key 4.0%  current 3.9%  sim raw 3.7%  sim calibrated 3.7%
+    spread  6: n= 105  actual 3.8% (SE 1.9%)   market+key 3.6%  current 3.4%  sim raw 3.5%  sim calibrated 3.9%
+DO THE UNCERTAINTY BANDS MEAN ANYTHING? (games sorted by the simulation's own margin spread)
+    narrowest third  simulated spread 12.63   actual error spread 12.98   closing line's error 12.69
+    middle third     simulated spread 13.08   actual error spread 12.72   closing line's error 12.57
+    widest third     simulated spread 13.54   actual error spread 13.09   closing line's error 12.88
+    correlation of simulated spread with the size of the miss: -0.010 (SE 0.021)
+    weeks 1-4  n= 573  simulated spread 13.15  actual 13.00  current model's error 13.05
+    week 5 on  n=1803  simulated spread 13.06  actual 12.91  current model's error 12.97
+QUARTERBACK DEPTH (team points: actual minus forecast, by which starter of the season is playing)
+    1st starter                n=3755  closing line +0.39  current +0.39  simulation +0.29  (SE 0.16)
+    2nd starter                n= 783  closing line -0.42  current -0.95  simulation -0.93  (SE 0.33)
+    3rd or later               n= 214  closing line +1.05  current +0.39  simulation +1.00  (SE 0.68)
+    3rd or later, first start  n=  94  closing line +1.18  current -0.14  simulation +0.39  (SE 0.91)
+
+================ latest 2025-2026: 434 games ================
+POINT FORECASTS (mean absolute error / root mean square error)
+    closing line             margin 9.639 / 12.203   total 10.426 / 13.197
+    current model            margin 9.922 / 12.592   total 10.591 / 13.280
+    simulation               margin 9.912 / 12.570   total 10.602 / 13.333
+WINNER (ties count half; Brier and log loss: lower is better)
+    market (moneylines, vig removed)   right 67.1%  Brier 0.2108  log loss 0.6087
+    current model                      right 65.3%  Brier 0.2152  log loss 0.6196
+    simulation, raw                    right 66.0%  Brier 0.2162  log loss 0.6218
+    simulation, calibrated             right 66.4%  Brier 0.2163  log loss 0.6219
+CALIBRATION OF THE WIN CHANCE (favourite's chance by the model, and how often it won)
+    current model
+        50%-55%: said 52.5%, won 54.0% (n=87)
+        55%-60%: said 57.4%, won 54.3% (n=94)
+        60%-65%: said 62.5%, won 63.9% (n=72)
+        65%-70%: said 67.6%, won 71.6% (n=67)
+        70%-80%: said 75.3%, won 79.2% (n=77)
+        80%-100%: said 83.6%, won 82.9% (n=35)
+    simulation, calibrated
+        50%-55%: said 52.4%, won 60.0% (n=95)
+        55%-60%: said 57.7%, won 55.2% (n=87)
+        60%-65%: said 62.1%, won 62.7% (n=67)
+        65%-70%: said 67.3%, won 73.5% (n=68)
+        70%-80%: said 75.3%, won 76.2% (n=80)
+        80%-100%: said 84.3%, won 82.9% (n=35)
+AGAINST THE CLOSING SPREAD (home covers when result > spread)
+  current model
+    every game                     434 bets  212-215  win 49.6%  return -4.7% (SE 4.6%)
+    beats the vig                  306 bets  149-153  win 49.3%  return -5.4% (SE 5.4%)
+    beats it by 3%+                250 bets  117-130  win 47.4%  return -9.0% (SE 6.0%)
+    beats it by 6%+                200 bets  93-104  win 47.2%  return -9.2% (SE 6.7%)
+  simulation, raw
+    every game                     434 bets  205-222  win 48.0%  return -7.8% (SE 4.6%)
+    beats the vig                  307 bets  145-156  win 48.2%  return -7.4% (SE 5.4%)
+    beats it by 3%+                235 bets  108-121  win 47.2%  return -9.2% (SE 6.2%)
+    beats it by 6%+                185 bets  90-93  win 49.2%  return -5.5% (SE 7.0%)
+  simulation, calibrated
+    every game                     434 bets  209-218  win 48.9%  return -6.1% (SE 4.6%)
+    beats the vig                  322 bets  158-161  win 49.5%  return -4.9% (SE 5.3%)
+    beats it by 3%+                256 bets  124-130  win 48.8%  return -6.3% (SE 6.0%)
+    beats it by 6%+                191 bets  89-100  win 47.1%  return -9.4% (SE 6.9%)
+AGAINST THE CLOSING TOTAL
+  current model
+    every game                     434 bets  225-209  win 51.8%  return -0.8% (SE 4.6%)
+    beats the vig                  327 bets  166-161  win 50.8%  return -2.7% (SE 5.3%)
+    beats it by 3%+                260 bets  132-128  win 50.8%  return -2.7% (SE 5.9%)
+    beats it by 6%+                203 bets  98-105  win 48.3%  return -7.4% (SE 6.7%)
+  simulation, raw
+    every game                     434 bets  215-219  win 49.5%  return -5.2% (SE 4.6%)
+    beats the vig                  305 bets  152-153  win 49.8%  return -4.5% (SE 5.5%)
+    beats it by 3%+                246 bets  119-127  win 48.4%  return -7.2% (SE 6.1%)
+    beats it by 6%+                195 bets  98-97  win 50.3%  return -3.4% (SE 6.9%)
+  simulation, calibrated
+    every game                     434 bets  217-217  win 50.0%  return -4.3% (SE 4.6%)
+    beats the vig                  318 bets  153-165  win 48.1%  return -7.8% (SE 5.4%)
+    beats it by 3%+                247 bets  121-126  win 49.0%  return -5.9% (SE 6.1%)
+    beats it by 6%+                204 bets  99-105  win 48.5%  return -6.7% (SE 6.7%)
+MONEYLINE AT CLOSING PRICES
+  current model
+    beats the vig                  344 bets  138-205  win 40.2%  return -1.8% (SE 7.4%)
+    beats it by 3%+                277 bets  101-175  win 36.6%  return -2.5% (SE 8.7%)
+    beats it by 6%+                234 bets  80-153  win 34.3%  return -1.3% (SE 9.9%)
+  simulation, raw
+    beats the vig                  325 bets  136-188  win 42.0%  return -2.9% (SE 7.3%)
+    beats it by 3%+                259 bets  92-166  win 35.7%  return -10.6% (SE 8.3%)
+    beats it by 6%+                210 bets  73-136  win 34.9%  return -7.3% (SE 9.6%)
+  simulation, calibrated
+    beats the vig                  331 bets  128-202  win 38.8%  return -4.7% (SE 7.5%)
+    beats it by 3%+                268 bets  93-174  win 34.8%  return -7.2% (SE 8.7%)
+    beats it by 6%+                223 bets  73-149  win 32.9%  return -8.8% (SE 9.7%)
+WHOLE DISTRIBUTION (average log chance given to the exact result; higher is better)
+    market line + key numbers          margin -3.7624   total -3.9797
+    current model, normal curve        margin -3.9555
+    current model + key numbers        margin -3.7926   total -3.9866
+    simulation, raw                    margin -3.8592   total -3.9751
+    simulation, calibrated             margin -3.7978   total -3.9795
+    simulation, same band every game   margin -3.8622
+KEY NUMBERS (how often a game ended on this margin, and the chance each model gave it)
+    by  3: actual 16.1%   current 14.7%  raw 8.4%  calibrated 13.6%
+    by  7: actual 9.0%   current 8.9%  raw 6.2%  calibrated 8.1%
+    by 10: actual 3.5%   current 5.5%  raw 5.2%  calibrated 5.1%
+    by  6: actual 5.5%   current 6.0%  raw 6.0%  calibrated 6.8%
+    by 14: actual 3.9%   current 4.9%  raw 4.3%  calibrated 4.5%
+    by  4: actual 6.2%   current 4.8%  raw 6.0%  calibrated 5.0%
+    by  1: actual 4.1%   current 4.1%  raw 5.1%  calibrated 4.5%
+    by  0: actual 0.5%   current 0.2%  raw 0.2%  calibrated 0.2%
+PUSHES AND HALF POINTS (games with a whole-number closing spread: chance of landing exactly on it)
+    spread  3: n=  58  actual 6.9% (SE 3.3%)   market+key 8.6%  current 8.2%  sim raw 4.8%  sim calibrated 7.7%
+    spread  7: n=  28  actual 10.7% (SE 5.8%)   market+key 5.6%  current 5.4%  sim raw 3.8%  sim calibrated 4.9%
+DO THE UNCERTAINTY BANDS MEAN ANYTHING? (games sorted by the simulation's own margin spread)
+    narrowest third  simulated spread 12.50   actual error spread 12.12   closing line's error 11.58
+    middle third     simulated spread 12.88   actual error spread 12.39   closing line's error 12.24
+    widest third     simulated spread 13.16   actual error spread 13.18   closing line's error 12.77
+    correlation of simulated spread with the size of the miss: +0.004 (SE 0.048)
+    weeks 1-4  n= 128  simulated spread 12.93  actual 12.49  current model's error 12.55
+    week 5 on  n= 306  simulated spread 12.81  actual 12.60  current model's error 12.61
+QUARTERBACK DEPTH (team points: actual minus forecast, by which starter of the season is playing)
+    1st starter                n= 699  closing line +0.62  current +0.27  simulation +0.40  (SE 0.37)
+    2nd starter                n= 127  closing line -0.36  current -1.11  simulation -1.03  (SE 0.80)
+    3rd or later               n=  42  closing line +1.61  current +1.03  simulation +1.61  (SE 1.74)
+    3rd or later, first start  n=  19  closing line +2.54  current +1.31  simulation +1.79  (SE 2.58)
+
+================ design 2010-2017: 2136 games ================
+POINT FORECASTS (mean absolute error / root mean square error)
+    closing line             margin 10.289 / 13.334   total 10.528 / 13.299
+    current model            margin 10.400 / 13.419   total 10.571 / 13.425
+    simulation               margin 10.350 / 13.389   total 10.579 / 13.382
+WINNER (ties count half; Brier and log loss: lower is better)
+    market (moneylines, vig removed)   right 66.5%  Brier 0.2115  log loss 0.6104
+    current model                      right 65.1%  Brier 0.2148  log loss 0.6174
+    simulation, raw                    right 65.5%  Brier 0.2138  log loss 0.6155
+    simulation, calibrated             right 65.6%  Brier 0.2141  log loss 0.6161
+CALIBRATION OF THE WIN CHANCE (favourite's chance by the model, and how often it won)
+    current model
+        50%-55%: said 52.5%, won 51.6% (n=459)
+        55%-60%: said 57.6%, won 58.2% (n=373)
+        60%-65%: said 62.3%, won 63.3% (n=368)
+        65%-70%: said 67.3%, won 66.0% (n=341)
+        70%-80%: said 74.5%, won 76.9% (n=415)
+        80%-100%: said 84.5%, won 89.1% (n=175)
+    simulation, calibrated
+        50%-55%: said 52.3%, won 53.1% (n=467)
+        55%-60%: said 57.5%, won 57.6% (n=422)
+        60%-65%: said 62.3%, won 64.7% (n=377)
+        65%-70%: said 67.6%, won 71.0% (n=307)
+        70%-80%: said 74.2%, won 76.4% (n=420)
+        80%-100%: said 84.8%, won 89.9% (n=138)
+AGAINST THE CLOSING SPREAD (home covers when result > spread)
+  current model
+    every game                    2136 bets  1077-1002  win 51.8%  return +2.0% (SE 2.1%)
+    beats the vig                 1892 bets  954-886  win 51.8%  return +2.1% (SE 2.2%)
+    beats it by 3%+               1541 bets  791-710  win 52.7%  return +3.9% (SE 2.5%)
+    beats it by 6%+               1240 bets  638-569  win 52.9%  return +4.2% (SE 2.8%)
+  simulation, raw
+    every game                    2136 bets  1082-997  win 52.0%  return +2.7% (SE 2.1%)
+    beats the vig                 1860 bets  953-860  win 52.6%  return +3.8% (SE 2.3%)
+    beats it by 3%+               1498 bets  781-679  win 53.5%  return +5.7% (SE 2.5%)
+    beats it by 6%+               1141 bets  596-514  win 53.7%  return +6.3% (SE 2.9%)
+  simulation, calibrated
+    every game                    2136 bets  1111-968  win 53.4%  return +5.1% (SE 2.1%)
+    beats the vig                 1859 bets  969-842  win 53.5%  return +5.3% (SE 2.3%)
+    beats it by 3%+               1497 bets  772-691  win 52.8%  return +4.0% (SE 2.5%)
+    beats it by 6%+               1175 bets  613-532  win 53.5%  return +5.6% (SE 2.8%)
+AGAINST THE CLOSING TOTAL
+  current model
+    every game                    2136 bets  1087-1026  win 51.4%  return +0.7% (SE 2.1%)
+    beats the vig                 1843 bets  953-869  win 52.3%  return +2.4% (SE 2.3%)
+    beats it by 3%+               1490 bets  775-698  win 52.6%  return +3.1% (SE 2.5%)
+    beats it by 6%+               1164 bets  615-537  win 53.4%  return +4.6% (SE 2.9%)
+  simulation, raw
+    every game                    2136 bets  1064-1049  win 50.4%  return -1.3% (SE 2.1%)
+    beats the vig                 1843 bets  927-897  win 50.8%  return -0.3% (SE 2.3%)
+    beats it by 3%+               1452 bets  758-680  win 52.7%  return +3.5% (SE 2.6%)
+    beats it by 6%+               1104 bets  582-513  win 53.2%  return +4.3% (SE 2.9%)
+  simulation, calibrated
+    every game                    2136 bets  1057-1056  win 50.0%  return -1.9% (SE 2.1%)
+    beats the vig                 1830 bets  926-885  win 51.1%  return +0.3% (SE 2.3%)
+    beats it by 3%+               1467 bets  754-700  win 51.9%  return +1.8% (SE 2.6%)
+    beats it by 6%+               1116 bets  579-529  win 52.3%  return +2.6% (SE 2.9%)
+MONEYLINE AT CLOSING PRICES
+  current model
+    beats the vig                 1851 bets  785-1061  win 42.5%  return -1.0% (SE 3.1%)
+    beats it by 3%+               1531 bets  620-907  win 40.6%  return +0.8% (SE 3.6%)
+    beats it by 6%+               1286 bets  491-791  win 38.3%  return +0.3% (SE 4.0%)
+  simulation, raw
+    beats the vig                 1849 bets  799-1046  win 43.3%  return +2.1% (SE 3.1%)
+    beats it by 3%+               1505 bets  604-897  win 40.2%  return +1.9% (SE 3.6%)
+    beats it by 6%+               1229 bets  460-767  win 37.5%  return +1.9% (SE 4.2%)
+  simulation, calibrated
+    beats the vig                 1845 bets  779-1062  win 42.3%  return +2.3% (SE 3.2%)
+    beats it by 3%+               1527 bets  600-923  win 39.4%  return +1.6% (SE 3.6%)
+    beats it by 6%+               1251 bets  453-796  win 36.3%  return +0.7% (SE 4.2%)
+WHOLE DISTRIBUTION (average log chance given to the exact result; higher is better)
+    market line + key numbers          margin -3.8601   total -3.9669
+    current model, normal curve        margin -4.0157
+    current model + key numbers        margin -3.8696   total -3.9758
+    simulation, raw                    margin -3.9040   total -3.9664
+    simulation, calibrated             margin -3.8741   total -3.9674
+    simulation, same band every game   margin -3.9046
+KEY NUMBERS (how often a game ended on this margin, and the chance each model gave it)
+    by  3: actual 14.4%   current 15.2%  raw 9.1%  calibrated 13.9%
+    by  7: actual 8.9%   current 9.2%  raw 6.9%  calibrated 8.8%
+    by 10: actual 5.3%   current 6.0%  raw 5.6%  calibrated 5.7%
+    by  6: actual 6.6%   current 5.3%  raw 5.5%  calibrated 5.5%
+    by 14: actual 4.8%   current 4.6%  raw 4.9%  calibrated 4.7%
+    by  4: actual 5.3%   current 4.9%  raw 6.2%  calibrated 5.5%
+    by  1: actual 4.0%   current 3.8%  raw 4.6%  calibrated 3.7%
+    by  0: actual 0.2%   current 0.2%  raw 0.2%  calibrated 0.2%
+PUSHES AND HALF POINTS (games with a whole-number closing spread: chance of landing exactly on it)
+    spread  3: n= 325  actual 8.3% (SE 1.5%)   market+key 8.8%  current 8.5%  sim raw 5.1%  sim calibrated 7.8%
+    spread  7: n= 160  actual 7.5% (SE 2.1%)   market+key 5.9%  current 5.6%  sim raw 4.2%  sim calibrated 5.3%
+    spread 10: n=  69  actual 7.2% (SE 3.1%)   market+key 4.2%  current 4.1%  sim raw 3.8%  sim calibrated 3.9%
+    spread  6: n=  99  actual 3.0% (SE 1.7%)   market+key 3.3%  current 3.1%  sim raw 3.2%  sim calibrated 3.3%
+DO THE UNCERTAINTY BANDS MEAN ANYTHING? (games sorted by the simulation's own margin spread)
+    narrowest third  simulated spread 13.33   actual error spread 13.37   closing line's error 13.30
+    middle third     simulated spread 13.82   actual error spread 13.29   closing line's error 13.26
+    widest third     simulated spread 14.25   actual error spread 13.51   closing line's error 13.44
+    correlation of simulated spread with the size of the miss: +0.022 (SE 0.022)
+    weeks 1-4  n= 502  simulated spread 13.85  actual 13.48  current model's error 13.49
+    week 5 on  n=1634  simulated spread 13.79  actual 13.36  current model's error 13.40
+QUARTERBACK DEPTH (team points: actual minus forecast, by which starter of the season is playing)
+    1st starter                n=3447  closing line +0.44  current +0.54  simulation +0.55  (SE 0.17)
+    2nd starter                n= 638  closing line -0.48  current -0.27  simulation -0.50  (SE 0.39)
+    3rd or later               n= 187  closing line -0.62  current -0.61  simulation +0.29  (SE 0.69)
+    3rd or later, first start  n=  67  closing line -1.18  current -1.81  simulation -0.95  (SE 1.11)
+
+RATING BANDS (points channel, 2018-2026: share of team scores inside the filter's own band)
+    68% band holds 69.1%, 90% band holds 90.3%, z spread 0.982
+    week 1-2             rating uncertainty (sd, points) 3.49   n=576
+    week 3-8             rating uncertainty (sd, points) 3.28   n=1610
+    week 9 on            rating uncertainty (sd, points) 3.05   n=2566
+    quarterback changed  rating uncertainty (sd, points) 3.27   n=598
+
+SIMULATION SETTINGS BY SEASON (fitted on earlier seasons only)
+    2018: drives 10, team score spread 9.46, 7-point TD 0.915, 8-point 0.027, overtime by 3 0.64 / by 6 0.29 / tie 0.047
+    2019: drives 10, team score spread 9.44, 7-point TD 0.902, 8-point 0.031, overtime by 3 0.64 / by 6 0.29 / tie 0.056
+    2020: drives 10, team score spread 9.48, 7-point TD 0.890, 8-point 0.033, overtime by 3 0.62 / by 6 0.31 / tie 0.058
+    2021: drives 9, team score spread 9.43, 7-point TD 0.877, 8-point 0.036, overtime by 3 0.63 / by 6 0.30 / tie 0.061
+    2022: drives 10, team score spread 9.45, 7-point TD 0.862, 8-point 0.040, overtime by 3 0.62 / by 6 0.31 / tie 0.059
+    2023: drives 9, team score spread 9.36, 7-point TD 0.850, 8-point 0.042, overtime by 3 0.62 / by 6 0.31 / tie 0.063
+    2024: drives 9, team score spread 9.38, 7-point TD 0.850, 8-point 0.044, overtime by 3 0.63 / by 6 0.31 / tie 0.059
+    2025: drives 9, team score spread 9.43, 7-point TD 0.850, 8-point 0.044, overtime by 3 0.61 / by 6 0.32 / tie 0.055
+    2026: drives 9, team score spread 9.33, 7-point TD 0.850, 8-point 0.046, overtime by 3 0.61 / by 6 0.31 / tie 0.055
+
+SCORE MODEL WEIGHTS FOR 2026
+    intercept    +13.142
+    pts_match    +0.463
+    pass_match   +0.173
+    rush_match   +0.511
+    elo          +0.108
+    qb_rel       +0.275
+    qb_form      +3.730
+    qb_backup    -0.589
+    qb_second    -0.718
+    qb_third     -0.899
+    home         +0.661
+    rest         +0.101
+    indoor       +1.285
+    wind_x       -0.122
+    pace         +0.134
+    div_game     -0.632
+
+LOOK-AHEAD CHECK (drop every game after a date; earlier forecasts must not change)
+    cut 2019-12-01: largest change 0.0e+00; simulation settings unchanged: True
+    cut 2024-10-06: largest change 0.0e+00; simulation settings unchanged: True

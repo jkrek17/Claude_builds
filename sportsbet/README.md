@@ -1,9 +1,10 @@
 # SportsBet tools
 
-Three command line tools live here:
+Four command line tools live here:
 
 - **sharpbet** finds sportsbook prices that beat the sharp market's fair line and sizes the top 3.
 - **nflmodel** predicts the moneyline, spread and total for every NFL game. See [NFL prediction model](#nfl-prediction-model).
+- **nflsim** plays each game 10,000 times from Bayesian team ratings. A research tool: as accurate as nflmodel, not more. See [research/stochastic/REPORT.md](research/stochastic/REPORT.md).
 - **nflprops** predicts each player's passing, rushing and receiving line as a full range of outcomes. See [NFL player props](#nfl-player-props).
 
 # sharpbet
@@ -166,6 +167,21 @@ relationship with forecast error.
 
 The earlier research write-ups for each model are in `research/margin` and `research/totals`. They
 describe the models before quarterback form and observed wind were added.
+
+## Simulating games (research)
+
+`nflsim` is a second way to forecast a game: Bayesian team ratings that carry an uncertainty band, a
+score model, and a Monte Carlo simulation that builds each score from touchdowns and field goals.
+
+```bash
+nflsim                 # the next unplayed week
+nflsim --week 12 --json
+```
+
+On 2018 to 2026 it matched the current model (margin miss 10.06 against 10.12 points, 65.4% winners
+for both) and had no edge against closing lines. Its uncertainty bands are honest but do not say
+which games will be missed, and its raw key-number chances are too low until calibrated. It is not
+used by the web page. Details: [research/stochastic/REPORT.md](research/stochastic/REPORT.md).
 
 ## The web page
 
