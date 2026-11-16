@@ -1,0 +1,24 @@
+Team-games with a closing line and both books: 728 (364 games, seasons 2025-2026)
+  fanduel: same as the nflverse close 69.2%, within half a point 86.5%, mean absolute difference 0.25
+  fanatics: same as the nflverse close 61.5%, within half a point 92.3%, mean absolute difference 0.25
+  the two books differ in 39.3% of team-games
+
+CLASSIC LEGS BY WHOSE LINE IS USED (6 points; leg must qualify on that line)
+  nflverse closing line   91-33  73.4% (±4.0%)
+  fanduel                 98-38  72.1% (±3.8%)
+  fanatics                67-26-1  72.0% (±4.7%)
+  better of the two       86-31  73.5% (±4.1%)
+  legs that qualify at either book: 139; at both: 91; on the close: 124
+
+SAME GAMES, DIFFERENT LINES (legs that qualify on the closing line)
+  scored on fanduel's number: 91-33  73.4% (±4.0%)   (0 legs change result)
+  scored on fanatics's number: 87-35-2  71.3% (±4.1%)   (4 legs change result)
+
+DOES THE BOOK SHADE THESE LEGS? (break-even chance of the plain spread bet at the posted price; -110 is 52.4%)
+  fanduel   dog    n=  96  average 52.3%
+  fanduel   fav    n=  40  average 51.6%
+  fanduel   other  n= 592  average 52.5%
+  fanatics  dog    n=  64  average 51.7%
+  fanatics  fav    n=  30  average 52.3%
+  fanatics  other  n= 634  average 52.4%
+  lines on a half point: fanduel 86.0%, fanatics 58.0%, nflverse close 72.5%

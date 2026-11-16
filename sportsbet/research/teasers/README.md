@@ -69,6 +69,28 @@ legs win 74.3%; half a point better, 76.3%. The two-point swing is larger than t
 and a -134 teaser. Check the app's line is inside the range when you bet, and prefer +2.5 and -7.5
 over the far ends when there is a choice of timing.
 
+## On each book's own lines (2025 and 2026 only)
+
+`book_lines.py` scores the same legs on FanDuel's and Fanatics' own spreads, taken 30 minutes before
+kickoff for 364 games (`book_lines_output.txt`). It is a check, not a new rule: about 100 legs a book
+cannot choose anything.
+
+| Whose line | Legs | Won |
+|---|---|---|
+| nflverse closing line | 91-33 | 73.4% (±4.0) |
+| FanDuel | 98-38 | 72.1% (±3.8) |
+| Fanatics | 67-26 | 72.0% (±4.7) |
+| Better number of the two | 86-31 | 73.5% (±4.1) |
+
+- The books' lines tell the same story as the closing lines for these two seasons: 72% to 73%, which
+  is under break-even even at -120, and well inside the noise of the long-run 75.3%.
+- FanDuel's spread equals the closing line in 69% of games and Fanatics' in 62%; the two books differ
+  from each other in 39%.
+- Fanatics offers far fewer qualifying legs (94 against FanDuel's 136) because it posts whole numbers
+  more often (58% of its lines sit on a half point, 86% of FanDuel's). A +3 or -7 does not qualify.
+- Neither book charges more for the plain spread bet on these legs than on others.
+- Taking the better number across the two books did not raise the win rate here.
+
 ## Things often said about teasers, for the record
 
 All of these were looked at before the rulebook was written, so none is a rule.
@@ -98,6 +120,6 @@ All of these were looked at before the rulebook was written, so none is a rule.
 
 - The real prices. FanDuel's -134 is from an undated article; Fanatics' chart is not published.
   Whether FanDuel refunds a 2-team teaser when a leg pushes was assumed, not checked.
-- Each book's own spread at the time of the bet. There is no saved game-line history for either book.
+- Each book's own spreads before 2025.
 - Whether either book prices teasers leg by leg (worse prices on exactly these legs). Several books
   now do.
