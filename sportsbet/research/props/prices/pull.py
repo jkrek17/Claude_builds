@@ -1,6 +1,6 @@
 """Download past NFL player prop prices from The Odds API, one snapshot per game shortly before kickoff.
 
-Usage: ODDS_API_KEY=... python research/props/prices/pull.py OUT_DIR [first_season] [minutes_before] [max_games]
+Usage: ODDS_API_KEY=... python research/props/prices/pull.py OUT_DIR [first_season] [minutes_before] [max_games] [markets]
 
 The key is read from the environment and never written anywhere. Each game costs 10 credits per
 market that returns data (60 for the six markets here); the events list costs 1 per game day.
@@ -62,6 +62,7 @@ def main() -> None:
     first = int(sys.argv[2]) if len(sys.argv) > 2 else 2023
     minutes = int(sys.argv[3]) if len(sys.argv) > 3 else 30
     limit = int(sys.argv[4]) if len(sys.argv) > 4 else 10 ** 9
+    markets = sys.argv[5] if len(sys.argv) > 5 else MARKETS   # fewer markets cost fewer credits
     (out / "raw").mkdir(parents=True, exist_ok=True)
     games = pd.read_csv(Path.home() / ".cache" / "nflmodel" / "games.csv")
     games = games[(games["season"] >= first) & games["result"].notna()].sort_values(["gameday", "game_id"])
@@ -84,7 +85,7 @@ def main() -> None:
                 continue
             try:
                 body, hdr = get(f"/events/{eid}/odds", date=fmt(kickoff(r) - dt.timedelta(minutes=minutes)),
-                                regions="us", oddsFormat="american", markets=MARKETS)
+                                regions="us", oddsFormat="american", markets=markets)
             except RuntimeError as err:
                 print(f"{r['game_id']}: {err}", flush=True)
                 continue
