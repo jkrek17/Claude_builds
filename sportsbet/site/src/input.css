@@ -215,7 +215,7 @@ thead th { background: var(--navy); color: #fff; font-size: 0.75rem; letter-spac
 .pr-chip { flex: none; min-height: 2.75rem; border: 1px solid var(--control); background: #fff; padding: 0 0.75rem; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; color: var(--ink-2); cursor: pointer; transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease; }
 .pr-chip.dim { color: var(--ink-3); }
 .pr-chip.on { border-color: var(--navy); background: #fff; color: var(--navy); box-shadow: inset 0 -3px 0 var(--gold); }
-.pr-views { display: grid; grid-template-columns: 1fr 1fr; margin-top: 0.5rem; border: 1px solid var(--navy); }
+.pr-views { display: grid; grid-template-columns: 1fr 1fr 1fr; margin-top: 0.5rem; border: 1px solid var(--navy); }
 .pr-views button { min-height: 2.75rem; background: #fff; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--navy); cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
 .pr-views button.on { background: var(--navy); color: #fff; box-shadow: inset 0 -3px 0 var(--gold); }
 .pr-ranklist li + li { border-top: 1px solid var(--color-base-300); }
@@ -227,6 +227,13 @@ thead th { background: var(--navy); color: #fff; font-size: 0.75rem; letter-spac
 .pr-rank-num { display: flex; flex: none; flex-direction: column; align-items: flex-end; gap: 0.125rem; }
 .pr-rank-num .display { font-size: 1.625rem; }
 .pr-ranklist li.played { color: var(--ink-2); }
+.pr-play { align-items: flex-start; padding-block: 0.75rem; }
+.pr-play .pr-rank-n, .pr-play .team-logo { margin-top: 0.125rem; }
+.pr-top .pr-tools, .pr-top .pr-filters .pr-chips { display: none; }
+.pr-top [data-role="rank"] { margin-top: 0.75rem; }
+.pr-bet { display: block; margin: 0.125rem 0 0.25rem; font-size: 0.875rem; font-weight: 600; color: var(--navy); }
+.pr-play .pr-meta { display: block; }
+.pr-play .pr-rank-num .display { color: var(--gold-ink); }
 .pr-ranklist li.played .pr-rank-bar i { background: var(--ink-3); }
 .pr-when { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--ink-2); }
 

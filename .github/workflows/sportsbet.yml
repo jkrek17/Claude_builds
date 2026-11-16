@@ -92,11 +92,19 @@ jobs:
           restore-keys: nflmodel-data-
       - name: Run the model and write the page's data
         if: env.PUBLISH == 'true'
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: |
           pip install -e ".[model]"
           nflmodel --json site/dist/data/site.json
           # Player props for the Props tab. If this fails the picks still publish, and the tab says so.
           nflprops --json site/dist/data/props.json || echo "::warning::nflprops failed; the Props tab has no data"
+          # Top plays on the Props tab: FanDuel prices for this week's games that have not kicked off
+          # (about 2 Odds API credits a game). Without the ODDS_API_KEY secret the tab lists every prop.
+          if [ -n "$ODDS_API_KEY" ] && [ -f site/dist/data/props.json ]; then
+            python -m nflmodel.plays site/dist/data/props.json site/dist/data/plays.json \
+              || echo "::warning::top plays failed; the Props tab opens on the full list"
+          fi
       # The page lives at /nfl/. The old address at the root sends visitors there, keeping the open tab.
       - name: Put the page under /nfl with a redirect at the root
         if: env.PUBLISH == 'true'
