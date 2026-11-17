@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.csv:
         pd.DataFrame(cards).to_csv(args.csv, index=False)
     if args.json:
-        site.write(args.json, preds, season, week, team_ratings=ratings.load(games, str(data_dir), season))
+        site.write(args.json, preds, season, week, team_ratings=ratings.load(games, str(data_dir), season, week))
     return 0
 
 

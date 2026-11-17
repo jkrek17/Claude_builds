@@ -139,15 +139,18 @@ function gameCard(c, breakEven, index) {
       </div>
       ${chips.length ? `<div class="mt-3 flex flex-wrap gap-2">${chips.join("")}</div>` : ""}`;
   const list = `<ul>${detail.map((d) => `<li>${d}</li>`).join("")}</ul>`;
+  const canCompare = RATED[c.away] && RATED[c.home];
   return `<article class="panel game ${c.final ? "final" : ""}" id="g-${c.game_id}" style="--away:${color(c.away)};--home:${color(c.home)};--i:${index}">
     <div class="strip"></div>
     <div class="p-4">
       <div class="flex items-center justify-between eyebrow"><span>${c.final ? "Final" : kickoff(c.gametime)}</span><span>${c.ml_pick} to win ${mark(c.ml_hit)}</span></div>
-      <div class="matchup">
+      <div class="matchup" ${canCompare ? `role="button" tabindex="0" data-cmp="${c.game_id}" aria-expanded="false" aria-controls="cmp-${c.game_id}"` : ""}>
         ${side(c.away, !homePicked, "left")}
         <div class="center">${center}</div>
         ${side(c.home, homePicked, "right")}
+        ${canCompare ? `<span class="cmp-hint">Compare the teams</span>` : ""}
       </div>
+      ${canCompare ? `<div class="cmp" id="cmp-${c.game_id}" hidden></div>` : ""}
       ${c.final ? `<p class="graded num">${graded("Spread", c.ats_pick, c.ats_hit)}${graded("Total", c.ou_pick, c.ou_hit)}</p>
       <details class="more"><summary>The picks and the numbers</summary>${inner}${list}</details>`
       : `${inner}<details class="more"><summary>The numbers behind it</summary>${list}</details>`}
@@ -164,6 +167,7 @@ function tile(label, pair, accent) {
 }
 
 function renderPicks(data, week) {
+  if (pickRadar) { pickRadar.destroy(); pickRadar = null; }
   const cards = data.weeks[week] || [];
   const days = [...new Set(cards.map((c) => c.gameday))];
   const noLines = cards.length && cards.every((c) => !c.ats_pick && !c.ou_pick);
@@ -328,6 +332,7 @@ function renderAbout(data) {
     <div class="grid gap-3 md:grid-cols-2">
     ${item("What this is", `A model that predicts every NFL game's score, winner and total from team and quarterback stats. It never sees a betting line when it predicts. The picks come from comparing its numbers with the line afterwards.`)}
     ${item("It has no proven edge", `Over ${b.games.toLocaleString()} games from ${b.first} to ${b.last} it went ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. You need ${pct(data.break_even)} to break even at -110. The closing line was the more accurate forecast of both margin and total. Betting every pick would have lost about 4% of the money staked.`, "key")}
+    ${item("Compare the teams", `Tap the two teams on a game card to see both on one chart: their league rank in passing, rushing, pass and rush defense, quarterback form and pace, with each starting quarterback named. Tap again to close it.`)}
     ${item("Model win chance", `The split bar shows the model's chance for each team. Open "The numbers behind it" to see the market's chance, taken from the moneylines with the bookmaker's cut removed. The market's number has been the more accurate one, so a gap between the two is not an edge.`)}
     ${item("The chance on a spread or total pick", `This is the chance the pick wins if it does not push. It leans mostly on the line and only slightly on the model, which is why it stays close to 50%. Values this close to 50% are not statistically different from a coin flip. A pick is outlined in gold only when its chance clears ${pct(data.break_even)}.`)}
     ${item("Half point matters", `Shown on a spread pick when the line is exactly 3, 7 or 10, the margins games land on most often. It gives the pick's chance if you can get the line half a point better, and half a point worse. A large gap means it is worth shopping for the better number.`)}
@@ -374,9 +379,13 @@ function drawRadar(t, teams) {
   if (radar) { radar.destroy(); radar = null; }
   const canvas = document.getElementById("rk-radar");
   if (!canvas || !window.Chart) return;
+  radar = radarChart(canvas, t, rankVersus && t.next && teams.find((o) => o.team === t.next.opponent), teams);
+}
+
+// A radar of one team's league ranks, with a second team drawn over it when `next` is given.
+function radarChart(canvas, t, next, teams) {
   const score = (team) => RADAR.map(([key]) => Math.round(100 * (teams.length + 1 - team[key + "_rank"]) / teams.length));
   const navy = css("--series-1"), gold = css("--gold"), ink = css("--ink-2"), grid = css("--color-base-300");
-  const next = rankVersus && t.next && teams.find((o) => o.team === t.next.opponent);
   const datasets = [{ label: t.team, data: score(t), borderColor: navy, backgroundColor: "rgb(47 90 160 / 0.22)", borderWidth: 2, pointRadius: 3, pointBackgroundColor: navy }];
   if (next) datasets.push({ label: next.team, data: score(next), borderColor: gold, backgroundColor: "rgb(201 162 39 / 0.14)", borderWidth: 2, borderDash: [5, 4], pointRadius: 3, pointStyle: "rectRot", pointBackgroundColor: gold });
   const narrow = canvas.parentElement.clientWidth < 360;
@@ -392,7 +401,7 @@ function drawRadar(t, teams) {
     }
     ctx.restore();
   } };
-  radar = new Chart(canvas, {
+  return new Chart(canvas, {
     type: "radar", plugins: [rings],
     data: { labels: RADAR.map(([, label]) => (narrow ? label.split(" ") : label)), datasets },
     options: {
@@ -405,15 +414,51 @@ function drawRadar(t, teams) {
   });
 }
 
+// Picks tab: tap a matchup to see the two teams' league ranks on one radar. One game is open at a time.
+let pickRadar = null;
+function compareTeams(data, gameId) {
+  const picks = $("picks");
+  const btn = picks.querySelector(`[data-cmp="${gameId}"]`), panel = $("cmp-" + gameId);
+  if (!btn || !panel) return;
+  const opening = panel.hidden;
+  if (pickRadar) { pickRadar.destroy(); pickRadar = null; }
+  for (const other of picks.querySelectorAll("[data-cmp]")) other.setAttribute("aria-expanded", "false");
+  for (const other of picks.querySelectorAll(".cmp")) { other.hidden = true; other.innerHTML = ""; }
+  if (!opening) return;
+  const card = Object.values(data.weeks).flat().find((c) => c.game_id === gameId);
+  const teams = data.rankings.teams, away = RATED[card.away], home = RATED[card.home];
+  const rows = [["rank", "Overall power"], ...RADAR.map(([key, label]) => [key + "_rank", label])];
+  const cell = (mine, theirs) => `<td class="num text-right">${mine < theirs ? `<b>${ordinal(mine)}</b>` : ordinal(mine)}</td>`;
+  const qb = (t) => (t.qb_name ? `<span>QB ${t.qb_name}</span>` : "<span></span>");
+  panel.innerHTML = `
+    ${card.final ? "" : `<p class="cmp-qbs">${qb(away)}${qb(home)}</p>`}
+    <div class="rk-radar"><canvas role="img" aria-label="League ranks of ${TEAMS[away.team]} and ${TEAMS[home.team]} on six measures, listed in the table below"></canvas></div>
+    <table class="rk-ranks"><thead><tr><th scope="col">League rank of ${teams.length}</th><th scope="col" class="text-right">${away.team}</th><th scope="col" class="text-right">${home.team}</th></tr></thead>
+      <tbody>${rows.map(([key, label]) => `<tr><td>${label}</td>${cell(away[key], home[key])}${cell(home[key], away[key])}</tr>`).join("")}</tbody></table>
+    <p class="rk-note">League rank on each measure${card.final ? " as the teams stand today, not on game day" : ""}. Further out is better: the outer ring is 1st and the middle ring 17th. Pass offense includes the quarterback. Pace is plays per game: speed, not quality.</p>`;
+  panel.hidden = false;
+  btn.setAttribute("aria-expanded", "true");
+  if (window.Chart) pickRadar = radarChart(panel.querySelector("canvas"), away, home, teams);
+  // Closing a game above moves this card, so bring it back under the tab bar if it slid off screen.
+  const top = btn.closest(".game").getBoundingClientRect().top;
+  if (top < 0 || top > innerHeight * 0.6) btn.closest(".game").scrollIntoView({ block: "start" });
+}
+
+// One passing number per team (pass offense with the starting quarterback's adjustment folded in), and
+// a lookup of rated teams by abbreviation for the Picks tab.
+const RATED = {};
+function prepRankings(data) {
+  const teams = (data.rankings && data.rankings.teams) || [];
+  for (const t of teams) { t.passing = t.pass_off + t.qb; RATED[t.team] = t; }
+  [...teams].sort((a, b) => b.passing - a.passing).forEach((t, i) => { t.passing_rank = i + 1; });
+}
+
 function renderRankings(data) {
   const r = data.rankings;
   if (!r || !r.teams.length) {
     $("rankings").innerHTML = `<p class="lede">Team ratings are not published yet.</p>`;
     return;
   }
-  // One passing number: the team's pass offense rating with the starting quarterback's adjustment folded in.
-  for (const t of r.teams) t.passing = t.pass_off + t.qb;
-  [...r.teams].sort((a, b) => b.passing - a.passing).forEach((t, i) => { t.passing_rank = i + 1; });
   const SORTS = { power: "Power", passing: "Pass offense", rush_off: "Rush offense", pass_def: "Pass defense",
                   rush_def: "Rush defense", results: "Results", qb_form: "QB form" };
   const SHORT_SORT = { passing: "Pass off", rush_off: "Rush off", pass_def: "Pass def", rush_def: "Rush def" };
@@ -530,6 +575,7 @@ function start(data) {
   const b = data.backtest;
   $("notice").innerHTML = `<summary><span><strong class="text-primary">No proven edge.</strong> <span class="muted">Predictions, not winning bets.</span></span></summary>
     <p class="muted">In testing on ${b.games.toLocaleString()} games the model won ${pct(rate(b.ats))} against the spread and ${pct(rate(b.ou))} on totals. Breaking even takes ${pct(data.break_even)}. Read these as informed predictions, not winning bets.</p>`;
+  prepRankings(data);
   renderRecord(data);
   renderRankings(data);
   renderAbout(data);
@@ -537,6 +583,13 @@ function start(data) {
   $("picks").addEventListener("click", (e) => {
     const card = e.target.dataset.jump && $(e.target.dataset.jump);
     if (card) card.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    const matchup = e.target.closest("[data-cmp]");
+    if (matchup) compareTeams(data, matchup.dataset.cmp);
+  });
+  $("picks").addEventListener("keydown", (e) => {
+    if ((e.key !== "Enter" && e.key !== " ") || !e.target.dataset.cmp) return;
+    e.preventDefault();
+    compareTeams(data, e.target.dataset.cmp);
   });
   $("tabs").addEventListener("keydown", (e) => {
     const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];

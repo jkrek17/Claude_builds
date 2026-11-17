@@ -47,7 +47,11 @@ def pick(depth_chart: list[str], statuses: dict) -> str | None:
 
 
 def starters(dates: list[str], get=_get) -> dict:
-    """{team: expected starting quarterback's name} for games on `dates` (YYYY-MM-DD) not yet started."""
+    """{team: expected starting quarterback's name} for the games on `dates` (YYYY-MM-DD).
+
+    Games under way or just finished are included: until nflverse posts the score, the page is still
+    rebuilt for the later kickoff slots, and those games must keep the starter ESPN named rather than
+    fall back to the roster rule's guess. `apply` only touches games nflverse has no score for."""
     found: dict = {}
     for day in sorted(set(dates)):
         try:
@@ -56,8 +60,6 @@ def starters(dates: list[str], get=_get) -> dict:
             continue
         for event in events:
             comp = event["competitions"][0]
-            if comp.get("status", {}).get("type", {}).get("state") != "pre":
-                continue
             try:
                 injuries = get(f"{API}/summary?event={event['id']}").get("injuries", [])
             except Exception:
