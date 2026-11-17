@@ -120,6 +120,14 @@ body {
 .strip { height: 5px; background: linear-gradient(90deg, var(--away) 0 50%, var(--home) 50% 100%); transition: height 0.18s ease; }
 .game:hover .strip { height: 8px; }
 .matchup { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 0.5rem; margin-top: 0.75rem; }
+.matchup[role="button"] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.matchup[role="button"]:focus-visible { outline: 2px solid var(--navy); outline-offset: 4px; }
+.cmp-hint { grid-column: 1 / -1; display: flex; min-height: 2rem; align-items: center; justify-content: center; gap: 0.375rem; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--navy); }
+.cmp-hint::after { content: "+"; font-size: 1rem; }
+.matchup[aria-expanded="true"] .cmp-hint::after { content: "−"; }
+.cmp { margin: 0.25rem 0 0.75rem; border-top: 1px solid var(--color-base-300); border-bottom: 1px solid var(--color-base-300); padding: 0.75rem 0 0.5rem; }
+.cmp-qbs { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
+.cmp-qbs span:last-child { text-align: right; }
 .side { display: flex; flex-direction: column; gap: 0.125rem; }
 .side .logo { opacity: 0.6; }
 .side:not(.picked) .abbr { color: var(--ink-3); }

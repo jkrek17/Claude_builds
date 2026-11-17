@@ -193,6 +193,30 @@ def test_ratings_split_each_predicted_margin_exactly_and_rank_strong_teams_first
     assert site.build(preds, 2005, 13, backtest_first=2003)["rankings"] is None
 
 
+def test_rankings_show_the_quarterback_of_the_next_game_not_the_last_one():
+    games, stats, players = synthetic()
+    before = {t["team"]: t for t in ratings.build(games, stats, players, 2005)["teams"]}
+    nxt = games[(games.season == 2005) & (games.week == 13)].iloc[0]
+    team, other = nxt.home_team, nxt.away_team
+    donor = next(t for t in TEAMS if t not in (team, other))
+    assert nxt.home_qb_id != f"qb_{donor}"
+    swapped = games.copy()
+    swapped.loc[swapped.game_id == nxt.game_id, "home_qb_id"] = f"qb_{donor}"   # a new starter this week
+    # A later week's pre-filled listing must not count: only the checked week names the starter.
+    later = (swapped.season == 2005) & (swapped.week == 14) & ((swapped.home_team == other) | (swapped.away_team == other))
+    side = "home" if swapped.loc[later, "home_team"].iloc[0] == other else "away"
+    swapped.loc[later, f"{side}_qb_id"] = f"qb_{donor}"
+    after = {t["team"]: t for t in ratings.build(swapped, stats, players, 2005, week=13)["teams"]}
+    assert after[team]["qb_form"] == before[donor]["qb_form"] != before[team]["qb_form"]
+    assert after[other]["qb_form"] == before[other]["qb_form"]
+    # With no starter named for the next game, the last one to start is kept.
+    blank = games.copy()
+    blank.loc[blank.game_id == nxt.game_id, "home_qb_id"] = np.nan
+    kept = {t["team"]: t for t in ratings.build(blank, stats, players, 2005, week=13)["teams"]}
+    assert all(t["qb_form"] == before[t["team"]]["qb_form"] for t in ratings.build(swapped, stats, players, 2005)["teams"])
+    assert kept[team]["qb_form"] == before[team]["qb_form"]
+
+
 def test_qb_form_rates_good_quarterbacks_higher_and_flags_backups():
     games, _, players = synthetic()
     best = players.groupby("player_id")["passing_epa"].mean().idxmax().removeprefix("qb_")
@@ -373,9 +397,12 @@ def test_depth_live_takes_the_first_quarterback_who_is_not_out():
             return {"injuries": [{"injuries": [{"athlete": {"displayName": "A One"}, "status": "Out"}]}]}
         if "/teams/7/" in url:
             return {"depthchart": [{"positions": {"qb": {"athletes": [{"displayName": "A One"}, {"displayName": "A Two"}]}}}]}
+        if "/teams/9/" in url:
+            return {"depthchart": [{"positions": {"qb": {"athletes": [{"displayName": "C One"}]}}}]}
         raise OSError("down")
     live = depth_live.starters(["2026-11-15"], get=fake)
-    assert live == {"AAA": "A Two"}                                  # the failed team and the finished game are skipped
+    # The failed teams are skipped. A game under way or finished keeps its ESPN starter until the score is posted.
+    assert live == {"AAA": "A Two", "CCC": "C One"}
 
     games = pd.DataFrame([dict(game_id="g", season=2026, week=10, home_team="AAA", away_team="LA", home_qb_id="a1",
                                away_qb_id="b1", home_qb_name="A One", away_qb_name="B One", home_score=np.nan)])

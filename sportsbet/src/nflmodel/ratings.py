@@ -48,10 +48,29 @@ def _next_games(this: pd.DataFrame) -> dict:
     return out
 
 
+def _next_starters(this: pd.DataFrame, week: int | None) -> dict:
+    """team -> the quarterback listed to start its unplayed game in `week`, where one is named.
+
+    That week's listing has been checked against rosters, injuries and ESPN's depth chart (see
+    `cli.expected_starters`), so this is the starter the game prediction uses. Without it a team is
+    shown with whoever started its last game, which is wrong the week a new quarterback takes over.
+    Later weeks are pre-filled guesses nobody has checked (they can name a player on injured
+    reserve), so a team that has already played this week keeps the quarterback who started."""
+    if week is None:
+        return {}
+    todo = this[this["home_score"].isna() & (this["week"] == week)]
+    out: dict = {}
+    for side in ("home", "away"):
+        out.update((team, qb) for team, qb in zip(todo[f"{side}_team"], todo[f"{side}_qb_id"]) if isinstance(qb, str))
+    return out
+
+
 def build(games: pd.DataFrame, team_stats: pd.DataFrame, player_stats: pd.DataFrame, season: int,
-          pace: dict | None = None, qb_shares: dict | None = None) -> dict:
+          pace: dict | None = None, qb_shares: dict | None = None, week: int | None = None) -> dict:
     """`teams`: one row per team, best first. `games`: game_id -> the parts of that game's predicted margin
-    (home minus away points). `pace` is the totals model's plays-per-game rating by team, if wanted."""
+    (home minus away points). `pace` is the totals model's plays-per-game rating by team, if wanted.
+    `week` is the week whose starters have been checked; teams still to play in it are rated with
+    that game's quarterback, every other team with its last starter."""
     model, form = {}, {}
     feats = margin_model.compute_features(games, team_stats, state=model, qb_shares=qb_shares)
     feats = feats.merge(qb_form.qb_form_features(games, player_stats, state=form), on="game_id", how="left")
@@ -66,11 +85,12 @@ def build(games: pd.DataFrame, team_stats: pd.DataFrame, player_stats: pd.DataFr
     current = sorted(set(this["home_team"].replace(margin_model.TEAM_MAP)) | set(this["away_team"].replace(margin_model.TEAM_MAP)))
     this = this.replace({"home_team": margin_model.TEAM_MAP, "away_team": margin_model.TEAM_MAP})
     names, records, upcoming = _qb_names(games), _records(this, season), _next_games(this)
+    starters = _next_starters(this, week)
     teams = []
     for team in current:
         if team not in model["elo"]:
             continue
-        qb = model["last_qb"].get(team)
+        qb = starters.get(team) or model["last_qb"].get(team)
         value = model["qb_value"].get(qb, model["qb_prior"])
         qb_form_value = form["form"].get(qb, form["new_qb"])
         teams.append({
@@ -111,10 +131,10 @@ def build(games: pd.DataFrame, team_stats: pd.DataFrame, player_stats: pd.DataFr
     return {"teams": teams, "games": breakdown, "home_field": w["hfa"] * model["hfa"]}
 
 
-def load(games: pd.DataFrame, data_dir: str, season: int) -> dict:
+def load(games: pd.DataFrame, data_dir: str, season: int, week: int | None = None) -> dict:
     totals: dict = {}
     players = qb_form.load_player_stats(data_dir)
     games, shares = qb_depth.prepare(games, players)
     totals_model.build_features(games, totals_model.load_team_stats(data_dir), state=totals, qb_shares=shares)
     return build(games, margin_model.load_team_stats(data_dir), players, season,
-                 pace=totals["pace"], qb_shares=shares)
+                 pace=totals["pace"], qb_shares=shares, week=week)
