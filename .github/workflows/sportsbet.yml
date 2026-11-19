@@ -9,8 +9,7 @@ on:
   workflow_dispatch:
   schedule:
     # Rebuild the predictions page every day at 6 AM US Eastern. Cron runs in UTC, so this fires at
-    # 10:00 and 11:00 UTC and the site job keeps only the run that lands in the 6 AM Eastern hour,
-    # which covers both daylight and standard time.
+    # 10:00 and 11:00 UTC and the slot job keeps only the one in the 6 AM Eastern hour (daylight or standard time).
     - cron: "0 10 * * *"
     - cron: "0 11 * * *"
     # Every hour from 8 AM to 10 PM Eastern: rebuild only when a kickoff slot starts in 20 to 80 minutes,
@@ -33,9 +32,12 @@ jobs:
         env:
           SCHEDULE: ${{ github.event.schedule }}
         run: |
-          # Only the hourly schedule is gated; every other trigger always runs.
+          # The hourly schedule runs only before a kickoff slot, and the daily pair only at 6 AM Eastern;
+          # every other trigger always runs.
           if [ "$SCHEDULE" = "20 12-23,0-3 * * *" ]; then
             python3 sportsbet/src/nflmodel/slots.py >> "$GITHUB_OUTPUT"
+          elif [ "$SCHEDULE" = "0 10 * * *" ] || [ "$SCHEDULE" = "0 11 * * *" ]; then
+            if [ "$(TZ=America/New_York date +%H)" = "06" ]; then echo "run=true"; else echo "run=false"; fi >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
@@ -68,22 +70,11 @@ jobs:
     defaults:
       run:
         working-directory: sportsbet
-    outputs:
-      publish: ${{ steps.when.outputs.publish }}
     env:
       # Publish from main only: on a schedule, on a manual run, or when a change lands.
       PUBLISH: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
-      - name: Skip the scheduled run that is not at 6 AM Eastern
-        id: when
-        run: |
-          publish="$PUBLISH"
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$(TZ=America/New_York date +%H)" != "06" ]; then
-            publish=false
-          fi
-          echo "PUBLISH=$publish" >> "$GITHUB_ENV"
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -135,7 +126,7 @@ jobs:
   publish:
     name: Publish to GitHub Pages
     needs: site
-    if: needs.site.outputs.publish == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
