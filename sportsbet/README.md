@@ -230,7 +230,7 @@ secret (about 2 Odds API credits for each game that has not kicked off, on every
 the tab opens on the full list, as before.
 
 The `site` and `publish` jobs in `.github/workflows/sportsbet.yml` rerun the model and publish the page
-to GitHub Pages on Tuesday, Thursday, Saturday and Sunday mornings US Eastern, and whenever a change to
+to GitHub Pages every day at 6 AM US Eastern, and whenever a change to
 `sportsbet/` lands on `main`. The page is published at https://jkrek17.github.io/Claude_builds/nfl/, and
 `site/redirect.html` at the old root address sends visitors there. This needs Pages turned on once: repository Settings, Pages, Source
 "GitHub Actions". Wind forecasts are only shown for the run that made them, so a finished game shows
