@@ -8,13 +8,11 @@ on:
     paths: ["sportsbet/**", ".github/workflows/sportsbet.yml"]
   workflow_dispatch:
   schedule:
-    # Rebuild the predictions page every day at 6 AM US Eastern. Cron runs in UTC, so this fires at
-    # 10:00 and 11:00 UTC and the slot job keeps only the one in the 6 AM Eastern hour (daylight or standard time).
-    - cron: "0 10 * * *"
-    - cron: "0 11 * * *"
-    # Every hour from 8 AM to 10 PM Eastern: rebuild only when a kickoff slot starts in 20 to 80 minutes,
-    # so each slot's starting quarterbacks are checked after inactives are out (see the slot job).
-    - cron: "20 12-23,0-3 * * *"
+    # Every hour from 5 AM to 10 PM Eastern (UTC cron; 20 past, away from GitHub's busy top of the hour).
+    # The slot job decides: rebuild 20 to 80 minutes before a kickoff slot, after inactives are out, and
+    # once a day at the first run from 6 AM Eastern on. GitHub drops or delays many scheduled runs, so the
+    # daily rebuild checks the live page's build time rather than relying on one cron firing on time.
+    - cron: "20 10-23,0-3 * * *"
 
 permissions:
   contents: read
@@ -32,12 +30,10 @@ jobs:
         env:
           SCHEDULE: ${{ github.event.schedule }}
         run: |
-          # The hourly schedule runs only before a kickoff slot, and the daily pair only at 6 AM Eastern;
-          # every other trigger always runs.
-          if [ "$SCHEDULE" = "20 12-23,0-3 * * *" ]; then
+          # Scheduled runs rebuild only before a kickoff slot or for the daily 6 AM Eastern rebuild
+          # (see slots.py); every other trigger always runs.
+          if [ -n "$SCHEDULE" ]; then
             python3 sportsbet/src/nflmodel/slots.py >> "$GITHUB_OUTPUT"
-          elif [ "$SCHEDULE" = "0 10 * * *" ] || [ "$SCHEDULE" = "0 11 * * *" ]; then
-            if [ "$(TZ=America/New_York date +%H)" = "06" ]; then echo "run=true"; else echo "run=false"; fi >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi

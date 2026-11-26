@@ -382,6 +382,21 @@ def test_slots_due_finds_games_kicking_off_soon():
     assert slots.due(summer, dt.datetime(2026, 9, 13, 16, 20, tzinfo=dt.timezone.utc)) == ["sept"]   # daylight time
 
 
+def test_slots_daily_rebuild_runs_once_after_6am_eastern():
+    from nflmodel import slots
+    utc = lambda d, h, m=0: dt.datetime(2026, 11, d, h, m, tzinfo=dt.timezone.utc)   # November: Eastern is UTC-5
+    yesterday = utc(25, 22)
+    assert not slots.daily_due(utc(26, 10, 59), yesterday)            # 5:59 AM Eastern: too early
+    assert slots.daily_due(utc(26, 11, 0), yesterday)                 # 6 AM Eastern, page from yesterday
+    assert slots.daily_due(utc(26, 18, 44), yesterday)                # a run delayed hours still catches up
+    assert not slots.daily_due(utc(26, 18, 44), utc(26, 11, 5))       # already rebuilt this morning
+    assert slots.daily_due(utc(26, 12), None)                         # live page unreadable: rebuild
+    assert slots.daily_due(utc(27, 3), yesterday)                     # 10 PM Eastern, still not rebuilt today: catch up
+    assert not slots.daily_due(utc(27, 6), utc(26, 11, 5))            # 1 AM Eastern on the 27th: wait for 6 AM
+    summer = lambda h: dt.datetime(2026, 9, 14, h, tzinfo=dt.timezone.utc)   # September: Eastern is UTC-4
+    assert slots.daily_due(summer(10), summer(9) - dt.timedelta(hours=12)) and not slots.daily_due(summer(9), None)
+
+
 def test_depth_live_takes_the_first_quarterback_who_is_not_out():
     from nflmodel import depth_live
     assert depth_live.pick(["A One", "A Two", "A Three"], {"A One": "Injured Reserve", "A Two": "Questionable"}) == "A Two"
