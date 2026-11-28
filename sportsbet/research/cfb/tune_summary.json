@@ -1,0 +1,19 @@
+{
+  "params": {
+    "prior_games": 4.0,
+    "decay": 0.95,
+    "regress": 0.2
+  },
+  "model_margin_mae": 13.623323950519051,
+  "line_margin_mae": 12.421539673164009,
+  "model_total_mae": 13.851156889365104,
+  "on_line": {
+    "n_spread": 5079,
+    "model_margin_mae": 13.625415331898983,
+    "line_margin_mae": 12.421539673164009,
+    "n_total": 3717,
+    "model_total_mae": 13.660320001616787,
+    "line_total_mae": 12.808851224105462
+  },
+  "minutes": 11.3
+}
