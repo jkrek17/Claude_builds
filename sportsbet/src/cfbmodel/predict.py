@@ -15,7 +15,15 @@ Pipeline:
   one that did better on 2019 (fit 2015-2018), see below.
 * ``season`` predicts every game of a season.
 
-Final scores: the slim play-by-play has no score columns, so ``final_scores`` rebuilds them from
+Final scores are ESPN's (``schedule.season_games``): ``team_games_all`` replaces each team's
+``team_score`` / ``opp_score`` with the scoreboard's, matched by game id and team id, and keeps the
+play-by-play rebuild below only for games ESPN has no final for (the count is logged). The
+rebuild is badly off in 2025, where the source mislabels offenses (37% of FBS totals more than 40
+points from the closing total, against 0-5% in other seasons); with ESPN scores the 2025 share is
+in line with other seasons. ``season`` adds ESPN's lines (``ESPN_LINE_COLS``) beside the
+play-by-play ``spread`` / ``over_under``.
+
+Play-by-play rebuild: the slim play-by-play has no score columns, so ``final_scores`` rebuilds them from
 ``pos_score_diff_start``: the home margin before each snap, whose rises are home points and falls
 away points. The source sometimes mislabels the offense for a row or two, which flips the sign of
 the margin and back; those short excursions (at most ``GLITCH_ROWS`` rows that leave and return to
@@ -39,13 +47,16 @@ replaces it.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from . import efficiency, pbp, ratings
+from . import efficiency, pbp, ratings, schedule
 from .efficiency import METRICS
+
+log = logging.getLogger(__name__)
 
 FIRST_SEASON = 2014  # the first season with play-by-play; it gets an all-zero prior
 CLOCK_RULE_SEASON = 2023  # the clock keeps running after first downs from 2023 on
@@ -56,6 +67,9 @@ DEFAULT_REGRESS = 0.5
 CACHE_NAME = "team_games.parquet"
 EXTRA = ["is_home", "neutral", "team_fbs", "opp_fbs", "team_score", "opp_score", "spread", "over_under"]
 PACE = "sec_per_play"
+# ESPN's lines in ``season`` output (home perspective as the play-by-play's home side; NaN when absent).
+ESPN_LINE_COLS = ["spread_close_espn", "total_close_espn", "spread_open", "total_open", "spread_price_home",
+                  "spread_price_away", "total_price_over", "total_price_under", "line_provider_espn"]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -165,7 +179,95 @@ def team_games_all(seasons, data_dir: Path) -> pd.DataFrame:
         return pd.DataFrame(columns=efficiency.COLUMNS + EXTRA)
     out = cache[cache["season"].isin(list(seasons))].reset_index(drop=True)
     out["start_date"] = pd.to_datetime(out["start_date"], utc=True)
-    return out
+    return apply_scores(out, espn_games(sorted(out["season"].unique()), data_dir))
+
+
+# ---------------------------------------------------------------------------------------------
+# ESPN scores and lines
+# ---------------------------------------------------------------------------------------------
+
+def espn_games(seasons, data_dir: Path) -> pd.DataFrame:
+    """``schedule.season_games`` for each season; a season ESPN cannot give is left out (logged)."""
+    parts = []
+    for s in sorted(set(int(s) for s in seasons)):
+        try:
+            parts.append(schedule.season_games(s, data_dir))
+        except Exception as e:  # noqa: BLE001 - no network or a bad response: fall back to play-by-play
+            log.warning("ESPN scoreboard unavailable for %s (%s); using play-by-play scores", s, e)
+    parts = [p for p in parts if len(p)]
+    return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=schedule.SEASON_COLUMNS)
+
+
+def apply_scores(tg: pd.DataFrame, espn: pd.DataFrame) -> pd.DataFrame:
+    """``tg`` with ``team_score`` / ``opp_score`` from ESPN's finals, matched by game and team id.
+
+    A game ESPN has no final for (or whose team ids do not match) keeps the play-by-play rebuild;
+    how many is logged."""
+    tg = tg.copy()
+    if tg.empty:
+        return tg
+    done = espn[espn["completed"].astype(bool) & espn["home_points"].notna() & espn["away_points"].notna()]
+    done = done.drop_duplicates("game_id").set_index("game_id")
+    gid = tg["game_id"].astype("int64")
+
+    def num(s):
+        return pd.to_numeric(s, errors="coerce").astype("float64").to_numpy()
+
+    def espn(col):
+        return num(gid.map(done[col])) if len(done) else np.full(len(tg), np.nan)
+    tid, oid = num(tg["team_id"]), num(tg["opp_id"])
+    home_id, away_id, hp, ap = espn("home_id"), espn("away_id"), espn("home_points"), espn("away_points")
+    # the team is ESPN's home side when its id (or its opponent's) says so
+    is_h = ((tid == home_id) | (oid == away_id)) & ~((tid == away_id) | (oid == home_id))
+    is_a = ((tid == away_id) | (oid == home_id)) & ~((tid == home_id) | (oid == away_id))
+    # No team ids (postseason games before 2023 in the play-by-play): take the play-by-play home side
+    # as ESPN's, unless the swapped scores agree better with the rebuilt margin (exact in the source).
+    no_id = ~(is_h | is_a) & np.isfinite(hp) & np.isfinite(ap)
+    home_side = tg["is_home"].to_numpy() == 1
+    pbp_margin = tg["team_score"].to_numpy(float) - tg["opp_score"].to_numpy(float)
+    m_same = np.where(home_side, hp - ap, ap - hp)
+    swap = np.abs(-m_same - pbp_margin) < np.abs(m_same - pbp_margin)
+    espn_home = home_side ^ swap
+    is_h = is_h | (no_id & espn_home)
+    is_a = is_a | (no_id & ~espn_home)
+    own = np.where(is_h, hp, np.where(is_a, ap, np.nan))
+    opp = np.where(is_h, ap, np.where(is_a, hp, np.nan))
+    hit = pd.Series(np.isfinite(own) & np.isfinite(opp), index=tg.index)
+    ok = hit.groupby(gid).transform("all")  # both sides of a game or neither
+    tg["team_score"] = np.where(ok, own, tg["team_score"].to_numpy(float))
+    tg["opp_score"] = np.where(ok, opp, tg["opp_score"].to_numpy(float))
+    n_games, n_espn = gid.nunique(), int(gid[ok].nunique())
+    if n_espn < n_games:
+        log.info("play-by-play scores for %d of %d games (no ESPN final)", n_games - n_espn, n_games)
+    return tg
+
+
+def espn_lines(out: pd.DataFrame, espn: pd.DataFrame) -> pd.DataFrame:
+    """``ESPN_LINE_COLS`` for the games of ``out`` (game_id, home_id), oriented to ``out``'s home side."""
+    e = espn.drop_duplicates("game_id").set_index("game_id")
+    gid = out["game_id"].astype("int64")
+    res = pd.DataFrame(index=out.index)
+    if e.empty:
+        for c in ESPN_LINE_COLS:
+            res[c] = None if c == "line_provider_espn" else np.nan
+        return res
+    def col(name):
+        return pd.to_numeric(gid.map(e[name]), errors="coerce").astype("float64").to_numpy()
+    own_home = pd.to_numeric(out["home_id"], errors="coerce").astype("float64").to_numpy()
+    flip = (own_home != col("home_id")) & (own_home == col("away_id"))
+    sign = np.where(flip, -1.0, 1.0)
+    res["spread_close_espn"] = col("spread_close") * sign
+    res["total_close_espn"] = col("total_close")
+    res["spread_open"] = col("spread_open") * sign
+    res["total_open"] = col("total_open")
+    ph, pa = col("spread_price_home"), col("spread_price_away")
+    res["spread_price_home"] = np.where(flip, pa, ph)
+    res["spread_price_away"] = np.where(flip, ph, pa)
+    res["total_price_over"] = col("total_price_over")
+    res["total_price_under"] = col("total_price_under")
+    prov = gid.map(e["line_provider"])
+    res["line_provider_espn"] = prov.astype(object).where(prov.notna(), None).to_numpy()
+    return res
 
 
 # ---------------------------------------------------------------------------------------------
@@ -441,7 +543,10 @@ def season(season: int, data_dir: Path, params: dict | None = None, prior_fn=Non
     def_<m>, optional sd_mult); the default is ``carryover_prior``.
 
     Only games in the play-by-play are predicted, so a game not yet played is not listed (see
-    ``upcoming`` for those); actual points are NaN where the source has no score."""
+    ``upcoming`` for those). ``home_points`` / ``away_points`` are the real final scores (ESPN's,
+    else the play-by-play rebuild; NaN without either). ``spread`` / ``over_under`` are the
+    play-by-play lines; ``ESPN_LINE_COLS`` are ESPN's close, open, prices and book where it has them
+    (``espn_lines``)."""
     params = dict(params or {})
     m = model(season, data_dir, params, prior_fn)
     tg_all, prior_fn, coef = m["tg_all"], m["prior_fn"], m["coef"]
@@ -473,6 +578,7 @@ def season(season: int, data_dir: Path, params: dict | None = None, prior_fn=Non
     })
     out["start_date"] = pd.to_datetime(out["start_date"], utc=True)
     out["cutoff"] = pd.to_datetime(out["cutoff"], utc=True)
+    out = pd.concat([out, espn_lines(out, espn_games([season], data_dir))], axis=1)
     out["margin"] = out["home_pts"] - out["away_pts"]
     out["total"] = out["home_pts"] + out["away_pts"]
     out.attrs["coef"] = coef

@@ -10,13 +10,22 @@ before kickoff; finished games come back without odds. The home spread is read f
 ``pointSpread.home.close.line``, else the ``spread`` field (home perspective, negative = home
 favored), else ``details`` ("ND -25.5") matched against the teams' abbreviations. The last pregame
 line seen for each game is kept in ``data_dir/espn/lines_<season>.json`` so a final keeps its line
-(``remember_lines``).
+(``remember_lines``), together with the opener (``pointSpread``/``total`` ``open`` lines) and the
+American prices of both sides (``odds_detail``) when ESPN gives them.
+
+Past seasons: ``season_games`` reads every regular-season week and the postseason (one call each,
+about 17 a season) for real final scores. ESPN's scoreboard returns scores, neutral flags and
+conferences for every season from 2014 on, but never odds for a finished game, so lines for a past
+game exist only when a pregame run saved them (``remember_lines``). A week fetched more than a day
+after it ended is cached for good, and a finished season is frozen in
+``data_dir/espn/season_<season>_v<SEASON_CACHE_VERSION>.parquet``.
 
 Responses are cached in ``data_dir/espn/`` for ``MAX_AGE_S`` (30 minutes); a week that ended more
 than a day ago is kept for ``PAST_MAX_AGE_S``.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import time
 import urllib.parse
@@ -42,7 +51,14 @@ CONFERENCES = {
 
 COLUMNS = ["game_id", "season", "week", "season_type", "start_date", "home", "away", "home_id", "away_id",
            "home_abbr", "away_abbr", "home_conf", "away_conf", "neutral", "completed", "state",
-           "home_points", "away_points", "spread_line", "total_line", "line_provider"]
+           "home_points", "away_points", "spread_line", "total_line", "line_provider", "spread_open",
+           "total_open", "spread_price_home", "spread_price_away", "total_price_over", "total_price_under"]
+# Opener and prices beside the close (home perspective spread; American prices; NaN when absent).
+DETAIL = COLUMNS[-6:]
+SEASON_COLUMNS = ["game_id", "season", "week", "season_type", "start_date", "home", "away", "home_id",
+                  "away_id", "home_conf", "away_conf", "neutral", "completed", "home_points", "away_points",
+                  "spread_close", "total_close", *DETAIL, "line_provider"]
+SEASON_CACHE_VERSION = 1
 
 
 # ---------------------------------------------------------------------------------------------
@@ -53,10 +69,18 @@ def _url(params: dict) -> str:
     return SCOREBOARD_URL + "?" + urllib.parse.urlencode(params)
 
 
-def _fetch(params: dict) -> dict:
+def _fetch(params: dict, tries: int = 3) -> dict:
+    """GET one scoreboard response; a dropped or cut-off connection is retried (``tries`` in all)."""
     req = urllib.request.Request(_url(params), headers={"User-Agent": "cfbmodel"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    for attempt in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except (OSError, http.client.HTTPException, ValueError):
+            if attempt == tries - 1:
+                raise
+            time.sleep(2.0 * (attempt + 1))
+    raise RuntimeError("unreachable")
 
 
 def scoreboard(params: dict, data_dir: Path, max_age: float = MAX_AGE_S) -> dict:
@@ -121,6 +145,43 @@ def parse_odds(comp: dict, home_abbr: str | None, away_abbr: str | None) -> tupl
     return spread, total, provider
 
 
+def _price(x) -> float:
+    """An American price ("-115", "+105", "EVEN") as a float; NaN when absent."""
+    if x is None:
+        return np.nan
+    if str(x).strip().upper() in ("EVEN", "EV", "PK"):
+        return 100.0
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return np.nan
+
+
+def odds_detail(comp: dict) -> dict:
+    """``DETAIL`` from a competition's first odds entry: openers (home spread) and closing prices."""
+    out = {k: np.nan for k in DETAIL}
+    odds = comp.get("odds") or []
+    if not odds:
+        return out
+    o = odds[0] or {}
+    ps, tot = o.get("pointSpread") or {}, o.get("total") or {}
+
+    def leg(block, side, when, key):
+        return ((block.get(side) or {}).get(when) or {}).get(key)
+
+    out["spread_open"] = _float(leg(ps, "home", "open", "line"))
+    if not np.isfinite(out["spread_open"]):
+        out["spread_open"] = -_float(leg(ps, "away", "open", "line"))
+    out["total_open"] = _float(leg(tot, "over", "open", "line"))
+    if not np.isfinite(out["total_open"]):
+        out["total_open"] = _float(leg(tot, "under", "open", "line"))
+    out["spread_price_home"] = _price(leg(ps, "home", "close", "odds"))
+    out["spread_price_away"] = _price(leg(ps, "away", "close", "odds"))
+    out["total_price_over"] = _price(leg(tot, "over", "close", "odds"))
+    out["total_price_under"] = _price(leg(tot, "under", "close", "odds"))
+    return out
+
+
 def _conf(team: dict) -> str | None:
     cid = team.get("conferenceId")
     return CONFERENCES.get(str(cid)) if cid is not None else None
@@ -171,10 +232,11 @@ def parse(data: dict, season: int | None = None, week: int | None = None) -> pd.
             "home_points": _score(h) if completed else np.nan,
             "away_points": _score(a) if completed else np.nan,
             "spread_line": spread, "total_line": total, "line_provider": provider,
+            **odds_detail(comp),
         })
     out = pd.DataFrame(rows, columns=COLUMNS)
     out["start_date"] = pd.to_datetime(out["start_date"], utc=True)
-    for c in ("home_points", "away_points", "spread_line", "total_line"):
+    for c in ("home_points", "away_points", "spread_line", "total_line", *DETAIL):
         out[c] = out[c].astype(float)
     for c in ("home_conf", "away_conf", "line_provider"):
         out[c] = out[c].astype(object).where(out[c].notna(), None)
@@ -200,13 +262,19 @@ def _cache_path(params: dict, data_dir: Path) -> Path:
     return Path(data_dir) / "espn" / ("_".join(f"{k}-{full[k]}" for k in sorted(full)) + ".json")
 
 
-def _week_ended(data: dict, week: int, now: pd.Timestamp) -> bool:
-    """True when the calendar says ``week`` ended more than a day before ``now``."""
-    for e in calendar(data):
+def _week_end(data: dict, week: int, season_type: int = REGULAR) -> pd.Timestamp | None:
+    """When the calendar says ``week`` of ``season_type`` ends (None when it does not list it)."""
+    for e in calendar(data, season_type):
         if str(e.get("value")) == str(week):
             end = pd.to_datetime(e.get("endDate"), utc=True, errors="coerce")
-            return not pd.isna(end) and end + pd.Timedelta(days=1) < now
-    return False
+            return None if pd.isna(end) else end
+    return None
+
+
+def _week_ended(data: dict, week: int, now: pd.Timestamp, season_type: int = REGULAR) -> bool:
+    """True when the calendar says ``week`` ended more than a day before ``now``."""
+    end = _week_end(data, week, season_type)
+    return end is not None and end + pd.Timedelta(days=1) < now
 
 
 def espn_week(season: int, week: int | None, data_dir: Path, season_type: int = REGULAR) -> pd.DataFrame:
@@ -252,6 +320,7 @@ def remember_lines(games: pd.DataFrame, season: int, data_dir: Path) -> pd.DataF
             entry = {"spread": None if np.isnan(r["spread_line"]) else float(r["spread_line"]),
                      "total": None if np.isnan(r["total_line"]) else float(r["total_line"]),
                      "provider": r["line_provider"]}
+            entry.update({k: float(r[k]) for k in DETAIL if k in r and np.isfinite(r[k])})
             if store.get(key) != entry:
                 store[key] = entry
                 changed = True
@@ -260,6 +329,9 @@ def remember_lines(games: pd.DataFrame, season: int, data_dir: Path) -> pd.DataF
             games.at[i, "spread_line"] = np.nan if saved.get("spread") is None else saved["spread"]
             games.at[i, "total_line"] = np.nan if saved.get("total") is None else saved["total"]
             games.at[i, "line_provider"] = saved.get("provider")
+            for k in DETAIL:
+                if k in games.columns:
+                    games.at[i, k] = saved.get(k, np.nan)
     if changed:
         path.parent.mkdir(parents=True, exist_ok=True)
         part = path.with_name(path.name + ".part")
@@ -295,3 +367,83 @@ def current_week(season: int, data_dir: Path) -> int:
     """The regular-season week being played (from the scoreboard's ``week.number`` and season type);
     the last regular-season week once the regular season is over."""
     return season_info(season, data_dir)["week"]
+
+
+# ---------------------------------------------------------------------------------------------
+# A whole season
+# ---------------------------------------------------------------------------------------------
+
+def _season_week(params: dict, data_dir: Path, now: pd.Timestamp, end_of) -> tuple[dict, bool]:
+    """(response, final) for one week. ``end_of(response)`` is when the week ends. A cached copy
+    fetched more than a day after that is final and kept for good; another cached copy is used while
+    younger than ``MAX_AGE_S``; otherwise the week is fetched again."""
+    path = _cache_path(params, data_dir)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+        except ValueError:
+            data = None
+        if data is not None:
+            fetched = min(pd.Timestamp(path.stat().st_mtime, unit="s", tz="UTC"), now)
+            end = end_of(data)
+            if end is not None and fetched > end + pd.Timedelta(days=1):
+                return data, True
+            if (now - fetched).total_seconds() < MAX_AGE_S:
+                return data, False
+    data = scoreboard(params, data_dir, max_age=0)
+    end = end_of(data)
+    return data, end is not None and now > end + pd.Timedelta(days=1)
+
+
+def _tidy_season(out: pd.DataFrame) -> pd.DataFrame:
+    """One set of dtypes whether the frame was just built or read back from parquet."""
+    out = out.copy()
+    out["start_date"] = pd.to_datetime(out["start_date"], utc=True)
+    for c in ("game_id", "season", "week", "season_type", "home_id", "away_id"):
+        out[c] = out[c].astype("int64")
+    for c in ("neutral", "completed"):
+        out[c] = out[c].astype(bool)
+    for c in ("home_points", "away_points", "spread_close", "total_close", *DETAIL):
+        out[c] = out[c].astype("float64")
+    for c in ("home", "away", "home_conf", "away_conf", "line_provider"):
+        out[c] = out[c].astype(object).where(out[c].notna(), None)
+    return out
+
+
+def season_games(season: int, data_dir: Path, now: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Every game with an FBS team in ``season``'s regular season and postseason (``SEASON_COLUMNS``).
+
+    One scoreboard call per regular-season week of the season's calendar and one for the whole
+    postseason (bowls and playoff), about 17 a season. Scores are the real final scores (NaN until
+    final). Lines are ESPN's (``spread_close``/``total_close``, home perspective, and ``DETAIL``):
+    present only for games not yet played or whose pregame line a run saved (``remember_lines``),
+    since ESPN drops odds once a game is final. ``season_type`` is 2 (regular) or 3 (postseason).
+    Raises when ESPN cannot be reached for a week that is not cached."""
+    data_dir = Path(data_dir)
+    now = pd.Timestamp.now(tz="UTC") if now is None else pd.Timestamp(now)
+    frozen = data_dir / "espn" / f"season_{season}_v{SEASON_CACHE_VERSION}.parquet"
+    if frozen.exists():
+        return _tidy_season(pd.read_parquet(frozen))
+
+    first, all_final = _season_week({"dates": season, "seasontype": REGULAR, "week": 1}, data_dir, now,
+                                    lambda d: _week_end(d, 1, REGULAR))
+    weeks = sorted(int(e["value"]) for e in calendar(first) if str(e.get("value", "")).isdigit()) or [1]
+    frames = [parse(first, season, 1)]
+    plan = [(REGULAR, w) for w in weeks if w != 1] + [(POSTSEASON, 1)]
+    for stype, w in plan:
+        end = _week_end(first, w, stype)
+        data, final = _season_week({"dates": season, "seasontype": stype, "week": w}, data_dir, now,
+                                   lambda d, end=end: end)
+        frames.append(parse(data, season, w))
+        all_final = all_final and final
+
+    games = pd.concat([f for f in frames if len(f)] or frames[:1], ignore_index=True)
+    games = remember_lines(games.drop_duplicates("game_id", keep="last"), season, data_dir)
+    out = games.rename(columns={"spread_line": "spread_close", "total_line": "total_close"})[SEASON_COLUMNS]
+    out = _tidy_season(out.sort_values(["start_date", "game_id"], kind="stable").reset_index(drop=True))
+    if all_final:
+        frozen.parent.mkdir(parents=True, exist_ok=True)
+        part = frozen.with_name(frozen.name + ".part")
+        out.to_parquet(part, index=False)
+        part.replace(frozen)
+    return out

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +25,8 @@ import pandas as pd
 
 from . import backtest, dist, predict, ratings, schedule
 
-FIT_VERSION = 1
+log = logging.getLogger(__name__)
+FIT_VERSION = 2  # 2: points fitted on ESPN's real final scores
 GAME_KEYS = ["game_id", "week", "start", "home", "away", "home_id", "away_id", "home_conf", "away_conf",
              "neutral", "spread_line", "total_line", "line_provider", "model_margin", "model_total",
              "home_cover_prob", "over_prob", "pick_spread", "pick_total", "edge_spread", "edge_total",
@@ -32,12 +34,11 @@ GAME_KEYS = ["game_id", "week", "start", "home", "away", "home_id", "away_id", "
 RANK_KEYS = ["rank", "team", "team_id", "conf", "off", "def", "net"]
 FBS_CONFS = frozenset(schedule.CONFERENCES.values())
 PBP_LINE = "closing line (play-by-play)"  # provider label for a final's line taken from the pbp file
-# A training season whose rebuilt final scores miss the closing total by more than BAD_TOTAL_GAP
-# points in more than MAX_BAD_SHARE of FBS games has broken play-by-play scores (2025: 37% of games,
-# against 0-5% in every other season, from mislabeled offenses in the source file). Training the
-# points model on it inflates every predicted total by about 14 points, so the card leaves it out.
+# Data check: share of FBS games whose final total misses the closing total by more than this. With
+# the play-by-play rebuild it was 37% in 2025 (mislabeled offenses in the source file); with ESPN's
+# real scores (``predict.apply_scores``) every season 2014-2026 is at 0-4.4% (2025: 0.5%), so no
+# training season is dropped any more.
 BAD_TOTAL_GAP = 40.0
-MAX_BAD_SHARE = 0.10
 RANK_METRIC = "success"  # off/def in the rankings: opponent-adjusted success rate, percentage points
 
 
@@ -46,7 +47,8 @@ RANK_METRIC = "success"  # off/def in the rankings: opponent-adjusted success ra
 # ---------------------------------------------------------------------------------------------
 
 def dist_history(tg_all: pd.DataFrame, seasons) -> pd.DataFrame:
-    """FBS vs FBS regular-season games of ``seasons`` with the play-by-play line and final score."""
+    """FBS vs FBS regular-season games of ``seasons`` with the play-by-play line and the final score
+    (ESPN's, else the play-by-play rebuild: ``predict.team_games_all``)."""
     h = tg_all[tg_all["season"].isin(list(seasons)) & (tg_all["is_home"] == 1)
                & tg_all["team_fbs"].astype(bool) & tg_all["opp_fbs"].astype(bool)]
     if "season_type" in h:
@@ -58,7 +60,7 @@ def dist_history(tg_all: pd.DataFrame, seasons) -> pd.DataFrame:
 
 
 def bad_score_share(tg_all: pd.DataFrame) -> dict:
-    """season -> share of FBS vs FBS games whose rebuilt total misses the line total by > BAD_TOTAL_GAP."""
+    """season -> share of FBS vs FBS games whose final total misses the line total by > BAD_TOTAL_GAP."""
     h = tg_all[(tg_all["is_home"] == 1) & tg_all["team_fbs"].astype(bool) & tg_all["opp_fbs"].astype(bool)]
     gap = ((h["team_score"] + h["opp_score"]) - h["over_under"]).abs()
     ok = gap.notna()
@@ -74,22 +76,15 @@ def _fit_key(season: int, params: dict, train: list[int], tg: pd.DataFrame) -> s
 
 
 def context(season: int, data_dir: Path, params: dict | None = None, prior_fn=None) -> dict:
-    """tg_all, prior (this season's), coef, dist_fit, params, train and dropped_seasons for a card.
+    """tg_all, prior (this season's), coef, dist_fit, params and train for a card.
 
-    Training seasons default to ``predict.default_train_seasons`` minus any with broken rebuilt
-    scores (``bad_score_share`` above ``MAX_BAD_SHARE``); an explicit ``params["train_seasons"]`` is
-    used as given. With the default prior the fit is cached in ``data_dir/fits/``."""
+    Training seasons default to ``predict.default_train_seasons``; an explicit
+    ``params["train_seasons"]`` is used as given. With the default prior the fit is cached in
+    ``data_dir/fits/``."""
     params = dict(params or {})
     train = [int(s) for s in params.get("train_seasons", predict.default_train_seasons(season))]
     need = predict.needed_seasons(season, train)
     tg_all = predict.team_games_all(need, data_dir)
-    share = bad_score_share(tg_all)
-    dropped = [s for s in train if share.get(s, 0.0) > MAX_BAD_SHARE]
-    if dropped and "train_seasons" not in params:
-        train = [s for s in train if s not in dropped]
-        params["train_seasons"] = train
-    else:
-        dropped = []
     path = None
     if prior_fn is None:
         past = tg_all[tg_all["season"] < season].drop(columns=["start_date"])
@@ -108,7 +103,7 @@ def context(season: int, data_dir: Path, params: dict | None = None, prior_fn=No
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({"coef": coef, "dist": dist_fit}))
     return {"season": season, "params": params, "tg_all": tg_all, "prior": prior, "coef": coef,
-            "dist_fit": dist_fit, "train": train, "dropped_seasons": dropped}
+            "dist_fit": dist_fit, "train": train}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -147,6 +142,30 @@ def _pbp_lines(tg_all: pd.DataFrame, season: int) -> pd.DataFrame:
     return rows.drop_duplicates("game_id").set_index("game_id")[["spread", "over_under"]]
 
 
+def _fill_scores(g: pd.DataFrame, tg_all: pd.DataFrame, season: int) -> pd.DataFrame:
+    """A final ESPN lists without a score takes the team-games score (the play-by-play rebuild)."""
+    miss = g["completed"].astype(bool) & (g["home_points"].isna() | g["away_points"].isna())
+    if not miss.any():
+        return g
+    rows = tg_all[(tg_all["season"] == season)].drop_duplicates(["game_id", "team"])
+    g = g.copy()
+    n = 0
+    for i in g.index[miss]:
+        gr = rows[rows["game_id"] == g.at[i, "game_id"]]
+        if gr.empty:
+            continue
+        side = gr[pd.to_numeric(gr["team_id"], errors="coerce").astype("float64") == float(g.at[i, "home_id"])]
+        side = side if len(side) else gr[gr["is_home"] == 1]
+        if side.empty or pd.isna(side["team_score"].iloc[0]):
+            continue
+        g.at[i, "home_points"] = float(side["team_score"].iloc[0])
+        g.at[i, "away_points"] = float(side["opp_score"].iloc[0])
+        n += 1
+    if n:
+        log.info("week card: %d final(s) without an ESPN score take the play-by-play score", n)
+    return g
+
+
 def _market(pred: float, line: float, kind: str, fit: dict) -> dict:
     """prob (conditional on no push, home/over side), pick, edge at -110, or Nones without a line."""
     if pred is None or line is None or not (np.isfinite(pred) and np.isfinite(line)):
@@ -180,12 +199,13 @@ def week_card(season: int, week: int, data_dir: Path, params: dict | None = None
     """One dict per game of ``week`` (keys ``GAME_KEYS``, the cfb.json game contract).
 
     ``games`` (default ``schedule.espn_week``) and ``ctx`` (default ``context``) can be passed in to
-    reuse them. A finished game with no ESPN line takes the play-by-play closing line."""
+    reuse them. A finished game with no ESPN line takes the play-by-play closing line, and one with
+    no ESPN score takes the team-games score (``_fill_scores``)."""
     ctx = ctx or context(season, data_dir, params, prior_fn)
     g = schedule.espn_week(season, week, data_dir) if games is None else games.copy()
     if g.empty:
         return []
-    g = g.reset_index(drop=True)
+    g = _fill_scores(g.reset_index(drop=True), ctx["tg_all"], season)
     preds = predict.upcoming(g, ctx["tg_all"], ctx["prior"], ctx["coef"], ctx["params"], season)
     g = g.merge(preds[["game_id", "margin", "total"]], on="game_id", how="left")
 

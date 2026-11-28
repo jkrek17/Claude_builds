@@ -41,10 +41,21 @@ def predictions(params: dict, seasons, data_dir: Path) -> pd.DataFrame:
 
 def betting_games(preds: pd.DataFrame, confs: pd.DataFrame) -> pd.DataFrame:
     g = preds[(preds.season_type == "regular") & preds.home_fbs & preds.away_fbs].merge(confs, on="game_id")
+    """Closing lines from the play-by-play, else ESPN's; ESPN's opener and prices only go with its close."""
     g = g.rename(columns={"spread": "spread_close", "over_under": "total_close"})
-    for col in ["spread_open", "total_open", "spread_price_home", "spread_price_away",
-                "total_price_over", "total_price_under"]:
-        g[col] = np.nan
+    detail = ["spread_open", "total_open", "spread_price_home", "spread_price_away",
+              "total_price_over", "total_price_under"]
+    for col in detail:
+        if col not in g:
+            g[col] = np.nan
+    for close, espn, cols in (("spread_close", "spread_close_espn", detail[0:1] + detail[2:4]),
+                              ("total_close", "total_close_espn", detail[1:2] + detail[4:6])):
+        if espn not in g:
+            continue
+        use_espn = g[close].isna() & g[espn].notna()
+        same = g[espn].notna() & (g[close] == g[espn])
+        g.loc[use_espn, close] = g.loc[use_espn, espn]
+        g.loc[~(use_espn | same), cols] = np.nan
     return g
 
 
@@ -65,7 +76,14 @@ def main(data_dir: Path) -> None:
     pd.DataFrame(log).to_csv(OUT / "tune_params.csv", index=False)
     _, params, g = best
     line_mae = float((g.home_points - g.away_points + g.spread_close).abs().mean())
+    # model against the line on the same games (those with a closing line)
+    s, t = g[g.spread_close.notna()], g[g.total_close.notna()]
+    on_line = {"n_spread": len(s), "model_margin_mae": float((s.home_points - s.away_points - s.margin).abs().mean()),
+               "line_margin_mae": float((s.home_points - s.away_points + s.spread_close).abs().mean()),
+               "n_total": len(t), "model_total_mae": float((t.home_points + t.away_points - t.total).abs().mean()),
+               "line_total_mae": float((t.home_points + t.away_points - t.total_close).abs().mean())}
     print("chosen", params, "line margin MAE", round(line_mae, 3), flush=True)
+    print("on games with a line", {k: round(v, 3) for k, v in on_line.items()}, flush=True)
 
     rows = []
     for season in TUNE:  # distributions fitted on earlier seasons only
@@ -89,7 +107,8 @@ def main(data_dir: Path) -> None:
     res.to_csv(OUT / "tune_results.csv", index=False)
     print(res.to_string(index=False))
     json.dump({"params": params, "model_margin_mae": best[0], "line_margin_mae": line_mae,
-               "minutes": round((time.time() - t0) / 60, 1)}, open(OUT / "tune_summary.json", "w"), indent=2)
+               "model_total_mae": float((g.home_points + g.away_points - g.total).abs().mean()),
+               "on_line": on_line, "minutes": round((time.time() - t0) / 60, 1)}, open(OUT / "tune_summary.json", "w"), indent=2)
 
 
 if __name__ == "__main__":
