@@ -142,3 +142,73 @@ def test_line_columns_kept_when_source_has_them(tmp_path, monkeypatch):
     out = pbp.load(2020, tmp_path)
     assert list(out.columns) == pbp.KEEP_COLS + pbp.LINE_COLS
     assert out["spread"].tolist() == [-7.5] * 3 and out["over_under"].tolist() == [55.0] * 3
+
+
+# ---------------------------------------------------------------------------------------------
+# Outages and the offseason
+# ---------------------------------------------------------------------------------------------
+
+def _stale_slim(tmp_path, season, when):
+    slim = tmp_path / "pbp" / f"slim_{season}.parquet"
+    slim.parent.mkdir(parents=True, exist_ok=True)
+    full_frame(season)[pbp.KEEP_COLS].to_parquet(slim, index=False)
+    os.utime(slim, (when, when))
+    return slim
+
+
+def test_failed_refetch_falls_back_to_existing_slim(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(pbp, "current_season", lambda *a: 2026)
+    _stale_slim(tmp_path, 2026, time.time() - 7 * 3600)
+
+    def down(*a, **k):
+        raise OSError("github is down")
+    monkeypatch.setattr(urllib.request, "urlopen", down)
+    with caplog.at_level("WARNING", logger="cfbmodel.pbp"):
+        out = pbp.load(2026, tmp_path)
+    assert len(out) == 3
+    assert "github is down" in caplog.text
+    assert sorted(p.name for p in (tmp_path / "pbp").iterdir()) == ["slim_2026.parquet"]
+
+
+def test_finished_season_not_refetched_after_the_bowls(tmp_path, monkeypatch):
+    import datetime as dt
+
+    calls = []
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda *a, **k: calls.append(1) or FakeResponse(parquet_bytes(full_frame(2025))))
+    monkeypatch.setattr(pbp, "current_season", lambda *a: 2025)  # February to June: still "current"
+    after_bowls = dt.datetime(2026, 2, 3, tzinfo=dt.timezone.utc).timestamp()
+    _stale_slim(tmp_path, 2025, after_bowls)
+    pbp.load(2025, tmp_path)
+    assert calls == []  # fetched after the bowls: final, never fetched again
+
+    during_bowls = dt.datetime(2026, 1, 10, tzinfo=dt.timezone.utc).timestamp()
+    _stale_slim(tmp_path, 2025, during_bowls)
+    pbp.load(2025, tmp_path)
+    assert calls == [1]
+
+
+def test_season_over():
+    import datetime as dt
+    assert not pbp.season_over(2025, dt.date(2026, 1, 20))
+    assert pbp.season_over(2025, dt.date(2026, 2, 1))
+    assert not pbp.season_over(2026, dt.date(2026, 11, 28))
+
+
+def test_available(tmp_path, monkeypatch):
+    import urllib.error
+
+    def missing(req, *a, **k):
+        raise urllib.error.HTTPError(getattr(req, "full_url", ""), 404, "Not Found", {}, None)
+    monkeypatch.setattr(urllib.request, "urlopen", missing)
+    assert pbp.available(2027, tmp_path) is False  # not published yet: the offseason
+    assert not list((tmp_path / "pbp").glob("*.parquet"))
+
+    _stale_slim(tmp_path, 2026, time.time())
+    assert pbp.available(2026, tmp_path) is True  # a slim file is enough
+
+    def down(*a, **k):
+        raise OSError("connection reset")
+    monkeypatch.setattr(urllib.request, "urlopen", down)
+    with pytest.raises(OSError):
+        pbp.available(2027, tmp_path)  # an outage is not the offseason

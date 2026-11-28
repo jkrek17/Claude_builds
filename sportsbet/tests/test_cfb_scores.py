@@ -261,6 +261,93 @@ def test_card_final_without_espn_score_takes_team_games_score(ctx, tmp_path):  #
     assert g["final"] and (g["home_score"], g["away_score"]) == (int(row["team_score"]), int(row["opp_score"]))
 
 
+# ---------------------------------------------------------------------------------------------
+# Outages: stale ESPN responses
+# ---------------------------------------------------------------------------------------------
+
+def _age(path, when):
+    t = pd.Timestamp(when, tz="UTC").timestamp()
+    os.utime(path, (t, t))
+
+
+def test_scoreboard_falls_back_to_stale_cache_when_espn_fails(tmp_path, monkeypatch, caplog):
+    board = _load("espn_scoreboard.json")
+    monkeypatch.setattr(schedule, "_fetch", lambda p: board)
+    schedule.espn_week(2026, 13, tmp_path)
+    for f in (tmp_path / "espn").glob("dates-*.json"):
+        _age(f, "2026-11-20")  # older than MAX_AGE_S: due a refetch
+
+    def down(params):
+        raise OSError("ESPN is down")
+    monkeypatch.setattr(schedule, "_fetch", down)
+    with caplog.at_level("WARNING", logger="cfbmodel.schedule"):
+        g = schedule.espn_week(2026, 13, tmp_path)
+    assert len(g) == 5 and "ESPN is down" in caplog.text
+    with pytest.raises(OSError):
+        schedule.espn_week(2026, 12, tmp_path)  # nothing cached to fall back on
+
+
+def test_season_games_stale_fallback_is_never_frozen(week5, post, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(schedule, "_fetch", _fake_fetch(week5, post, calls))
+    schedule.season_games(2025, tmp_path, now=pd.Timestamp("2025-09-25 12:00", tz="UTC"))
+    for f in (tmp_path / "espn").glob("dates-*.json"):
+        _age(f, "2025-09-25 12:00")  # fetched while the season was under way
+
+    def down(params):
+        raise OSError("ESPN is down")
+    monkeypatch.setattr(schedule, "_fetch", down)
+    g = schedule.season_games(2025, tmp_path, now=AFTER_2025)
+    assert len(g) == 5
+    assert not list((tmp_path / "espn").glob("season_*"))  # stale copies are not final
+
+
+# ---------------------------------------------------------------------------------------------
+# remember_lines: pregame lines only, with the time seen
+# ---------------------------------------------------------------------------------------------
+
+OSU = 401858540  # Michigan at Ohio State in espn_scoreboard.json: OSU -10, total 36.5, pregame
+
+
+def _in_progress(board, spread_details="OSU -3"):
+    live = copy.deepcopy(board)
+    comp = next(e for e in live["events"] if int(e["id"]) == OSU)["competitions"][0]
+    comp["status"]["type"].update(completed=False, state="in")
+    o = comp["odds"][0]
+    o.pop("pointSpread", None)
+    o.pop("spread", None)
+    o["details"] = spread_details  # live odds, not the pregame line
+    return live
+
+
+def test_in_progress_line_is_not_saved(tmp_path, monkeypatch):
+    board = _load("espn_scoreboard.json")
+    monkeypatch.setattr(schedule, "_fetch", lambda p: _in_progress(board))
+    schedule.espn_week(2026, 13, tmp_path)
+    store = json.loads((tmp_path / "espn" / "lines_2026.json").read_text())
+    assert str(OSU) not in store
+    assert "401858314" in store  # a pregame game is saved
+
+
+def test_pregame_line_saved_with_time_seen_and_kept_through_the_game(tmp_path, monkeypatch):
+    board = _load("espn_scoreboard.json")
+    responses = iter([board, _in_progress(board)])
+    monkeypatch.setattr(schedule, "_fetch", lambda p: next(responses))
+    before = pd.Timestamp.now(tz="UTC").floor("s")
+    schedule.espn_week(2026, 13, tmp_path)
+    entry = json.loads((tmp_path / "espn" / "lines_2026.json").read_text())[str(OSU)]
+    assert entry["spread"] == -10.0 and entry["seen_at"].endswith("Z")
+    assert pd.Timestamp(entry["seen_at"]) >= before
+    assert schedule.lines_seen(2026, tmp_path)[OSU] == entry["seen_at"]
+
+    for f in (tmp_path / "espn").glob("dates-*.json"):
+        f.unlink()
+    g = schedule.espn_week(2026, 13, tmp_path).set_index("game_id").loc[OSU]
+    assert g["state"] == "in" and g["spread_line"] == -10.0  # the pregame line, not the live one
+    again = json.loads((tmp_path / "espn" / "lines_2026.json").read_text())[str(OSU)]
+    assert again == entry
+
+
 def test_context_trains_on_every_default_season(tmp_path, monkeypatch):
     tg = make_tg_all([2015, 2016, 2017, 2018])
     tg.loc[tg["season"] == 2017, "team_score"] += 100  # no season is dropped for its scores any more

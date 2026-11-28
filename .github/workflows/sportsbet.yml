@@ -62,7 +62,8 @@ jobs:
     name: Build the predictions page
     needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Room for the NFL model plus the college step's own 8-minute cap.
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: sportsbet
@@ -105,30 +106,65 @@ jobs:
             python -m nflmodel.plays site/dist/data/props.json site/dist/data/plays.json \
               || echo "::warning::top plays failed; the Props tab opens on the full list"
           fi
-      - name: Restore the CollegeFootballData cache
+      # College data: the play-by-play and fits (large, refreshed at most weekly) are one cache keyed by
+      # ISO week, saved once a week; the saved pregame lines (espn/lines_<season>.json, small and not
+      # rebuildable) are their own cache, saved every run. Both are saved even when the college step
+      # fails or times out, so a slow run still warms the cache.
+      - name: College cache keys
+        id: cfbkey
         if: env.PUBLISH == 'true'
-        uses: actions/cache@v4
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore the college data cache
+        id: cfbcache
+        if: env.PUBLISH == 'true'
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/cfbmodel
-          key: cfbmodel-data-${{ github.run_id }}
+          key: cfbmodel-data-${{ steps.cfbkey.outputs.week }}
           restore-keys: cfbmodel-data-
-      # The college page. If this fails the NFL page still publishes, and the college page says so.
+      - name: Restore the saved college lines
+        if: env.PUBLISH == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/cfbmodel/espn/lines_*.json
+          key: cfbmodel-lines-${{ github.run_id }}
+          restore-keys: cfbmodel-lines-
+      # The college page. If this fails or times out the NFL page still publishes, and the college page
+      # says so.
       - name: Run the college model and write its page's data
         if: env.PUBLISH == 'true'
+        timeout-minutes: 8
+        continue-on-error: true
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
         run: cfbmodel site --json site/dist/data/cfb.json || echo "::warning::cfbmodel failed; the college page has no data"
+      - name: Save the college lines
+        if: always() && env.PUBLISH == 'true' && steps.cfbkey.outputs.week != ''
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/cfbmodel/espn/lines_*.json
+          key: cfbmodel-lines-${{ github.run_id }}
+      - name: Save the college data cache
+        if: always() && env.PUBLISH == 'true' && steps.cfbkey.outputs.week != '' && steps.cfbcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/cfbmodel
+          key: cfbmodel-data-${{ steps.cfbkey.outputs.week }}
       # The pages live at /nfl/ and /cfb/. The old address at the root sends visitors to /nfl/, keeping
-      # the open tab.
+      # the open tab. /cfb/ gets only what the college page loads: its page, script, stylesheet, fonts
+      # and data/cfb.json (when the college step wrote one; without it the page says there is no data).
       - name: Put the page under /nfl with a redirect at the root
         if: env.PUBLISH == 'true'
         working-directory: sportsbet/site
         run: |
-          mkdir -p _pages
+          rm -rf _pages
+          mkdir -p _pages/cfb/data
           cp -r dist _pages/nfl
-          rm _pages/nfl/cfb.html
-          cp -r dist _pages/cfb
-          mv _pages/cfb/cfb.html _pages/cfb/index.html
+          rm -f _pages/nfl/cfb.html _pages/nfl/cfb.js _pages/nfl/data/cfb.json
+          cp dist/cfb.html _pages/cfb/index.html
+          cp dist/cfb.js dist/app.css _pages/cfb/
+          cp -r dist/fonts _pages/cfb/fonts
+          if [ -f dist/data/cfb.json ]; then cp dist/data/cfb.json _pages/cfb/data/; fi
           cp redirect.html _pages/index.html
           touch _pages/.nojekyll
       - uses: actions/upload-pages-artifact@v3

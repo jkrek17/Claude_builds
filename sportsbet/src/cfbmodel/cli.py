@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import http.client
 import sys
 from pathlib import Path
 
@@ -125,8 +126,15 @@ def cmd_predict(args: argparse.Namespace) -> int:
 def cmd_site(args: argparse.Namespace) -> int:
     from . import site
 
-    season = args.season or current_season()
-    data = site.build(season, args.week, args.data_dir, result_path=args.result)
+    if args.season:
+        data = site.build(args.season, args.week, args.data_dir, result_path=args.result)
+    else:  # the current season, or the last one in the offseason
+        data = site.build_current(args.data_dir, args.week, result_path=args.result)
+    season = data["season"]
+    if not site.has_data(data):
+        print(f"cfbmodel: no college data for {season} (no games and no rankings); {args.json} not written",
+              file=sys.stderr)
+        return 1
     site.write(data, args.json)
     now = [g for g in data["games"] if g["week"] == data["week"]]
     lines = sum(1 for g in now if g["spread_line"] is not None)
@@ -176,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     except cfbd.CFBDError as e:
         print(f"cfbmodel: {e}", file=sys.stderr)
         return 1
-    except OSError as e:  # ESPN or play-by-play download failed (urllib errors are OSErrors)
+    except (OSError, http.client.HTTPException) as e:  # ESPN or play-by-play download failed
         print(f"cfbmodel: download failed: {e}", file=sys.stderr)
         return 1
 

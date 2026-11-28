@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cfbmodel import card, cli, dist, predict, schedule, site
+from cfbmodel import card, cli, dist, pbp, predict, schedule, site
 from test_cfb_predict import TEAMS, make_tg_all
 
 FIXTURE = Path(__file__).parent / "fixtures" / "espn_scoreboard.json"
@@ -45,7 +45,11 @@ def validate_cfb(data: dict) -> None:
     assert isinstance(data["status"]["note"], str) and data["status"]["note"]
     ids = set()
     for g in data["games"]:
-        assert set(g) == set(card.GAME_KEYS), set(g) ^ set(card.GAME_KEYS)
+        assert set(card.GAME_KEYS) <= set(g) <= set(card.GAME_KEYS) | set(site.OPTIONAL_GAME_KEYS), \
+            set(g) ^ set(card.GAME_KEYS)
+        if g.get("line_seen_at") is not None:
+            assert g["line_seen_at"].endswith("Z") and g["line_provider"] is not None
+            pd.Timestamp(g["line_seen_at"])
         assert isinstance(g["game_id"], int) and g["game_id"] not in ids
         ids.add(g["game_id"])
         assert g["week"] in data["weeks"]
@@ -371,3 +375,53 @@ def test_print_card_header_when_passed():
     buf = io.StringIO()
     cli.print_card([], 2026, 13, {"passed": True}, out=buf)
     assert "did not pass" not in buf.getvalue().splitlines()[0]
+
+
+def test_build_labels_lines_with_the_time_seen(fake_site, tmp_path, no_network):
+    seen = {"spread": -3.5, "total": 55.5, "provider": "DraftKings", "seen_at": "2018-12-20T15:00:00Z"}
+    lines = tmp_path / "espn" / "lines_2018.json"
+    lines.parent.mkdir(parents=True)
+    lines.write_text(json.dumps({"9210": seen, "9212": seen}))  # 9212 has no line on the card
+    data = site.build(2018, None, tmp_path, result_path=tmp_path / "missing.json")
+    validate_cfb(data)
+    by_id = {g["game_id"]: g for g in data["games"]}
+    assert by_id[9210]["line_seen_at"] == "2018-12-20T15:00:00Z"
+    assert by_id[9211]["line_seen_at"] is None and by_id[9212]["line_seen_at"] is None
+
+
+def test_site_offseason_falls_back_to_last_season(fake_site, tmp_path, monkeypatch, no_network):
+    """July before the new season's play-by-play exists: last season's page with an offseason note."""
+    monkeypatch.setattr(pbp, "current_season", lambda *a: 2019)
+    monkeypatch.setattr(pbp, "available", lambda season, data_dir: season <= 2018)
+    out = tmp_path / "cfb.json"
+    assert cli.main(["site", "--json", str(out), "--data-dir", str(tmp_path),
+                     "--result", str(tmp_path / "none.json")]) == 0
+    data = json.loads(out.read_text())
+    validate_cfb(data)
+    assert data["season"] == 2018 and data["rankings"] and data["games"]
+    assert "2019 season has not started" in data["status"]["note"]
+    assert "2018" in data["status"]["note"]
+
+
+def test_site_in_season_uses_current_season(fake_site, tmp_path, monkeypatch, no_network):
+    monkeypatch.setattr(pbp, "current_season", lambda *a: 2018)
+    monkeypatch.setattr(pbp, "available", lambda season, data_dir: True)
+    data = site.build_current(tmp_path, result_path=tmp_path / "none.json")
+    assert data["season"] == 2018 and data["status"]["note"] == site.RESEARCH_NOTE
+
+
+def test_site_exits_nonzero_without_writing_when_no_data(tmp_path, monkeypatch, capsys):
+    out = tmp_path / "cfb.json"
+
+    def down(*a, **k):
+        raise OSError("ESPN is not reachable")
+    monkeypatch.setattr(site, "build", down)
+    assert cli.main(["site", "--json", str(out), "--season", "2026", "--data-dir", str(tmp_path)]) == 1
+    assert not out.exists()
+
+    empty = {"season": 2026, "week": 1, "weeks": [1], "games": [], "rankings": []}
+    monkeypatch.setattr(site, "build", lambda *a, **k: dict(empty))
+    out.write_text("{\"old\": true}")
+    assert cli.main(["site", "--json", str(out), "--season", "2026", "--data-dir", str(tmp_path)]) == 1
+    assert json.loads(out.read_text()) == {"old": True}  # the last good file is left alone
+    assert "no college data" in capsys.readouterr().err

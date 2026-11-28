@@ -8,10 +8,12 @@ play-by-play ``game_id`` and CollegeFootballData game ids, and ESPN team ids equ
 Lines: ESPN lists one sportsbook per game (``competitions[0].odds[0]``, DraftKings in 2026) and only
 before kickoff; finished games come back without odds. The home spread is read from
 ``pointSpread.home.close.line``, else the ``spread`` field (home perspective, negative = home
-favored), else ``details`` ("ND -25.5") matched against the teams' abbreviations. The last pregame
-line seen for each game is kept in ``data_dir/espn/lines_<season>.json`` so a final keeps its line
-(``remember_lines``), together with the opener (``pointSpread``/``total`` ``open`` lines) and the
-American prices of both sides (``odds_detail``) when ESPN gives them.
+favored), else ``details`` ("ND -25.5") matched against the teams' abbreviations. The latest
+pregame line seen (game state "pre") for each game is kept in ``data_dir/espn/lines_<season>.json``
+with the time it was seen (``seen_at``), so a game in progress or final shows that line rather than
+live odds or none (``remember_lines``), together with the opener (``pointSpread``/``total`` ``open``
+lines) and the American prices of both sides (``odds_detail``) when ESPN gives them. It is the last
+line a run saw before kickoff, not necessarily the close.
 
 Past seasons: ``season_games`` reads every regular-season week and the postseason (one call each,
 about 17 a season) for real final scores. ESPN's scoreboard returns scores, neutral flags and
@@ -21,12 +23,14 @@ after it ended is cached for good, and a finished season is frozen in
 ``data_dir/espn/season_<season>_v<SEASON_CACHE_VERSION>.parquet``.
 
 Responses are cached in ``data_dir/espn/`` for ``MAX_AGE_S`` (30 minutes); a week that ended more
-than a day ago is kept for ``PAST_MAX_AGE_S``.
+than a day ago is kept for ``PAST_MAX_AGE_S``. When ESPN cannot be reached, a stale cached response is
+used (logged); a stale copy never counts as final, so a season is not frozen from one.
 """
 from __future__ import annotations
 
 import http.client
 import json
+import logging
 import time
 import urllib.parse
 import urllib.request
@@ -35,6 +39,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+log = logging.getLogger(__name__)
 SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
 FBS_GROUP = 80
 REGULAR, POSTSEASON = 2, 3
@@ -89,12 +94,28 @@ def scoreboard(params: dict, data_dir: Path, max_age: float = MAX_AGE_S) -> dict
     path = _cache_path(params, data_dir)
     if path.exists() and time.time() - path.stat().st_mtime < max_age:
         return json.loads(path.read_text())
-    data = _fetch(full)
+    try:
+        data = _fetch(full)
+    except (OSError, http.client.HTTPException, ValueError) as e:
+        stale = _read_json(path)
+        if stale is None:
+            raise
+        log.warning("ESPN scoreboard %s unreachable (%s); using the cached copy from %s", params, e,
+                    pd.Timestamp(path.stat().st_mtime, unit="s", tz="UTC").strftime("%Y-%m-%d %H:%M UTC"))
+        return stale
     path.parent.mkdir(parents=True, exist_ok=True)
     part = path.with_name(path.name + ".part")
     part.write_text(json.dumps(data))
     part.replace(path)
     return data
+
+
+def _read_json(path: Path):
+    """The JSON in ``path``, or None when it is missing or unreadable."""
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------------------------
@@ -300,31 +321,52 @@ def _lines_path(season: int, data_dir: Path) -> Path:
     return Path(data_dir) / "espn" / f"lines_{season}.json"
 
 
-def remember_lines(games: pd.DataFrame, season: int, data_dir: Path) -> pd.DataFrame:
-    """Keep the last pregame line seen for each game, and give it back once ESPN drops it.
-
-    ESPN lists odds only before kickoff. Each line seen on a game not yet final is saved in
-    ``data_dir/espn/lines_<season>.json``; a game that comes back without one (in progress or final)
-    takes the saved line, so a final keeps the line it closed at as of the last run before kickoff."""
-    path = _lines_path(season, data_dir)
+def _load_lines(path: Path) -> dict:
+    if not path.exists():
+        return {}
     try:
-        store = json.loads(path.read_text()) if path.exists() else {}
+        store = json.loads(path.read_text())
+        if isinstance(store, dict):
+            return store
     except ValueError:
-        store = {}
+        pass
+    bad = path.with_name(path.name + ".bad")  # keep it for a look rather than overwrite it
+    path.replace(bad)
+    log.warning("saved lines file %s was unreadable; moved to %s", path, bad.name)
+    return {}
+
+
+def lines_seen(season: int, data_dir: Path) -> dict:
+    """game id -> when its saved pregame line was last seen (ISO UTC), for games that have one."""
+    store = _load_lines(_lines_path(season, data_dir))
+    return {int(k): v["seen_at"] for k, v in store.items() if isinstance(v, dict) and v.get("seen_at")}
+
+
+def remember_lines(games: pd.DataFrame, season: int, data_dir: Path) -> pd.DataFrame:
+    """Keep the latest pregame line seen for each game, and use it once the game kicks off.
+
+    ESPN lists odds only before kickoff (and sometimes live odds during a game). Each line seen on a
+    game whose state is "pre" is saved in ``data_dir/espn/lines_<season>.json`` with ``seen_at``, the
+    time of this run; a game in progress or final takes the saved line in place of whatever ESPN
+    shows, so it keeps the line as of the last run before kickoff (not necessarily the close)."""
+    path = _lines_path(season, data_dir)
+    store = _load_lines(path)
+    seen_at = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%dT%H:%M:%SZ")
     changed = False
     games = games.copy()
     for i, r in games.iterrows():
         key = str(int(r["game_id"]))
         has = np.isfinite(r["spread_line"]) or np.isfinite(r["total_line"])
-        if has and not r["completed"]:
+        pre = r.get("state") == "pre" and not r["completed"]
+        if pre and has:
             entry = {"spread": None if np.isnan(r["spread_line"]) else float(r["spread_line"]),
                      "total": None if np.isnan(r["total_line"]) else float(r["total_line"]),
-                     "provider": r["line_provider"]}
+                     "provider": r["line_provider"], "seen_at": seen_at}
             entry.update({k: float(r[k]) for k in DETAIL if k in r and np.isfinite(r[k])})
             if store.get(key) != entry:
                 store[key] = entry
                 changed = True
-        elif not has and key in store:
+        elif not pre and key in store:
             saved = store[key]
             games.at[i, "spread_line"] = np.nan if saved.get("spread") is None else saved["spread"]
             games.at[i, "total_line"] = np.nan if saved.get("total") is None else saved["total"]
@@ -392,7 +434,9 @@ def _season_week(params: dict, data_dir: Path, now: pd.Timestamp, end_of) -> tup
                 return data, False
     data = scoreboard(params, data_dir, max_age=0)
     end = end_of(data)
-    return data, end is not None and now > end + pd.Timedelta(days=1)
+    # The cache file's time, not ``now``: a stale copy used during an outage is not final.
+    fetched = min(pd.Timestamp(path.stat().st_mtime, unit="s", tz="UTC"), now)
+    return data, end is not None and fetched > end + pd.Timedelta(days=1)
 
 
 def _tidy_season(out: pd.DataFrame) -> pd.DataFrame:

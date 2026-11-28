@@ -14,21 +14,31 @@ run). Its shape::
 Without the file the page says research only (``status.passed`` null) and no game is flagged as a
 bet. No CollegeFootballData key is needed: games, lines and scores come from ESPN and the
 play-by-play, and the prior is ``predict.carryover_prior``.
+
+Each game also carries ``line_seen_at`` (optional in the contract): when the run that saved its
+sportsbook line saw it, before kickoff (``schedule.remember_lines``), or null.
+
+``build_current`` picks the season: the current one, or in the offseason (July until the new
+season's play-by-play is published) the last season, with a status note saying so.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import math
 from pathlib import Path
 
 import pandas as pd
 
-from . import card, schedule
+from . import card, pbp, schedule
 
 RESULT_PATH = Path(__file__).resolve().parents[2] / "research" / "cfb" / "RESULT.json"
 RESEARCH_NOTE = "Research only: the model has not passed its backtest."
 FAILED_NOTE = "Research only: the college model did not pass its backtest, so no pick here is a proven edge."
 PASSED_NOTE = "The college model passed its backtest on held-out seasons. It is still unproven live."
+OFFSEASON_NOTE = ("The {season} season has not started. This is the {last} season's final rankings and the "
+                  "model's record. ")
+OPTIONAL_GAME_KEYS = ["line_seen_at"]
 TUNE_SEASONS = "2014-2019, 2021-2022"
 SCORED_SEASONS = "2023-2025"
 
@@ -104,6 +114,10 @@ def build(season: int, week: int | None, data_dir: Path, params: dict | None = N
     games = []
     for w in sorted(weeks):
         games.extend(card.week_card(season, w, data_dir, rulebook=rules, ctx=ctx))
+    seen = schedule.lines_seen(season, data_dir)
+    for g in games:
+        own = g.get("line_provider") not in (None, card.PBP_LINE)
+        g["line_seen_at"] = seen.get(g["game_id"]) if own else None
     played = {w for w in weeks if any(g["week"] == w for g in games)}
     weeks = sorted(w for w in weeks if w in played or w == week)
     data = {
@@ -115,6 +129,26 @@ def build(season: int, week: int | None, data_dir: Path, params: dict | None = N
         "backtest": backtest_block(result),
     }
     return clean(data)
+
+
+def build_current(data_dir: Path, week: int | None = None, result_path: Path | None = None,
+                  today: dt.date | None = None, **kw) -> dict:
+    """``build`` for the current season, or in the offseason for the last season with play-by-play.
+
+    From July the current season is the coming one, whose play-by-play does not exist until it
+    starts (a 404, ``pbp.available``); the page then shows the season before, with a note."""
+    season = pbp.current_season(today)
+    if pbp.available(season, data_dir):
+        return build(season, week, data_dir, result_path=result_path, **kw)
+    last = season - 1
+    data = build(last, None, data_dir, result_path=result_path, **kw)
+    data["status"]["note"] = OFFSEASON_NOTE.format(season=season, last=last) + data["status"]["note"]
+    return data
+
+
+def has_data(data: dict) -> bool:
+    """False when there is nothing to show: no games and no rankings."""
+    return bool(data.get("games") or data.get("rankings"))
 
 
 def write(data: dict, path: Path) -> None:

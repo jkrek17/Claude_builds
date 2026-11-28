@@ -10,7 +10,7 @@
     "game_id": 401752000, "week": 14, "start": "2026-11-28T17:00:00Z",
     "home": "Ohio State", "away": "Michigan", "home_id": 194, "away_id": 130,
     "home_conf": "Big Ten", "away_conf": "Big Ten", "neutral": false,
-    "spread_line": -7.5, "total_line": 44.5, "line_provider": "FanDuel",
+    "spread_line": -7.5, "total_line": 44.5, "line_provider": "FanDuel", "line_seen_at": "2026-11-28T14:20:05Z",
     "model_margin": 9.8, "model_total": 41.2,
     "home_cover_prob": 0.56, "over_prob": 0.41,
     "pick_spread": "home", "pick_total": "under",
@@ -28,3 +28,10 @@
 Spread sign: home perspective, negative = home favored. model_margin = home minus away points.
 Team logos: CFBD team ids equal ESPN ids: https://a.espncdn.com/i/teamlogos/ncaa/500/{id}.png
 `net` is predicted points margin vs an average FBS team on a neutral field. Any number may be null.
+Lines: `spread_line`/`total_line` are the latest pregame line a run saw (ESPN's state "pre"), kept once
+the game kicks off; they are the line at run time, not necessarily the close. `line_seen_at` (optional;
+may be absent or null) is when that line was last seen, ISO UTC; null for a line taken from the
+play-by-play file or with no saved line.
+Offseason: from July until the new season's play-by-play exists, `season` is the last season with data
+(its final rankings and the model's record) and `status.note` starts "The <season> season has not started."
+When there is no data at all `cfbmodel site` exits non-zero and writes nothing.

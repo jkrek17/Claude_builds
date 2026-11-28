@@ -138,7 +138,9 @@ function gameCard(g, index) {
 
 function providers(games) {
   const names = [...new Set(games.filter((g) => num(g.spread_line) || num(g.total_line)).map((g) => g.line_provider).filter(Boolean))];
-  return names.length ? `Lines from ${names.map(esc).join(", ")}. ` : "";
+  // A line is the latest pregame line a build saw (line_seen_at), kept once the game kicks off; it is
+  // not necessarily the closing line.
+  return names.length ? `Lines from ${names.map(esc).join(", ")}: the latest pregame line seen when the page was built, not necessarily the closing line. ` : "";
 }
 
 let filter = "all", query = "";

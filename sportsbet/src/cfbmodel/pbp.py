@@ -2,14 +2,18 @@
 
 Each season is downloaded once, cut to KEEP_COLS and cached as ``data_dir/pbp/slim_{season}.parquet``;
 the full file (about 110 MB) is deleted. The current season is refetched when its cache is older
-than 6 hours. Teams in these files are names (``pos_team``, ``home``, ``away``); only the home and
+than 6 hours, until a copy fetched after its January bowls (``season_over``) is on disk; then it is
+final. When a refetch fails the existing slim file is used (logged). ``available`` tells a season the
+source has not published yet (the offseason, a 404) from an outage. Teams in these files are names (``pos_team``, ``home``, ``away``); only the home and
 away team ids are present, so join to other sources on ``home_team_id`` / ``away_team_id``.
 """
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import shutil
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -29,6 +33,7 @@ KEEP_COLS = [
 # the source file has them; slim files cut before these were added come back with NaN.
 LINE_COLS = ["spread", "over_under"]
 
+log = logging.getLogger(__name__)
 LIVE_MAX_AGE = 6 * 3600  # seconds
 # Garbage time: the offense's margin at the snap is beyond this, by quarter. Overtime never is.
 GARBAGE_MARGIN = {2: 38, 3: 28, 4: 22}
@@ -38,6 +43,21 @@ def current_season(today: dt.date | None = None) -> int:
     """The season in progress: a season runs from August through the January bowls."""
     today = today or dt.date.today()
     return today.year if today.month >= 7 else today.year - 1
+
+
+def season_over(season: int, when: dt.date) -> bool:
+    """True once ``season``'s January bowls and playoff are over (from February 1 of the next year)."""
+    return when >= dt.date(season + 1, 2, 1)
+
+
+def _fresh(slim: Path, season: int) -> bool:
+    if not slim.exists():
+        return False
+    if season != current_season():
+        return True
+    mtime = slim.stat().st_mtime
+    fetched = dt.datetime.fromtimestamp(mtime, dt.timezone.utc).date()
+    return season_over(season, fetched) or time.time() - mtime < LIVE_MAX_AGE
 
 
 def _download(url: str, dest: Path) -> None:
@@ -71,13 +91,15 @@ def load(season: int, data_dir: Path) -> pd.DataFrame:
     folder = Path(data_dir) / "pbp"
     folder.mkdir(parents=True, exist_ok=True)
     slim = folder / f"slim_{season}.parquet"
-    fresh = slim.exists() and (season != current_season()
-                               or time.time() - slim.stat().st_mtime < LIVE_MAX_AGE)
-    if not fresh:
+    if not _fresh(slim, season):
         full = folder / f"full_{season}.parquet"
         try:
             _download(PBP_URL.format(season=season), full)
             _slim(full, slim)
+        except Exception as e:
+            if not slim.exists():
+                raise
+            log.warning("play-by-play refetch for %s failed (%s); using the cached copy", season, e)
         finally:
             full.unlink(missing_ok=True)
     import pyarrow.parquet as pq
@@ -88,6 +110,20 @@ def load(season: int, data_dir: Path) -> pd.DataFrame:
         if c not in have:
             df[c] = float("nan")
     return df
+
+
+def available(season: int, data_dir: Path) -> bool:
+    """True when ``season``'s play-by-play is on disk or can be downloaded; False when the source has
+    not published it (HTTP 404, the offseason). Any other failure raises: an outage is not the offseason."""
+    if (Path(data_dir) / "pbp" / f"slim_{season}.parquet").exists():
+        return True
+    try:
+        load(season, data_dir)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise
+    return True
 
 
 def is_garbage(df: pd.DataFrame) -> pd.Series:
