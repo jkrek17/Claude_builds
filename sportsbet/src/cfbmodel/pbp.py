@@ -25,6 +25,9 @@ KEEP_COLS = [
     "neutral_site", "home_team_id", "away_team_id", "home_team_division", "away_team_division",
     "home_team_conference", "away_team_conference",
 ]
+# Game lines the source carries (home perspective spread, negative = home favoured; total). Kept when
+# the source file has them; slim files cut before these were added come back with NaN.
+LINE_COLS = ["spread", "over_under"]
 
 LIVE_MAX_AGE = 6 * 3600  # seconds
 # Garbage time: the offense's margin at the snap is beyond this, by quarter. Overtime never is.
@@ -51,7 +54,8 @@ def _download(url: str, dest: Path) -> None:
 def _slim(full: Path, slim: Path) -> None:
     import pyarrow.parquet as pq
 
-    table = pq.read_table(full, columns=KEEP_COLS)
+    names = pq.read_schema(full).names
+    table = pq.read_table(full, columns=KEEP_COLS + [c for c in LINE_COLS if c in names])
     part = slim.with_name(slim.name + ".part")
     try:
         pq.write_table(table, part)
@@ -61,7 +65,9 @@ def _slim(full: Path, slim: Path) -> None:
 
 
 def load(season: int, data_dir: Path) -> pd.DataFrame:
-    """Every play of a season, KEEP_COLS only, downloading and slimming on first use."""
+    """Every play of a season, KEEP_COLS then LINE_COLS, downloading and slimming on first use.
+
+    LINE_COLS are NaN when the slim file lacks them."""
     folder = Path(data_dir) / "pbp"
     folder.mkdir(parents=True, exist_ok=True)
     slim = folder / f"slim_{season}.parquet"
@@ -74,7 +80,14 @@ def load(season: int, data_dir: Path) -> pd.DataFrame:
             _slim(full, slim)
         finally:
             full.unlink(missing_ok=True)
-    return pd.read_parquet(slim, columns=KEEP_COLS)
+    import pyarrow.parquet as pq
+
+    have = [c for c in LINE_COLS if c in pq.read_schema(slim).names]
+    df = pd.read_parquet(slim, columns=KEEP_COLS + have)
+    for c in LINE_COLS:
+        if c not in have:
+            df[c] = float("nan")
+    return df
 
 
 def is_garbage(df: pd.DataFrame) -> pd.Series:
