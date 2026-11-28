@@ -345,6 +345,16 @@ def test_context_fits_and_caches_betas(tmp_path, monkeypatch):
     assert list(again["prior"].index) == list(c["prior"].index)
 
 
+def test_zero_beta_pick_follows_the_model_lean(ctx):
+    zero = {**ctx["dist_fit"], "beta_margin": 0.0, "beta_total": 0.0}
+    home = card._market(10.0, -3.5, "spread", zero)  # model home by 10 against home -3.5: leans home
+    assert home["pick"] == "home" and home["prob"] == pytest.approx(0.5, abs=1e-6) and home["edge"] < 0
+    assert card._market(1.0, -3.5, "spread", zero)["pick"] == "away"
+    assert card._market(-10.0, -3.5, "spread", zero)["pick"] == "away"
+    assert card._market(50.0, 55.5, "total", zero)["pick"] == "under"
+    assert card._market(60.0, 55.5, "total", zero)["pick"] == "over"
+
+
 def test_grade():
     assert card.grade("home", 3.5) is True and card.grade("away", 3.5) is False
     assert card.grade("under", -2.0) is True and card.grade("over", 0.0) is None

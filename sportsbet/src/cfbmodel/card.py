@@ -232,7 +232,12 @@ def _market(pred: float, line: float, kind: str, fit: dict) -> dict:
     dec = backtest.decimal(backtest.DEFAULT_PRICE)
     ea, eb = a * dec - 1, b * dec - 1
     sides = ("home", "away") if kind == "spread" else ("over", "under")
-    pick, edge = (sides[0], ea) if ea >= eb else (sides[1], eb)
+    if abs(ea - eb) < 1e-9:  # beta 0 makes it a coin flip: the pick is the side the model leans to
+        lean = pred + line if kind == "spread" else pred - line
+        first = lean >= 0
+    else:
+        first = ea > eb
+    pick, edge = (sides[0], ea) if first else (sides[1], eb)
     prob = a / (a + b) if a + b > 0 else None
     return {"prob": prob, "pick": pick, "edge": edge}
 
