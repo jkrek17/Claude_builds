@@ -1,0 +1,1447 @@
+{
+ "leagues": [
+  {
+   "id": "23",
+   "uid": "s:20~l:23",
+   "name": "NCAA - Football",
+   "abbreviation": "NCAAF",
+   "midsizeName": "NCAA Football",
+   "slug": "college-football",
+   "season": {
+    "year": 2026,
+    "startDate": "2026-02-01T08:00Z",
+    "endDate": "2027-01-28T07:59Z",
+    "displayName": "2026",
+    "type": {
+     "id": "2",
+     "type": 2,
+     "name": "Regular Season",
+     "abbreviation": "reg"
+    }
+   },
+   "calendarType": "list",
+   "calendarIsWhitelist": true,
+   "calendarStartDate": "2026-02-01T08:00Z",
+   "calendarEndDate": "2027-01-28T07:59Z",
+   "calendar": [
+    {
+     "label": "Regular Season",
+     "value": "2",
+     "startDate": "2026-08-22T07:00Z",
+     "endDate": "2026-12-13T07:59Z",
+     "entries": [
+      {
+       "label": "Week 1",
+       "alternateLabel": "Week 1",
+       "detail": "Aug 22-Sep 7",
+       "value": "1",
+       "startDate": "2026-08-22T07:00Z",
+       "endDate": "2026-09-08T06:59Z"
+      },
+      {
+       "label": "Week 2",
+       "alternateLabel": "Week 2",
+       "detail": "Sep 8-13",
+       "value": "2",
+       "startDate": "2026-09-08T07:00Z",
+       "endDate": "2026-09-14T06:59Z"
+      },
+      {
+       "label": "Week 3",
+       "alternateLabel": "Week 3",
+       "detail": "Sep 14-20",
+       "value": "3",
+       "startDate": "2026-09-14T07:00Z",
+       "endDate": "2026-09-21T06:59Z"
+      },
+      {
+       "label": "Week 4",
+       "alternateLabel": "Week 4",
+       "detail": "Sep 21-27",
+       "value": "4",
+       "startDate": "2026-09-21T07:00Z",
+       "endDate": "2026-09-28T06:59Z"
+      },
+      {
+       "label": "Week 5",
+       "alternateLabel": "Week 5",
+       "detail": "Sep 28-Oct 4",
+       "value": "5",
+       "startDate": "2026-09-28T07:00Z",
+       "endDate": "2026-10-05T06:59Z"
+      },
+      {
+       "label": "Week 6",
+       "alternateLabel": "Week 6",
+       "detail": "Oct 5-11",
+       "value": "6",
+       "startDate": "2026-10-05T07:00Z",
+       "endDate": "2026-10-12T06:59Z"
+      },
+      {
+       "label": "Week 7",
+       "alternateLabel": "Week 7",
+       "detail": "Oct 12-18",
+       "value": "7",
+       "startDate": "2026-10-12T07:00Z",
+       "endDate": "2026-10-19T06:59Z"
+      },
+      {
+       "label": "Week 8",
+       "alternateLabel": "Week 8",
+       "detail": "Oct 19-25",
+       "value": "8",
+       "startDate": "2026-10-19T07:00Z",
+       "endDate": "2026-10-26T06:59Z"
+      },
+      {
+       "label": "Week 9",
+       "alternateLabel": "Week 9",
+       "detail": "Oct 26-Nov 1",
+       "value": "9",
+       "startDate": "2026-10-26T07:00Z",
+       "endDate": "2026-11-02T07:59Z"
+      },
+      {
+       "label": "Week 10",
+       "alternateLabel": "Week 10",
+       "detail": "Nov 2-8",
+       "value": "10",
+       "startDate": "2026-11-02T08:00Z",
+       "endDate": "2026-11-09T07:59Z"
+      },
+      {
+       "label": "Week 11",
+       "alternateLabel": "Week 11",
+       "detail": "Nov 9-15",
+       "value": "11",
+       "startDate": "2026-11-09T08:00Z",
+       "endDate": "2026-11-16T07:59Z"
+      },
+      {
+       "label": "Week 12",
+       "alternateLabel": "Week 12",
+       "detail": "Nov 16-22",
+       "value": "12",
+       "startDate": "2026-11-16T08:00Z",
+       "endDate": "2026-11-23T07:59Z"
+      },
+      {
+       "label": "Week 13",
+       "alternateLabel": "Week 13",
+       "detail": "Nov 23-29",
+       "value": "13",
+       "startDate": "2026-11-23T08:00Z",
+       "endDate": "2026-11-30T07:59Z"
+      },
+      {
+       "label": "Week 14",
+       "alternateLabel": "Week 14",
+       "detail": "Nov 30-Dec 6",
+       "value": "14",
+       "startDate": "2026-11-30T08:00Z",
+       "endDate": "2026-12-07T07:59Z"
+      },
+      {
+       "label": "Week 15",
+       "alternateLabel": "Week 15",
+       "detail": "Dec 7-12",
+       "value": "15",
+       "startDate": "2026-12-07T08:00Z",
+       "endDate": "2026-12-13T07:59Z"
+      }
+     ]
+    },
+    {
+     "label": "Postseason",
+     "value": "3",
+     "startDate": "2026-12-13T08:00Z",
+     "endDate": "2027-01-28T07:59Z",
+     "entries": [
+      {
+       "label": "Bowls",
+       "alternateLabel": "Bowls",
+       "detail": "Dec 13-Jan 27",
+       "value": "1",
+       "startDate": "2026-12-13T08:00Z",
+       "endDate": "2027-01-28T07:59Z"
+      },
+      {
+       "label": "CFP",
+       "alternateLabel": "CFP",
+       "detail": "Dec 18-Jan 28",
+       "value": "999",
+       "startDate": "2026-12-18T08:00Z",
+       "endDate": "2027-01-28T07:59Z"
+      }
+     ]
+    },
+    {
+     "label": "Off Season",
+     "value": "4",
+     "startDate": "2027-01-28T08:00Z",
+     "endDate": "2027-02-01T07:59Z",
+     "entries": [
+      {
+       "label": "All-Star",
+       "alternateLabel": "All-Star",
+       "detail": "Jan 28-31",
+       "value": "1",
+       "startDate": "2027-01-28T08:00Z",
+       "endDate": "2027-02-01T07:59Z"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "groups": [
+  "80"
+ ],
+ "season": {
+  "type": 2,
+  "year": 2026
+ },
+ "week": {
+  "number": 13
+ },
+ "events": [
+  {
+   "id": "401858314",
+   "uid": "s:20~l:23~e:401858314",
+   "date": "2026-11-28T17:00Z",
+   "name": "Notre Dame Fighting Irish at Syracuse Orange",
+   "shortName": "ND @ SYR",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": {
+    "number": 13
+   },
+   "competitions": [
+    {
+     "id": "401858314",
+     "uid": "s:20~l:23~e:401858314~c:401858314",
+     "date": "2026-11-28T17:00Z",
+     "attendance": 0,
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "timeValid": true,
+     "dateValid": true,
+     "neutralSite": false,
+     "conferenceCompetition": false,
+     "playByPlayAvailable": false,
+     "recent": true,
+     "venue": {
+      "id": "1964",
+      "fullName": "JMA Wireless Dome",
+      "address": {
+       "city": "Syracuse",
+       "state": "NY",
+       "country": "USA"
+      },
+      "indoor": true
+     },
+     "competitors": [
+      {
+       "id": "183",
+       "uid": "s:20~l:23~t:183",
+       "type": "team",
+       "order": 0,
+       "homeAway": "home",
+       "team": {
+        "id": "183",
+        "uid": "s:20~l:23~t:183",
+        "location": "Syracuse",
+        "name": "Orange",
+        "abbreviation": "SYR",
+        "displayName": "Syracuse Orange",
+        "shortDisplayName": "Syracuse",
+        "color": "000e54",
+        "alternateColor": "ff431b",
+        "isActive": true,
+        "venue": {
+         "id": "1964"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/183.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/183.png",
+        "conferenceId": "1"
+       },
+       "score": "0",
+       "curatedRank": {
+        "current": 99
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "overall",
+         "type": "total",
+         "summary": "5-6"
+        },
+        {
+         "name": "Home",
+         "abbreviation": "Home",
+         "type": "homerecord",
+         "summary": "2-3"
+        },
+        {
+         "name": "Away",
+         "abbreviation": "Away",
+         "type": "awayrecord",
+         "summary": "3-3"
+        },
+        {
+         "name": "vs. Conf.",
+         "abbreviation": "CONF",
+         "type": "vsconf",
+         "summary": "3-6"
+        }
+       ]
+      },
+      {
+       "id": "87",
+       "uid": "s:20~l:23~t:87",
+       "type": "team",
+       "order": 1,
+       "homeAway": "away",
+       "team": {
+        "id": "87",
+        "uid": "s:20~l:23~t:87",
+        "location": "Notre Dame",
+        "name": "Fighting Irish",
+        "abbreviation": "ND",
+        "displayName": "Notre Dame Fighting Irish",
+        "shortDisplayName": "Notre Dame",
+        "color": "062340",
+        "alternateColor": "c99700",
+        "isActive": true,
+        "venue": {
+         "id": "3855"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/87.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/87.png",
+        "conferenceId": "18"
+       },
+       "score": "0",
+       "curatedRank": {
+        "current": 4
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "overall",
+         "type": "total",
+         "summary": "10-1"
+        },
+        {
+         "name": "Home",
+         "abbreviation": "Home",
+         "type": "homerecord",
+         "summary": "6-0"
+        },
+        {
+         "name": "Away",
+         "abbreviation": "Away",
+         "type": "awayrecord",
+         "summary": "2-1"
+        },
+        {
+         "name": "vs. Conf.",
+         "abbreviation": "CONF",
+         "type": "vsconf",
+         "summary": "0-0"
+        }
+       ]
+      }
+     ],
+     "notes": [],
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Sat, November 28th at 12:00 PM EST",
+       "shortDetail": "11/28 - 12:00 PM EST"
+      }
+     },
+     "format": {
+      "regulation": {
+       "periods": 4
+      }
+     },
+     "startDate": "2026-11-28T17:00Z",
+     "odds": [
+      {
+       "provider": {
+        "id": "100",
+        "name": "DraftKings",
+        "priority": 1,
+        "displayName": "DraftKings"
+       },
+       "details": "ND -25.5",
+       "overUnder": 53.5,
+       "spread": 25.5,
+       "awayTeamOdds": {
+        "favorite": true,
+        "underdog": false,
+        "team": {
+         "id": "87",
+         "uid": "s:20~l:23~t:87",
+         "abbreviation": "ND",
+         "name": "Fighting Irish",
+         "displayName": "Notre Dame Fighting Irish",
+         "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/87.png"
+        },
+        "favoriteAtOpen": true
+       },
+       "homeTeamOdds": {
+        "favorite": false,
+        "underdog": true,
+        "team": {
+         "id": "183",
+         "uid": "s:20~l:23~t:183",
+         "abbreviation": "SYR",
+         "name": "Orange",
+         "displayName": "Syracuse Orange",
+         "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/183.png"
+        },
+        "favoriteAtOpen": false
+       },
+       "pointSpread": {
+        "displayName": "Spread",
+        "shortDisplayName": "Spread",
+        "home": {
+         "close": {
+          "line": "+25.5",
+          "odds": "-115"
+         },
+         "open": {
+          "line": "+21",
+          "odds": "-110"
+         }
+        },
+        "away": {
+         "close": {
+          "line": "-25.5",
+          "odds": "-105"
+         },
+         "open": {
+          "line": "-21",
+          "odds": "-110"
+         }
+        }
+       },
+       "total": {
+        "displayName": "Total",
+        "shortDisplayName": "Total",
+        "over": {
+         "close": {
+          "line": "o53.5",
+          "odds": "-115"
+         },
+         "open": {
+          "line": "o54.5",
+          "odds": "-110"
+         }
+        },
+        "under": {
+         "close": {
+          "line": "u53.5",
+          "odds": "-105"
+         },
+         "open": {
+          "line": "u54.5",
+          "odds": "-110"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "weather": {
+    "displayValue": "Showers",
+    "temperature": 44,
+    "highTemperature": 44,
+    "conditionId": "12"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, November 28th at 12:00 PM EST",
+     "shortDetail": "11/28 - 12:00 PM EST"
+    }
+   }
+  },
+  {
+   "id": "401858540",
+   "uid": "s:20~l:23~e:401858540",
+   "date": "2026-11-28T17:00Z",
+   "name": "Michigan Wolverines at Ohio State Buckeyes",
+   "shortName": "MICH @ OSU",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": {
+    "number": 13
+   },
+   "competitions": [
+    {
+     "id": "401858540",
+     "uid": "s:20~l:23~e:401858540~c:401858540",
+     "date": "2026-11-28T17:00Z",
+     "attendance": 0,
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "timeValid": true,
+     "dateValid": true,
+     "neutralSite": false,
+     "conferenceCompetition": true,
+     "playByPlayAvailable": false,
+     "recent": true,
+     "venue": {
+      "id": "3861",
+      "fullName": "Ohio Stadium",
+      "address": {
+       "city": "Columbus",
+       "state": "OH",
+       "country": "USA"
+      },
+      "indoor": false
+     },
+     "competitors": [
+      {
+       "id": "194",
+       "uid": "s:20~l:23~t:194",
+       "type": "team",
+       "order": 0,
+       "homeAway": "home",
+       "team": {
+        "id": "194",
+        "uid": "s:20~l:23~t:194",
+        "location": "Ohio State",
+        "name": "Buckeyes",
+        "abbreviation": "OSU",
+        "displayName": "Ohio State Buckeyes",
+        "shortDisplayName": "Ohio State",
+        "color": "ba0c2f",
+        "alternateColor": "a8adb4",
+        "isActive": true,
+        "venue": {
+         "id": "3861"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/194.png",
+        "conferenceId": "5"
+       },
+       "score": "0",
+       "curatedRank": {
+        "current": 21
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "overall",
+         "type": "total",
+         "summary": "7-4"
+        },
+        {
+         "name": "Home",
+         "abbreviation": "Home",
+         "type": "homerecord",
+         "summary": "5-1"
+        },
+        {
+         "name": "Away",
+         "abbreviation": "Away",
+         "type": "awayrecord",
+         "summary": "2-3"
+        },
+        {
+         "name": "vs. Conf.",
+         "abbreviation": "CONF",
+         "type": "vsconf",
+         "summary": "5-3"
+        }
+       ]
+      },
+      {
+       "id": "130",
+       "uid": "s:20~l:23~t:130",
+       "type": "team",
+       "order": 1,
+       "homeAway": "away",
+       "team": {
+        "id": "130",
+        "uid": "s:20~l:23~t:130",
+        "location": "Michigan",
+        "name": "Wolverines",
+        "abbreviation": "MICH",
+        "displayName": "Michigan Wolverines",
+        "shortDisplayName": "Michigan",
+        "color": "00274c",
+        "alternateColor": "ffcb05",
+        "isActive": true,
+        "venue": {
+         "id": "3558"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/130.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/130.png",
+        "conferenceId": "5"
+       },
+       "score": "0",
+       "curatedRank": {
+        "current": 99
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "overall",
+         "type": "total",
+         "summary": "6-5"
+        },
+        {
+         "name": "Home",
+         "abbreviation": "Home",
+         "type": "homerecord",
+         "summary": "5-3"
+        },
+        {
+         "name": "Away",
+         "abbreviation": "Away",
+         "type": "awayrecord",
+         "summary": "1-2"
+        },
+        {
+         "name": "vs. Conf.",
+         "abbreviation": "CONF",
+         "type": "vsconf",
+         "summary": "3-5"
+        }
+       ]
+      }
+     ],
+     "notes": [],
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Sat, November 28th at 12:00 PM EST",
+       "shortDetail": "11/28 - 12:00 PM EST"
+      }
+     },
+     "groups": {
+      "id": "5",
+      "name": "Big Ten Conference",
+      "shortName": "Big Ten",
+      "isConference": true
+     },
+     "format": {
+      "regulation": {
+       "periods": 4
+      }
+     },
+     "startDate": "2026-11-28T17:00Z",
+     "odds": [
+      {
+       "provider": {
+        "id": "100",
+        "name": "DraftKings",
+        "priority": 1
+       },
+       "details": "OSU -10",
+       "overUnder": 36.5,
+       "spread": -10.0,
+       "awayTeamOdds": {
+        "favorite": false,
+        "underdog": true,
+        "team": {
+         "id": "130",
+         "uid": "s:20~l:23~t:130",
+         "abbreviation": "MICH",
+         "name": "Wolverines",
+         "displayName": "Michigan Wolverines",
+         "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/130.png"
+        },
+        "favoriteAtOpen": false
+       },
+       "homeTeamOdds": {
+        "favorite": true,
+        "underdog": false,
+        "team": {
+         "id": "194",
+         "uid": "s:20~l:23~t:194",
+         "abbreviation": "OSU",
+         "name": "Buckeyes",
+         "displayName": "Ohio State Buckeyes",
+         "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/194.png"
+        },
+        "favoriteAtOpen": true
+       },
+       "pointSpread": {
+        "displayName": "Spread",
+        "shortDisplayName": "Spread",
+        "home": {
+         "close": {
+          "line": "-10",
+          "odds": "-112"
+         },
+         "open": {
+          "line": "-14",
+          "odds": "-110"
+         }
+        },
+        "away": {
+         "close": {
+          "line": "+10",
+          "odds": "-108"
+         },
+         "open": {
+          "line": "+14",
+          "odds": "-110"
+         }
+        }
+       },
+       "total": {
+        "displayName": "Total",
+        "shortDisplayName": "Total",
+        "over": {
+         "close": {
+          "line": "o36.5",
+          "odds": "-112"
+         },
+         "open": {
+          "line": "o46.5",
+          "odds": "-112"
+         }
+        },
+        "under": {
+         "close": {
+          "line": "u36.5",
+          "odds": "-108"
+         },
+         "open": {
+          "line": "u46.5",
+          "odds": "-108"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "weather": {
+    "displayValue": "Mostly cloudy",
+    "temperature": 42,
+    "highTemperature": 42,
+    "conditionId": "6"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, November 28th at 12:00 PM EST",
+     "shortDetail": "11/28 - 12:00 PM EST"
+    }
+   }
+  },
+  {
+   "id": "401864547",
+   "uid": "s:20~l:23~e:401864547",
+   "date": "2026-11-29T04:00Z",
+   "name": "Sacramento State Hornets at Hawai'i Rainbow Warriors",
+   "shortName": "SAC @ HAW",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": {
+    "number": 13
+   },
+   "competitions": [
+    {
+     "id": "401864547",
+     "uid": "s:20~l:23~e:401864547~c:401864547",
+     "date": "2026-11-29T04:00Z",
+     "attendance": 0,
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "timeValid": true,
+     "dateValid": true,
+     "neutralSite": false,
+     "conferenceCompetition": false,
+     "playByPlayAvailable": false,
+     "recent": false,
+     "venue": {
+      "id": "7220",
+      "fullName": "Clarence T.C. Ching Athletics Complex",
+      "address": {
+       "city": "Honolulu",
+       "state": "HI",
+       "country": "USA"
+      },
+      "indoor": false
+     },
+     "competitors": [
+      {
+       "id": "62",
+       "uid": "s:20~l:23~t:62",
+       "type": "team",
+       "order": 0,
+       "homeAway": "home",
+       "team": {
+        "id": "62",
+        "uid": "s:20~l:23~t:62",
+        "location": "Hawai'i",
+        "name": "Rainbow Warriors",
+        "abbreviation": "HAW",
+        "displayName": "Hawai'i Rainbow Warriors",
+        "shortDisplayName": "Hawai'i",
+        "color": "005737",
+        "alternateColor": "000000",
+        "isActive": true,
+        "venue": {
+         "id": "3610"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/62.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/62.png",
+        "conferenceId": "17"
+       },
+       "score": "0",
+       "curatedRank": {
+        "current": 99
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "overall",
+         "type": "total",
+         "summary": "3-8"
+        },
+        {
+         "name": "Home",
+         "abbreviation": "Home",
+         "type": "homerecord",
+         "summary": "1-4"
+        },
+        {
+         "name": "Away",
+         "abbreviation": "Away",
+         "type": "awayrecord",
+         "summary": "2-4"
+        },
+        {
+         "name": "vs. Conf.",
+         "abbreviation": "CONF",
+         "type": "vsconf",
+         "summary": "2-6"
+        }
+       ]
+      },
+      {
+       "id": "16",
+       "uid": "s:20~l:23~t:16",
+       "type": "team",
+       "order": 1,
+       "homeAway": "away",
+       "team": {
+        "id": "16",
+        "uid": "s:20~l:23~t:16",
+        "location": "Sacramento State",
+        "name": "Hornets",
+        "abbreviation": "SAC",
+        "displayName": "Sacramento State Hornets",
+        "shortDisplayName": "Sacramento St",
+        "color": "00573C",
+        "alternateColor": "cdb97d",
+        "isActive": true,
+        "venue": {
+         "id": "3757"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/16.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/16.png",
+        "conferenceId": "15"
+       },
+       "score": "0",
+       "curatedRank": {
+        "current": 99
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "overall",
+         "type": "total",
+         "summary": "2-9"
+        },
+        {
+         "name": "Home",
+         "abbreviation": "Home",
+         "type": "homerecord",
+         "summary": "2-4"
+        },
+        {
+         "name": "Away",
+         "abbreviation": "Away",
+         "type": "awayrecord",
+         "summary": "0-5"
+        },
+        {
+         "name": "vs. Conf.",
+         "abbreviation": "CONF",
+         "type": "vsconf",
+         "summary": "1-7"
+        }
+       ]
+      }
+     ],
+     "notes": [],
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 0,
+      "type": {
+       "id": "1",
+       "name": "STATUS_SCHEDULED",
+       "state": "pre",
+       "completed": false,
+       "description": "Scheduled",
+       "detail": "Sat, November 28th at 11:00 PM EST",
+       "shortDetail": "11/28 - 11:00 PM EST"
+      }
+     },
+     "format": {
+      "regulation": {
+       "periods": 4
+      }
+     },
+     "startDate": "2026-11-29T04:00Z",
+     "odds": [
+      {
+       "provider": {
+        "id": "100",
+        "name": "DraftKings",
+        "priority": 1
+       },
+       "details": "HAW -13.5",
+       "overUnder": 39.5,
+       "spread": -13.5,
+       "awayTeamOdds": {
+        "favorite": false,
+        "underdog": true,
+        "team": {
+         "id": "16",
+         "uid": "s:20~l:23~t:16",
+         "abbreviation": "SAC",
+         "name": "Hornets",
+         "displayName": "Sacramento State Hornets",
+         "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/16.png"
+        },
+        "favoriteAtOpen": false
+       },
+       "homeTeamOdds": {
+        "favorite": true,
+        "underdog": false,
+        "team": {
+         "id": "62",
+         "uid": "s:20~l:23~t:62",
+         "abbreviation": "HAW",
+         "name": "Rainbow Warriors",
+         "displayName": "Hawai'i Rainbow Warriors",
+         "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/62.png"
+        },
+        "favoriteAtOpen": true
+       },
+       "pointSpread": {
+        "displayName": "Spread",
+        "shortDisplayName": "Spread",
+        "home": {
+         "close": {
+          "line": "-13.5",
+          "odds": "-112"
+         },
+         "open": {
+          "line": "-14.5",
+          "odds": "-110"
+         }
+        },
+        "away": {
+         "close": {
+          "line": "+13.5",
+          "odds": "-108"
+         },
+         "open": {
+          "line": "+14.5",
+          "odds": "-110"
+         }
+        }
+       },
+       "total": {
+        "displayName": "Total",
+        "shortDisplayName": "Total",
+        "over": {
+         "close": {
+          "line": "o39.5",
+          "odds": "-112"
+         },
+         "open": {
+          "line": "o44.5",
+          "odds": "-110"
+         }
+        },
+        "under": {
+         "close": {
+          "line": "u39.5",
+          "odds": "-108"
+         },
+         "open": {
+          "line": "u44.5",
+          "odds": "-110"
+         }
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "weather": {
+    "displayValue": "Intermittent clouds",
+    "temperature": 74,
+    "highTemperature": 74,
+    "conditionId": "36"
+   },
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 0,
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Sat, November 28th at 11:00 PM EST",
+     "shortDetail": "11/28 - 11:00 PM EST"
+    }
+   }
+  },
+  {
+   "id": "401866470",
+   "uid": "s:20~l:23~e:401866470",
+   "date": "2026-11-25T00:00Z",
+   "name": "Kent State Golden Flashes at Eastern Michigan Eagles",
+   "shortName": "KENT @ EMU",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": {
+    "number": 13
+   },
+   "competitions": [
+    {
+     "id": "401866470",
+     "uid": "s:20~l:23~e:401866470~c:401866470",
+     "date": "2026-11-25T00:00Z",
+     "attendance": 4739,
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "timeValid": true,
+     "dateValid": true,
+     "neutralSite": false,
+     "conferenceCompetition": true,
+     "playByPlayAvailable": true,
+     "recent": false,
+     "venue": {
+      "id": "3912",
+      "fullName": "Rynearson Stadium",
+      "address": {
+       "city": "Ypsilanti",
+       "state": "MI",
+       "country": "USA"
+      },
+      "indoor": false
+     },
+     "competitors": [
+      {
+       "id": "2199",
+       "uid": "s:20~l:23~t:2199",
+       "type": "team",
+       "order": 0,
+       "homeAway": "home",
+       "winner": true,
+       "team": {
+        "id": "2199",
+        "uid": "s:20~l:23~t:2199",
+        "location": "Eastern Michigan",
+        "name": "Eagles",
+        "abbreviation": "EMU",
+        "displayName": "Eastern Michigan Eagles",
+        "shortDisplayName": "E Michigan",
+        "color": "006938",
+        "alternateColor": "ffffff",
+        "isActive": true,
+        "venue": {
+         "id": "3912"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2199.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2199.png",
+        "conferenceId": "15"
+       },
+       "score": "17",
+       "curatedRank": {
+        "current": 99
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "Game",
+         "type": "total",
+         "summary": "5-7"
+        },
+        {
+         "name": "Home",
+         "type": "home",
+         "summary": "3-2"
+        },
+        {
+         "name": "Road",
+         "type": "road",
+         "summary": "2-4"
+        },
+        {
+         "name": "vs. Conf.",
+         "type": "vsconf",
+         "summary": "4-4"
+        }
+       ]
+      },
+      {
+       "id": "2309",
+       "uid": "s:20~l:23~t:2309",
+       "type": "team",
+       "order": 1,
+       "homeAway": "away",
+       "winner": false,
+       "team": {
+        "id": "2309",
+        "uid": "s:20~l:23~t:2309",
+        "location": "Kent State",
+        "name": "Golden Flashes",
+        "abbreviation": "KENT",
+        "displayName": "Kent State Golden Flashes",
+        "shortDisplayName": "Kent State",
+        "color": "002664",
+        "alternateColor": "eaab00",
+        "isActive": true,
+        "venue": {
+         "id": "3696"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2309.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2309.png",
+        "conferenceId": "15"
+       },
+       "score": "12",
+       "curatedRank": {
+        "current": 99
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "Game",
+         "type": "total",
+         "summary": "3-9"
+        },
+        {
+         "name": "Home",
+         "type": "home",
+         "summary": "3-2"
+        },
+        {
+         "name": "Road",
+         "type": "road",
+         "summary": "0-7"
+        },
+        {
+         "name": "vs. Conf.",
+         "type": "vsconf",
+         "summary": "2-6"
+        }
+       ]
+      }
+     ],
+     "notes": [],
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 4,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "groups": {
+      "id": "15",
+      "name": "Mid-American Conference",
+      "shortName": "MAC",
+      "isConference": true
+     },
+     "format": {
+      "regulation": {
+       "periods": 4
+      }
+     },
+     "startDate": "2026-11-25T00:00Z"
+    }
+   ],
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  },
+  {
+   "id": "401864549",
+   "uid": "s:20~l:23~e:401864549",
+   "date": "2026-11-27T20:30Z",
+   "name": "North Dakota State Bison at San Jos\u00e9 State Spartans",
+   "shortName": "NDSU @ SJSU",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "week": {
+    "number": 13
+   },
+   "competitions": [
+    {
+     "id": "401864549",
+     "uid": "s:20~l:23~e:401864549~c:401864549",
+     "date": "2026-11-27T20:30Z",
+     "attendance": 14012,
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "timeValid": true,
+     "dateValid": true,
+     "neutralSite": false,
+     "conferenceCompetition": false,
+     "playByPlayAvailable": true,
+     "recent": false,
+     "venue": {
+      "id": "3935",
+      "fullName": "CEFCU Stadium",
+      "address": {
+       "city": "San Jose",
+       "state": "CA",
+       "country": "USA"
+      },
+      "indoor": false
+     },
+     "competitors": [
+      {
+       "id": "23",
+       "uid": "s:20~l:23~t:23",
+       "type": "team",
+       "order": 0,
+       "homeAway": "home",
+       "winner": false,
+       "team": {
+        "id": "23",
+        "uid": "s:20~l:23~t:23",
+        "location": "San Jos\u00e9 State",
+        "name": "Spartans",
+        "abbreviation": "SJSU",
+        "displayName": "San Jos\u00e9 State Spartans",
+        "shortDisplayName": "San Jos\u00e9 St",
+        "color": "0038a8",
+        "alternateColor": "ffb81a",
+        "isActive": true,
+        "venue": {
+         "id": "3935"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/23.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/23.png",
+        "conferenceId": "17"
+       },
+       "score": "31",
+       "curatedRank": {
+        "current": 99
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "Game",
+         "type": "total",
+         "summary": "5-8"
+        },
+        {
+         "name": "Home",
+         "type": "home",
+         "summary": "2-5"
+        },
+        {
+         "name": "Road",
+         "type": "road",
+         "summary": "3-3"
+        },
+        {
+         "name": "vs. Conf.",
+         "type": "vsconf",
+         "summary": "3-5"
+        }
+       ]
+      },
+      {
+       "id": "2449",
+       "uid": "s:20~l:23~t:2449",
+       "type": "team",
+       "order": 1,
+       "homeAway": "away",
+       "winner": true,
+       "team": {
+        "id": "2449",
+        "uid": "s:20~l:23~t:2449",
+        "location": "North Dakota State",
+        "name": "Bison",
+        "abbreviation": "NDSU",
+        "displayName": "North Dakota State Bison",
+        "shortDisplayName": "N Dakota St",
+        "color": "01402A",
+        "alternateColor": "ffffff",
+        "isActive": true,
+        "venue": {
+         "id": "3714"
+        },
+        "logo": "https://a.espncdn.com/i/teamlogos/ncaa/500/2449.png",
+        "logoDark": "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2449.png",
+        "conferenceId": "17"
+       },
+       "score": "38",
+       "curatedRank": {
+        "current": 99
+       },
+       "records": [
+        {
+         "name": "overall",
+         "abbreviation": "Game",
+         "type": "total",
+         "summary": "10-2"
+        },
+        {
+         "name": "Home",
+         "type": "home",
+         "summary": "6-0"
+        },
+        {
+         "name": "Road",
+         "type": "road",
+         "summary": "4-2"
+        },
+        {
+         "name": "vs. Conf.",
+         "type": "vsconf",
+         "summary": "6-2"
+        }
+       ]
+      }
+     ],
+     "notes": [],
+     "status": {
+      "clock": 0.0,
+      "displayClock": "0:00",
+      "period": 4,
+      "type": {
+       "id": "3",
+       "name": "STATUS_FINAL",
+       "state": "post",
+       "completed": true,
+       "description": "Final",
+       "detail": "Final",
+       "shortDetail": "Final"
+      }
+     },
+     "format": {
+      "regulation": {
+       "periods": 4
+      }
+     },
+     "startDate": "2026-11-27T20:30Z"
+    }
+   ],
+   "status": {
+    "clock": 0.0,
+    "displayClock": "0:00",
+    "period": 4,
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   }
+  }
+ ],
+ "provider": {
+  "id": "100",
+  "name": "DraftKings",
+  "priority": 1,
+  "displayName": "DraftKings"
+ }
+}

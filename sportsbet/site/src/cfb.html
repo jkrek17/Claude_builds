@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#2b4674">
+  <title>College Football Model</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="bg-base-200 text-base-content min-h-screen">
+  <main class="mx-auto max-w-4xl px-4 pb-16 pt-4">
+    <header class="hero flex items-end justify-between gap-4 text-white">
+      <div class="min-w-0">
+        <p class="eyebrow"><span class="kick">College <span id="season"></span> · </span><span id="updated"></span></p>
+        <h1 class="display mt-1" id="title">Loading</h1>
+      </div>
+      <div class="league-side">
+        <a class="league" href="../nfl/">NFL</a>
+        <label>
+          <span class="sr-only">Week</span>
+          <select id="week" class="select h-11 w-28 border-0 bg-white text-base-content"></select>
+        </label>
+      </div>
+    </header>
+
+    <details class="panel notice mt-3 text-sm leading-relaxed" id="notice"></details>
+
+    <nav class="tabs-flat mt-3 grid grid-cols-3" role="tablist" id="tabs">
+      <button role="tab" id="tab-picks" aria-controls="picks" data-tab="picks">Picks</button>
+      <button role="tab" id="tab-rankings" aria-controls="rankings" data-tab="rankings">Rankings</button>
+      <button role="tab" id="tab-record" aria-controls="record" data-tab="record">Record</button>
+    </nav>
+
+    <section id="picks" class="mt-4" role="tabpanel" aria-labelledby="tab-picks"></section>
+    <section id="rankings" class="mt-4" role="tabpanel" aria-labelledby="tab-rankings" hidden></section>
+    <section id="record" class="mt-4" role="tabpanel" aria-labelledby="tab-record" hidden></section>
+
+    <footer class="mt-10 text-center text-xs faint leading-relaxed">
+      Research only, not betting advice. Bet only what you can afford to lose.<br>
+      If gambling stops being fun, call <a class="underline tap" href="tel:18004262537">1-800-GAMBLER</a>.
+    </footer>
+  </main>
+  <script src="cfb.js"></script>
+</body>
+</html>

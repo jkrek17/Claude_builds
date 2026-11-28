@@ -1,0 +1,113 @@
+{
+  "params": {
+    "prior_games": 4.0,
+    "decay": 1.0,
+    "regress": 0.2
+  },
+  "selected_by": "margin_rmse",
+  "model_margin_rmse": 17.23831110039517,
+  "model_margin_mae": 13.61653083170909,
+  "line_margin_rmse": 15.801899866086682,
+  "line_margin_mae": 12.421539673164009,
+  "model_total_rmse": 17.473478251539177,
+  "model_total_mae": 13.846458172549266,
+  "on_line": {
+    "n_spread": 5079,
+    "model_margin_rmse": 17.24162387177478,
+    "line_margin_rmse": 15.801899866086682,
+    "model_margin_mae": 13.618744409337772,
+    "line_margin_mae": 12.421539673164009,
+    "n_total": 3717,
+    "model_total_rmse": 17.22003410886748,
+    "line_total_rmse": 16.248927449548603,
+    "model_total_mae": 13.662807867670653,
+    "line_total_mae": 12.808851224105462
+  },
+  "betas": {
+    "2015": {
+      "beta_margin": 0.0,
+      "beta_total": 0.6615117082558446,
+      "train_seasons": [
+        2014
+      ]
+    },
+    "2016": {
+      "beta_margin": 0.0,
+      "beta_total": 0.5424368379055409,
+      "train_seasons": [
+        2014,
+        2015
+      ]
+    },
+    "2017": {
+      "beta_margin": 0.0,
+      "beta_total": 0.5918783602854999,
+      "train_seasons": [
+        2014,
+        2015,
+        2016
+      ]
+    },
+    "2018": {
+      "beta_margin": 0.0,
+      "beta_total": 0.0898916535688743,
+      "train_seasons": [
+        2014,
+        2015,
+        2016,
+        2017
+      ]
+    },
+    "2019": {
+      "beta_margin": 0.0,
+      "beta_total": 0.06643259206759224,
+      "train_seasons": [
+        2014,
+        2015,
+        2016,
+        2017,
+        2018
+      ]
+    },
+    "2021": {
+      "beta_margin": 0.0,
+      "beta_total": 0.09755202333035011,
+      "train_seasons": [
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019
+      ]
+    },
+    "2022": {
+      "beta_margin": 0.0,
+      "beta_total": 0.05036075593569243,
+      "train_seasons": [
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2021
+      ]
+    }
+  },
+  "picked_side_chances": {
+    "spread": {
+      "n": 5079,
+      "share_above_65": 0.0,
+      "max": 0.5000000000001577,
+      "hit_rate": 0.48572003218020915
+    },
+    "total": {
+      "n": 3717,
+      "share_above_65": 0.01775625504439064,
+      "max": 0.850479891652953,
+      "hit_rate": 0.5047670934350313
+    }
+  },
+  "minutes": 12.4
+}
