@@ -218,3 +218,12 @@ def test_staleness_detects_planted_artifact():
 
 def test_staleness_clean_case():
     assert abs(backtest.opener_staleness(staleness_games(stale=False))) < 2
+
+
+def test_bets_use_shrunk_centre(fit):
+    g = make_games(spread_close=-3.5, total_close=50.5)
+    preds = g[["game_id"]].assign(margin=20.0, total=70.0)
+    assert len(backtest.bets(preds, g, "spread", 0.02, "all", fit)) == len(g)
+    zero = {**fit, "beta_margin": 0.0, "beta_total": 0.0}
+    assert backtest.bets(preds, g, "spread", 0.02, "all", zero).empty
+    assert backtest.bets(preds, g, "total", 0.02, "all", zero).empty

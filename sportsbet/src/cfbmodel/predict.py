@@ -283,22 +283,28 @@ def zero_prior() -> pd.DataFrame:
     return pd.DataFrame(columns=_rating_cols(), index=pd.Index([], name="team"), dtype=float)
 
 
-def carryover_prior(season: int, tg_all: pd.DataFrame, regress: float = DEFAULT_REGRESS) -> pd.DataFrame:
+def carryover_prior(season: int, tg_all: pd.DataFrame, regress: float = DEFAULT_REGRESS,
+                    params: dict | None = None) -> pd.DataFrame:
     """Last season's end-of-regular-season ratings times (1 - regress).
 
-    The previous season's ratings are rebuilt from a zero prior. A team with no rating last season
-    (new to FBS) starts from the pooled FCS row. With no previous season in ``tg_all`` (the first
-    season), the prior is all zero."""
+    The previous season's ratings are rebuilt from a zero prior with the run's ``prior_games`` and
+    ``decay`` (from ``params``; ``ratings.DEFAULTS`` otherwise). A team with no rating last season
+    (new to FBS) starts from the pooled FCS row; those teams are listed in ``attrs["seeded"]``. With
+    no previous season in ``tg_all`` (the first season), the prior is all zero."""
     prev = tg_all[tg_all["season"] == season - 1]
     if prev.empty:
-        return zero_prior()
+        out = zero_prior()
+        out.attrs["seeded"] = []
+        return out
     reg = prev[prev["season_type"] == "regular"] if "season_type" in prev else prev
     reg = reg if len(reg) else prev
     cutoff = pd.to_datetime(reg["start_date"], utc=True).max() + pd.Timedelta(seconds=1)
-    end = ratings.as_of(tg_all, cutoff, zero_prior(), {"season": season - 1})
+    cfg = {k: v for k, v in (params or {}).items() if k in ("prior_games", "decay")}
+    end = ratings.as_of(tg_all, cutoff, zero_prior(), {**cfg, "season": season - 1})
     cols = _rating_cols()
     out = end[cols] * (1.0 - regress)
     cur = tg_all[tg_all["season"] == season]
+    new: list = []
     if len(cur) and ratings.FCS in out.index:
         fbs = set(cur.loc[cur["team_fbs"].astype(bool), "team"]) | set(cur.loc[cur["opp_fbs"].astype(bool), "opp"])
         new = sorted(t for t in fbs if t not in out.index)
@@ -307,6 +313,7 @@ def carryover_prior(season: int, tg_all: pd.DataFrame, regress: float = DEFAULT_
                                 index=pd.Index(new, name="team"))
             out = pd.concat([out, seed])
     out.index.name = "team"
+    out.attrs["seeded"] = list(new)
     return out
 
 
@@ -485,7 +492,7 @@ def model(season: int, data_dir: Path, params: dict | None = None, prior_fn=None
     regress = float(params.get("regress", DEFAULT_REGRESS))
     if prior_fn is None:
         def prior_fn(s):
-            return carryover_prior(s, tg_all, regress)
+            return carryover_prior(s, tg_all, regress, params)
 
     hist = [walk(s, tg_all, prior_fn(s), params) for s in train]
     hist = [h for h in hist if len(h)]
@@ -511,16 +518,26 @@ def upcoming(games: pd.DataFrame, tg_all: pd.DataFrame, prior: pd.DataFrame, coe
 
     ``games`` needs game_id, week, start_date, home_id, away_id, neutral. A team id with no FBS
     play-by-play row in ``season`` or the season before is rated as the pooled FCS team. Returns
-    game_id, cutoff, home_team, away_team (rating names), home_pts, away_pts, margin, total."""
+    game_id, cutoff, home_team, away_team (rating names), home_pts, away_pts, margin, total and
+    home_rated / away_rated: the team has its own rating, not the pooled FCS one, from at least one
+    game this season before the cutoff or a carried-over prior row (not one seeded from the FCS
+    row, ``prior.attrs["seeded"]``)."""
     cfg = {k: v for k, v in (params or {}).items() if k in ("prior_games", "decay")}
     names = team_names(tg_all, season)
     cols = _rating_cols()
+    seeded = set(prior.attrs.get("seeded", ()))
+    carried = set(prior.index) - seeded - {ratings.FCS}
     out = []
     g = games.copy()
     g["start_date"] = pd.to_datetime(g["start_date"], utc=True)
     for _, week in g.groupby("week", sort=True):
         cutoff = week["start_date"].min()
         r = ratings.as_of(tg_all, cutoff, prior, {**cfg, "season": season})
+
+        def rated(team):
+            if team == ratings.FCS or team not in r.index:
+                return False
+            return bool(r.at[team, "games"] >= 1) or team in carried
         for row in week.itertuples(index=False):
             home = names.get(int(row.home_id), ratings.FCS)
             away = names.get(int(row.away_id), ratings.FCS)
@@ -529,9 +546,9 @@ def upcoming(games: pd.DataFrame, tg_all: pd.DataFrame, prior: pd.DataFrame, coe
             p = game(hr, ar, bool(row.neutral), coef, season)
             out.append({"game_id": int(row.game_id), "cutoff": cutoff, "home_team": home, "away_team": away,
                         "home_pts": p["home_pts"], "away_pts": p["away_pts"], "margin": p["margin"],
-                        "total": p["total"]})
+                        "total": p["total"], "home_rated": rated(home), "away_rated": rated(away)})
     return pd.DataFrame(out, columns=["game_id", "cutoff", "home_team", "away_team", "home_pts", "away_pts",
-                                      "margin", "total"])
+                                      "margin", "total", "home_rated", "away_rated"])
 
 
 def season(season: int, data_dir: Path, params: dict | None = None, prior_fn=None) -> pd.DataFrame:

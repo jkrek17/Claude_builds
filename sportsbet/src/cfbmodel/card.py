@@ -6,6 +6,12 @@ fitted coefficients in ``data_dir/fits/`` keyed by a hash of the training data a
 second run skips the training walks. ``week_card`` predicts one week's ESPN schedule from ratings as
 of that week's first kickoff (``predict.upcoming``). ``rankings`` rates every FBS team now.
 
+The chances are centred on the model number shrunk toward the line (``dist.fit_shrink``: line +
+beta x (model - line)), with the betas fitted on out-of-sample predictions of the training seasons
+(``shrink_history``), since the model alone is less accurate than the closing line. A game gets no
+chance, pick or edge (and no grade) unless both teams are in an FBS conference and rated: at least
+one game this season or a carried-over prior row, not the pooled FCS row (``predict.upcoming``).
+
 Edges are priced at -110 (``backtest.DEFAULT_PRICE``) as ``prob x decimal price - 1``, where prob
 is the chance the side wins outright (a push counts as not winning, as in ``backtest.bets``). The
 cover and over chances in the output are conditional on no push, so the other side's chance is one
@@ -26,7 +32,7 @@ import pandas as pd
 from . import backtest, dist, predict, ratings, schedule
 
 log = logging.getLogger(__name__)
-FIT_VERSION = 2  # 2: points fitted on ESPN's real final scores
+FIT_VERSION = 3  # 2: points fitted on ESPN's real final scores; 3: shrinkage betas, prior with run params
 GAME_KEYS = ["game_id", "week", "start", "home", "away", "home_id", "away_id", "home_conf", "away_conf",
              "neutral", "spread_line", "total_line", "line_provider", "model_margin", "model_total",
              "home_cover_prob", "over_prob", "pick_spread", "pick_total", "edge_spread", "edge_total",
@@ -59,6 +65,42 @@ def dist_history(tg_all: pd.DataFrame, seasons) -> pd.DataFrame:
                          "away_points": h["opp_score"].to_numpy(float)})
 
 
+def paired_predictions(walk_rows: pd.DataFrame, coef: dict) -> pd.DataFrame:
+    """One row per FBS vs FBS regular-season game of ``walk_rows`` (``predict.walk`` output) predicted
+    with ``coef``: season, spread_close, total_close, home_points, away_points, margin and total."""
+    rows = predict._complete_pairs(walk_rows.reset_index(drop=True))
+    rows = rows.assign(pred=predict.points(rows, coef))
+    h = rows[rows["is_home"] == 1].drop_duplicates("game_id").set_index("game_id")
+    a = rows[rows["is_home"] == 0].drop_duplicates("game_id").set_index("game_id")
+    gids = h.index.intersection(a.index)
+    h, a = h.loc[gids], a.loc[gids]
+    keep = (h["team_fbs"].astype(bool) & h["opp_fbs"].astype(bool)).to_numpy()
+    if "season_type" in h:
+        keep = keep & (h["season_type"] == "regular").to_numpy()
+    h, a = h[keep], a[keep]
+    return pd.DataFrame({
+        "season": h["season"].astype(int).to_numpy(),
+        "spread_close": h["spread"].to_numpy(float), "total_close": h["over_under"].to_numpy(float),
+        "home_points": h["team_score"].to_numpy(float), "away_points": h["opp_score"].to_numpy(float),
+        "margin": h["pred"].to_numpy(float) - a["pred"].to_numpy(float),
+        "total": h["pred"].to_numpy(float) + a["pred"].to_numpy(float)})
+
+
+def shrink_history(history: pd.DataFrame, kind: str = predict.DEFAULT_KIND) -> pd.DataFrame:
+    """Out-of-sample model margins and totals for the training walks, for ``dist.fit_shrink``.
+
+    ``history`` is the training seasons' walks (``predict.model``'s ``history``). Each season is
+    predicted with points coefficients fitted on the earlier seasons in ``history`` only, so the
+    first season (nothing earlier) is left out. Returns ``paired_predictions`` rows."""
+    cols = ["season", "spread_close", "total_close", "home_points", "away_points", "margin", "total"]
+    out = []
+    seasons = sorted(int(s) for s in history["season"].unique())
+    for s in seasons[1:]:
+        coef = predict.fit_points(history[history["season"] < s], kind)
+        out.append(paired_predictions(history[history["season"] == s], coef))
+    return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=cols)
+
+
 def bad_score_share(tg_all: pd.DataFrame) -> dict:
     """season -> share of FBS vs FBS games whose final total misses the line total by > BAD_TOTAL_GAP."""
     h = tg_all[(tg_all["is_home"] == 1) & tg_all["team_fbs"].astype(bool) & tg_all["opp_fbs"].astype(bool)]
@@ -79,8 +121,9 @@ def context(season: int, data_dir: Path, params: dict | None = None, prior_fn=No
     """tg_all, prior (this season's), coef, dist_fit, params and train for a card.
 
     Training seasons default to ``predict.default_train_seasons``; an explicit
-    ``params["train_seasons"]`` is used as given. With the default prior the fit is cached in
-    ``data_dir/fits/``."""
+    ``params["train_seasons"]`` is used as given. ``dist_fit`` holds the widths (``dist.fit`` on the
+    training seasons' lines) and the shrinkage betas (``dist.fit_shrink`` on ``shrink_history``).
+    With the default prior the fit is cached in ``data_dir/fits/``."""
     params = dict(params or {})
     train = [int(s) for s in params.get("train_seasons", predict.default_train_seasons(season))]
     need = predict.needed_seasons(season, train)
@@ -93,12 +136,15 @@ def context(season: int, data_dir: Path, params: dict | None = None, prior_fn=No
         fit = json.loads(path.read_text())
         coef, dist_fit = fit["coef"], fit["dist"]
         regress = float(params.get("regress", predict.DEFAULT_REGRESS))
-        prior = predict.carryover_prior(season, tg_all, regress)
+        prior = predict.carryover_prior(season, tg_all, regress, params)
     else:
         m = predict.model(season, data_dir, params, prior_fn)
         tg_all, coef = m["tg_all"], m["coef"]
         prior = m["prior_fn"](season)
-        dist_fit = dist.fit(dist_history(tg_all, train))
+        dist_fit = {**dist.fit(dist_history(tg_all, train)),
+                    **dist.fit_shrink(shrink_history(m["history"], params.get("kind", predict.DEFAULT_KIND)))}
+        log.info("card %d: shrinkage beta_margin %.3f, beta_total %.3f", season,
+                 dist_fit["beta_margin"], dist_fit["beta_total"])
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({"coef": coef, "dist": dist_fit}))
@@ -137,9 +183,21 @@ def grade(pick: str | None, score: float) -> bool | None:
     return (score > 0) == (pick in ("home", "over"))
 
 
-def _pbp_lines(tg_all: pd.DataFrame, season: int) -> pd.DataFrame:
+def _pbp_lines(tg_all: pd.DataFrame, season: int, games: pd.DataFrame | None = None) -> pd.DataFrame:
+    """game_id -> play-by-play spread (home perspective) and over_under.
+
+    With ``games`` (ESPN rows with game_id, home_id, away_id), a spread whose play-by-play home team
+    is ESPN's away team is flipped to ESPN's home side, as ``predict.espn_lines`` does."""
     rows = tg_all[(tg_all["season"] == season) & (tg_all["is_home"] == 1)]
-    return rows.drop_duplicates("game_id").set_index("game_id")[["spread", "over_under"]]
+    out = rows.drop_duplicates("game_id").set_index("game_id")[["spread", "over_under", "team_id"]].copy()
+    if games is not None and len(out):
+        e = games.drop_duplicates("game_id").set_index("game_id")
+        pbp_home = pd.to_numeric(out["team_id"], errors="coerce").astype("float64")
+        espn_home = pd.to_numeric(out.index.map(e["home_id"]), errors="coerce").astype("float64")
+        espn_away = pd.to_numeric(out.index.map(e["away_id"]), errors="coerce").astype("float64")
+        flip = (pbp_home.to_numpy() != np.asarray(espn_home)) & (pbp_home.to_numpy() == np.asarray(espn_away))
+        out.loc[flip, "spread"] = -out.loc[flip, "spread"]
+    return out[["spread", "over_under"]]
 
 
 def _fill_scores(g: pd.DataFrame, tg_all: pd.DataFrame, season: int) -> pd.DataFrame:
@@ -207,9 +265,11 @@ def week_card(season: int, week: int, data_dir: Path, params: dict | None = None
         return []
     g = _fill_scores(g.reset_index(drop=True), ctx["tg_all"], season)
     preds = predict.upcoming(g, ctx["tg_all"], ctx["prior"], ctx["coef"], ctx["params"], season)
-    g = g.merge(preds[["game_id", "margin", "total"]], on="game_id", how="left")
+    g = g.merge(preds[["game_id", "margin", "total", "home_rated", "away_rated"]], on="game_id", how="left")
+    rated = (g["home_rated"].eq(True) & g["away_rated"].eq(True) & g["home_conf"].isin(FBS_CONFS)
+             & g["away_conf"].isin(FBS_CONFS)).to_numpy()
 
-    pl = _pbp_lines(ctx["tg_all"], season)
+    pl = _pbp_lines(ctx["tg_all"], season, g)
     provider = g["line_provider"].astype(object).where(g["line_provider"].notna(), None)
     for col, src in (("spread_line", "spread"), ("total_line", "over_under")):
         fill = g["game_id"].map(pl[src]) if len(pl) else pd.Series(np.nan, index=g.index)
@@ -219,8 +279,8 @@ def week_card(season: int, week: int, data_dir: Path, params: dict | None = None
     g["line_provider"] = provider
 
     fit = ctx["dist_fit"]
-    sp = [_market(m, line, "spread", fit) for m, line in zip(g["margin"], g["spread_line"])]
-    to = [_market(t, line, "total", fit) for t, line in zip(g["total"], g["total_line"])]
+    sp = [_market(m if ok else None, line, "spread", fit) for m, line, ok in zip(g["margin"], g["spread_line"], rated)]
+    to = [_market(t if ok else None, line, "total", fit) for t, line, ok in zip(g["total"], g["total_line"], rated)]
     g["edge_spread"] = [s["edge"] if s["edge"] is not None else np.nan for s in sp]
     g["edge_total"] = [t["edge"] if t["edge"] is not None else np.nan for t in to]
     g["season"] = season

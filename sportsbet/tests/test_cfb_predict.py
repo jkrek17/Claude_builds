@@ -157,6 +157,57 @@ def test_carryover_prior_regresses_and_seeds_new_fbs_teams():
     assert {f"off_{m}" for m in METRICS} <= set(prior.columns)
     first = predict.carryover_prior(2016, tg)
     assert (first.fillna(0).to_numpy() == 0).all()
+    assert prior.attrs["seeded"] == ["F2"]  # rows copied from the pooled FCS row
+
+
+def test_carryover_prior_uses_the_run_params(monkeypatch):
+    tg = make_tg_all([2016, 2017])
+    seen = []
+    real = ratings.as_of
+
+    def spy(tg_all, cutoff, prior, params):
+        seen.append(dict(params))
+        return real(tg_all, cutoff, prior, params)
+    monkeypatch.setattr(predict.ratings, "as_of", spy)
+    predict.carryover_prior(2017, tg, 0.2, {"prior_games": 2.0, "decay": 0.9, "regress": 0.2})
+    assert seen == [{"prior_games": 2.0, "decay": 0.9, "season": 2016}]
+
+
+def test_model_prior_passes_params_to_carryover(tmp_path, monkeypatch):
+    tg = make_tg_all([2016, 2017], seed=2)
+    monkeypatch.setattr(predict, "team_games_all", lambda seasons, data_dir: tg[tg["season"].isin(seasons)])
+    seen = []
+    real = predict.carryover_prior
+
+    def spy(season, tg_all, regress=predict.DEFAULT_REGRESS, params=None):
+        seen.append((season, regress, dict(params or {})))
+        return real(season, tg_all, regress, params)
+    monkeypatch.setattr(predict, "carryover_prior", spy)
+    predict.model(2017, tmp_path, {"train_seasons": [2016], "prior_games": 2.0, "decay": 0.9, "regress": 0.3})
+    assert seen and all(r == 0.3 and p.get("prior_games") == 2.0 and p.get("decay") == 0.9
+                        for _, r, p in seen)
+
+
+def test_upcoming_flags_rated_teams():
+    tg = make_tg_all([2016, 2017])
+    prior = predict.carryover_prior(2017, tg)
+    prior = prior.copy()
+    prior.attrs["seeded"] = ["T01"]
+    hist = predict.walk(2016, tg, predict.carryover_prior(2016, tg), {})
+    coef = predict.fit_points(hist)
+    ids = {t: hash(t) % 10000 for t in TEAMS}
+    games = pd.DataFrame({"game_id": [1, 2, 3], "week": 1,
+                          "start_date": pd.Timestamp("2017-08-01", tz="UTC"),  # before any 2017 game
+                          "home_id": [ids["T00"], ids["T02"], ids["T04"]],
+                          "away_id": [ids["T01"], ids["T03"], 999999], "neutral": False})
+    out = predict.upcoming(games, tg, prior, coef, {}, 2017).set_index("game_id")
+    assert out.loc[1, "home_rated"] and not out.loc[1, "away_rated"]  # T01 only has the pooled FCS row
+    assert out.loc[2, "home_rated"] and out.loc[2, "away_rated"]
+    assert not out.loc[3, "away_rated"] and out.loc[3, "away_team"] == ratings.FCS
+    later = games.assign(start_date=pd.Timestamp("2017-12-31", tz="UTC"))
+    out = predict.upcoming(later, tg, prior, coef, {}, 2017).set_index("game_id")
+    assert out.loc[1, "away_rated"]  # a game played this season makes a team rated
+    assert not out.loc[3, "away_rated"]
 
 
 def scored_game(gid, season, home="A", away="B", div=("fbs", "fbs")):
