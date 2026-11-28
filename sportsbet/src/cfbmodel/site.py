@@ -20,6 +20,9 @@ sportsbook line saw it, before kickoff (``schedule.remember_lines``), or null.
 
 ``build_current`` picks the season: the current one, or in the offseason (July until the new
 season's play-by-play is published) the last season, with a status note saying so.
+
+The rating parameters are the tuned ones from ``research/cfb/tune_summary.json`` when it exists,
+else ``TUNED_PARAMS`` (the packaged copy of that file's ``params``).
 """
 from __future__ import annotations
 
@@ -33,6 +36,8 @@ import pandas as pd
 from . import card, pbp, schedule
 
 RESULT_PATH = Path(__file__).resolve().parents[2] / "research" / "cfb" / "RESULT.json"
+TUNE_SUMMARY_PATH = Path(__file__).resolve().parents[2] / "research" / "cfb" / "tune_summary.json"
+TUNED_PARAMS = {"prior_games": 4.0, "decay": 1.0, "regress": 0.2}  # mirrors tune_summary.json
 RESEARCH_NOTE = "Research only: the model has not passed its backtest."
 FAILED_NOTE = "Research only: the college model did not pass its backtest, so no pick here is a proven edge."
 PASSED_NOTE = "The college model passed its backtest on held-out seasons. It is still unproven live."
@@ -58,6 +63,16 @@ def load_result(path: Path | None = None) -> dict | None:
     if not path.exists():
         return None
     return json.loads(path.read_text())
+
+
+def tuned_params(path: Path | None = None) -> dict:
+    """The tuned rating parameters: tune_summary.json's ``params``, else ``TUNED_PARAMS``."""
+    path = Path(path) if path is not None else TUNE_SUMMARY_PATH
+    try:
+        params = json.loads(path.read_text())["params"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return dict(TUNED_PARAMS)
+    return {k: float(params[k]) for k in TUNED_PARAMS if k in params} or dict(TUNED_PARAMS)
 
 
 def status(result: dict | None) -> dict:
@@ -102,7 +117,9 @@ def clean(obj):
 
 def build(season: int, week: int | None, data_dir: Path, params: dict | None = None, prior_fn=None,
           result_path: Path | None = None, ctx: dict | None = None) -> dict:
-    """The cfb.json dict for ``season`` with ``week`` as the current week (default ESPN's)."""
+    """The cfb.json dict for ``season`` with ``week`` as the current week (default ESPN's).
+
+    ``params`` default to ``tuned_params()``."""
     info = schedule.season_info(season, data_dir)
     week = int(week if week is not None else info["week"])
     weeks = [w for w in info["weeks"] if w <= week] or [week]
@@ -110,6 +127,8 @@ def build(season: int, week: int | None, data_dir: Path, params: dict | None = N
         weeks.append(week)
     result = load_result(result_path)
     rules = rulebook(result)
+    if params is None:
+        params = tuned_params()
     ctx = ctx or card.context(season, data_dir, params, prior_fn)
     games = []
     for w in sorted(weeks):

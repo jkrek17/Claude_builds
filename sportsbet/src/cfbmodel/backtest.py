@@ -110,7 +110,10 @@ def bets(preds: pd.DataFrame, games: pd.DataFrame, market: str, edge_min: float,
                             "market": market, "side": side, "line": bet_line, "price": price,
                             "price_assumed": bool(assumed), "prob": float(prob), "edge": float(edge),
                             "result": result, "clv_points": clv})
-        best = max(options, key=lambda o: o["edge"])
+        if abs(options[0]["edge"] - options[1]["edge"]) < 1e-9:  # coin flip: the model's lean
+            best = options[0] if (pred + line if market == "spread" else pred - line) >= 0 else options[1]
+        else:
+            best = max(options, key=lambda o: o["edge"])
         if best["edge"] >= edge_min:
             rows.append(best)
     cols = ["game_id", "season", "week", "market", "side", "line", "price", "price_assumed", "prob",

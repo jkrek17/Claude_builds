@@ -65,7 +65,14 @@ def validate_cfb(data: dict) -> None:
         for k in ("home_cover_prob", "over_prob"):
             assert g[k] is None or 0 <= g[k] <= 1
         assert g["pick_spread"] in ("home", "away", None) and g["pick_total"] in ("over", "under", None)
-        assert (g["pick_spread"] is None) == (g["spread_line"] is None or g["model_margin"] is None)
+        if g["spread_line"] is None or g["model_margin"] is None:
+            assert g["pick_spread"] is None
+        if g["total_line"] is None or g["model_total"] is None:
+            assert g["pick_total"] is None
+        for m, p, e, h in (("spread", "home_cover_prob", "edge_spread", "ats_hit"),
+                           ("total", "over_prob", "edge_total", "ou_hit")):
+            if g[f"pick_{m}"] is None:  # no pick: no chance, no edge, no grade
+                assert g[p] is None and g[e] is None and g[h] is None
         for k in ("neutral", "bet_spread", "bet_total", "final"):
             assert isinstance(g[k], bool), k
         for k in ("ats_hit", "ou_hit"):
@@ -276,6 +283,82 @@ def test_final_without_espn_line_takes_pbp_close(ctx, tmp_path):
     assert g["ats_hit"] is not None
 
 
+def test_final_pbp_close_flips_when_pbp_home_is_espn_away(ctx, tmp_path):
+    tg = ctx["tg_all"]
+    row = tg[(tg["season"] == 2018) & (tg["is_home"] == 1)].iloc[0]
+    games = _games(completed=True, spread=np.nan, total=np.nan)
+    games.loc[0, ["game_id", "home", "away", "home_id", "away_id"]] = [
+        int(row["game_id"]), row["opp"], row["team"], int(row["opp_id"]), int(row["team_id"])]
+    games.loc[0, "line_provider"] = None
+    g = card.week_card(2018, 20, tmp_path, ctx=ctx, games=games)[0]
+    assert g["spread_line"] == 7.0 and g["total_line"] == 55.0 and g["line_provider"] == card.PBP_LINE
+
+
+def test_unrated_or_fcs_games_get_no_chance_pick_or_grade(ctx, tmp_path):
+    games = _games(completed=True)
+    games.loc[0, "away_id"] = 999999  # no FBS play-by-play row: rated as the pooled FCS team
+    games.loc[1, "away_conf"] = "Big Sky"  # not an FBS conference
+    out = card.week_card(2018, 20, tmp_path, ctx=ctx, games=games)
+    for g in out[:2]:
+        assert g["model_margin"] is not None and g["spread_line"] is not None
+        for k in ("home_cover_prob", "over_prob", "pick_spread", "pick_total", "edge_spread", "edge_total",
+                  "ats_hit", "ou_hit"):
+            assert g[k] is None, k
+        assert not g["bet_spread"] and not g["bet_total"]
+
+
+def test_new_fbs_team_on_the_pooled_fcs_prior_is_unrated(ctx, tmp_path):
+    prior = ctx["prior"].copy()
+    prior.attrs["seeded"] = ["T01"]
+    early = {**ctx, "prior": prior}
+    out = card.week_card(2018, 20, tmp_path, ctx=early, games=_games(start="2018-08-01 17:00"))
+    assert out[0]["pick_spread"] is None and out[0]["home_cover_prob"] is None  # T00 v T01
+    assert out[1]["pick_spread"] is not None  # T02 v T03, both carried over
+
+
+def test_shrink_history_is_out_of_sample(ctx, monkeypatch):
+    tg = ctx["tg_all"]
+    prior_fn = lambda s: predict.carryover_prior(s, tg)  # noqa: E731
+    hist = pd.concat([predict.walk(s, tg, prior_fn(s), {}) for s in (2016, 2017, 2018)], ignore_index=True)
+    fitted_on = []
+    real = predict.fit_points
+
+    def spy(history, kind=predict.DEFAULT_KIND):
+        fitted_on.append(sorted(set(history["season"])))
+        return real(history, kind)
+    monkeypatch.setattr(predict, "fit_points", spy)
+    h = card.shrink_history(hist)
+    assert fitted_on == [[2016], [2016, 2017]]
+    assert sorted(set(h["season"])) == [2017, 2018]  # the first season has nothing earlier to fit on
+    assert {"spread_close", "total_close", "home_points", "away_points", "margin", "total"} <= set(h.columns)
+    assert np.isfinite(h[["margin", "total"]].to_numpy()).all()
+    n_games = tg[(tg["season"].isin([2017, 2018])) & (tg["is_home"] == 1) & tg["team_fbs"] & tg["opp_fbs"]]
+    assert len(h) == len(n_games)
+
+
+def test_context_fits_and_caches_betas(tmp_path, monkeypatch):
+    tg = make_tg_all([2015, 2016, 2017, 2018])
+    monkeypatch.setattr(predict, "team_games_all", lambda seasons, data_dir: tg[tg["season"].isin(seasons)])
+    params = {"train_seasons": [2016, 2017], "prior_games": 2.0, "decay": 0.95, "regress": 0.2}
+    c = card.context(2018, tmp_path, params)
+    for k in ("beta_margin", "beta_total"):
+        assert 0.0 <= c["dist_fit"][k] <= 1.0
+    assert c["dist_fit"]["n_shrink_margin"] > 0
+    again = card.context(2018, tmp_path, params)  # from the cache
+    assert again["dist_fit"]["beta_margin"] == c["dist_fit"]["beta_margin"]
+    assert list(again["prior"].index) == list(c["prior"].index)
+
+
+def test_zero_beta_pick_follows_the_model_lean(ctx):
+    zero = {**ctx["dist_fit"], "beta_margin": 0.0, "beta_total": 0.0}
+    home = card._market(10.0, -3.5, "spread", zero)  # model home by 10 against home -3.5: leans home
+    assert home["pick"] == "home" and home["prob"] == pytest.approx(0.5, abs=1e-6) and home["edge"] < 0
+    assert card._market(1.0, -3.5, "spread", zero)["pick"] == "away"
+    assert card._market(-10.0, -3.5, "spread", zero)["pick"] == "away"
+    assert card._market(50.0, 55.5, "total", zero)["pick"] == "under"
+    assert card._market(60.0, 55.5, "total", zero)["pick"] == "over"
+
+
 def test_grade():
     assert card.grade("home", 3.5) is True and card.grade("away", 3.5) is False
     assert card.grade("under", -2.0) is True and card.grade("over", 0.0) is None
@@ -344,6 +427,28 @@ def test_build_reads_result_json(fake_site, tmp_path):
     assert data["backtest"]["markets"]["spread"]["n"] == 450
     assert data["backtest"]["markets"]["total"]["n"] == 0
     assert any(g["bet_spread"] for g in data["games"])
+
+
+def test_tuned_params_from_summary(tmp_path):
+    path = tmp_path / "tune_summary.json"
+    assert site.tuned_params(path) == site.TUNED_PARAMS  # no file: the packaged copy
+    path.write_text(json.dumps({"params": {"prior_games": 8.0, "decay": 1.0, "regress": 0.5}}))
+    assert site.tuned_params(path) == {"prior_games": 8.0, "decay": 1.0, "regress": 0.5}
+    shipped = json.loads(site.TUNE_SUMMARY_PATH.read_text())["params"]
+    assert site.TUNED_PARAMS == shipped  # the constant mirrors the committed tune
+
+
+def test_build_uses_tuned_params(fake_site, ctx, tmp_path, monkeypatch):
+    seen = []
+
+    def spy(season, data_dir, params=None, prior_fn=None):
+        seen.append(params)
+        return ctx
+    monkeypatch.setattr(card, "context", spy)
+    site.build(2018, 21, tmp_path, result_path=tmp_path / "none.json")
+    assert seen == [site.tuned_params()]
+    site.build(2018, 21, tmp_path, params={"prior_games": 2.0}, result_path=tmp_path / "none.json")
+    assert seen[-1] == {"prior_games": 2.0}
 
 
 def test_site_cli_writes_valid_json(fake_site, tmp_path, monkeypatch, no_network):

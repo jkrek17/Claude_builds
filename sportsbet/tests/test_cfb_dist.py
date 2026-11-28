@@ -95,3 +95,60 @@ def test_key_three_weaker_than_nfl():
     cfb3 = f["margin_factors"][3 - f["margin_range"][0]]
     assert cfb3 > 1.0  # 3 is still a key number in college
     assert cfb3 < nfl_factor_at_3()
+
+
+# ---------------------------------------------------------------------------------------------
+# shrinkage toward the line
+# ---------------------------------------------------------------------------------------------
+
+def shrink_history(beta_m=0.4, beta_t=0.3, n=8000, seed=3):
+    """Games where outcome - line = beta * (model - line) + noise."""
+    rng = np.random.default_rng(seed)
+    h = synthetic_history(n=n, seed=seed)
+    line_m = -h["spread_close"].to_numpy(float)
+    x_m = rng.normal(0, 6, n)
+    x_t = rng.normal(0, 6, n)
+    margin = line_m + beta_m * x_m + rng.normal(0, 14, n)
+    total = h["total_close"].to_numpy(float) + beta_t * x_t + rng.normal(0, 14, n)
+    h["home_points"] = (total + margin) / 2
+    h["away_points"] = (total - margin) / 2
+    h["margin"] = line_m + x_m
+    h["total"] = h["total_close"] + x_t
+    return h
+
+
+def test_fit_shrink_recovers_betas():
+    s = dist.fit_shrink(shrink_history())
+    assert s["beta_margin"] == pytest.approx(0.4, abs=0.05)
+    assert s["beta_total"] == pytest.approx(0.3, abs=0.05)
+    assert s["n_shrink_margin"] == 8000 and s["n_shrink_total"] == 8000
+    json.dumps(s)
+
+
+def test_fit_shrink_clips_to_unit_interval():
+    s = dist.fit_shrink(shrink_history(beta_m=-0.5, beta_t=1.8))
+    assert s["beta_margin"] == 0.0 and s["beta_total"] == 1.0
+
+
+def test_fit_includes_betas_when_model_columns_present():
+    f = dist.fit(shrink_history())
+    assert f["beta_margin"] == pytest.approx(0.4, abs=0.05)
+    assert "beta_margin" not in dist.fit(synthetic_history())
+
+
+def test_probabilities_centre_on_shrunk_model(fit):
+    half = {**fit, "beta_margin": 0.5, "beta_total": 0.25}
+    full = {**fit, "beta_margin": 1.0, "beta_total": 1.0}
+    # home margin line is +7 for spread -7; model says +15 -> shrunk centre 7 + 0.5 * 8 = 11
+    assert dist.cover_prob(15.0, -7.0, half) == pytest.approx(dist.cover_prob(11.0, -7.0, full))
+    assert dist.over_prob(62.0, 54.0, half) == pytest.approx(dist.over_prob(56.0, 54.0, full))
+    # no betas stored: the model number is the centre, as before
+    assert dist.cover_prob(15.0, -7.0, fit) == pytest.approx(dist.cover_prob(15.0, -7.0, full))
+
+
+def test_zero_beta_gives_a_coin_flip(fit):
+    zero = {**fit, "beta_margin": 0.0, "beta_total": 0.0}
+    home, push, away = dist.cover_prob(30.0, -6.5, zero)
+    assert home == pytest.approx(away, abs=1e-6) and push == 0.0
+    over, _, under = dist.over_prob(80.0, 52.5, zero)
+    assert over == pytest.approx(under, abs=1e-6)
