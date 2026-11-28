@@ -30,7 +30,7 @@ from . import card, schedule
 
 RESULT_PATH = Path(__file__).resolve().parents[2] / "research" / "cfb" / "RESULT.json"
 TUNE_SUMMARY_PATH = Path(__file__).resolve().parents[2] / "research" / "cfb" / "tune_summary.json"
-TUNED_PARAMS = {"prior_games": 4.0, "decay": 0.95, "regress": 0.2}  # mirrors tune_summary.json
+TUNED_PARAMS = {"prior_games": 4.0, "decay": 1.0, "regress": 0.2}  # mirrors tune_summary.json
 RESEARCH_NOTE = "Research only: the model has not passed its backtest."
 FAILED_NOTE = "Research only: the college model did not pass its backtest, so no pick here is a proven edge."
 PASSED_NOTE = "The college model passed its backtest on held-out seasons. It is still unproven live."
