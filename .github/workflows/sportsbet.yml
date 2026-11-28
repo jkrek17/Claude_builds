@@ -105,13 +105,30 @@ jobs:
             python -m nflmodel.plays site/dist/data/props.json site/dist/data/plays.json \
               || echo "::warning::top plays failed; the Props tab opens on the full list"
           fi
-      # The page lives at /nfl/. The old address at the root sends visitors there, keeping the open tab.
+      - name: Restore the CollegeFootballData cache
+        if: env.PUBLISH == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/cfbmodel
+          key: cfbmodel-data-${{ github.run_id }}
+          restore-keys: cfbmodel-data-
+      # The college page. If this fails the NFL page still publishes, and the college page says so.
+      - name: Run the college model and write its page's data
+        if: env.PUBLISH == 'true'
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: cfbmodel site --json site/dist/data/cfb.json || echo "::warning::cfbmodel failed; the college page has no data"
+      # The pages live at /nfl/ and /cfb/. The old address at the root sends visitors to /nfl/, keeping
+      # the open tab.
       - name: Put the page under /nfl with a redirect at the root
         if: env.PUBLISH == 'true'
         working-directory: sportsbet/site
         run: |
           mkdir -p _pages
           cp -r dist _pages/nfl
+          rm _pages/nfl/cfb.html
+          cp -r dist _pages/cfb
+          mv _pages/cfb/cfb.html _pages/cfb/index.html
           cp redirect.html _pages/index.html
           touch _pages/.nojekyll
       - uses: actions/upload-pages-artifact@v3
