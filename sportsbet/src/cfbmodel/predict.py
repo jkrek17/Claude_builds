@@ -362,22 +362,24 @@ def _complete_pairs(rows: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([rows, m], ignore_index=True)
 
 
-def season(season: int, data_dir: Path, params: dict | None = None, prior_fn=None) -> pd.DataFrame:
-    """Walk-forward predictions for every game of ``season`` in the play-by-play.
+def needed_seasons(season: int, train: list[int]) -> list[int]:
+    """Seasons of play-by-play that predicting ``season`` with ``train`` reads."""
+    need = {season, season - 1, *train, *(s - 1 for s in train)}
+    return sorted(s for s in need if s >= FIRST_SEASON)
 
-    ``params``: ``prior_games`` and ``decay`` (for ``ratings.as_of``), ``train_seasons`` (default
-    ``default_train_seasons``), ``kind`` (``fit_points``), ``regress`` (carryover prior).
-    ``prior_fn(season) -> DataFrame`` gives a season's preseason prior (index team, off_<m>,
-    def_<m>, optional sd_mult); the default is ``carryover_prior``.
 
-    Only games in the play-by-play are predicted, so a game not yet played is not listed; actual
-    points are NaN where the source has no score."""
+def model(season: int, data_dir: Path, params: dict | None = None, prior_fn=None) -> dict:
+    """What predicting ``season`` needs, fitted on earlier seasons only.
+
+    Returns ``tg_all`` (team games of the season, the training seasons and the seasons before
+    each), ``prior_fn`` (season -> preseason prior), ``coef`` (``fit_points`` on the training
+    seasons' walks), ``train`` (training seasons) and ``history`` (their concatenated walks).
+    ``params`` and ``prior_fn`` as in ``season``."""
     params = dict(params or {})
     train = [int(s) for s in params.get("train_seasons", default_train_seasons(season))]
     if any(s >= season for s in train):
         raise ValueError("train_seasons must be earlier than the season predicted")
-    need = {season, season - 1, *train, *(s - 1 for s in train)}
-    tg_all = team_games_all(sorted(s for s in need if s >= FIRST_SEASON), data_dir)
+    tg_all = team_games_all(needed_seasons(season, train), data_dir)
     regress = float(params.get("regress", DEFAULT_REGRESS))
     if prior_fn is None:
         def prior_fn(s):
@@ -387,7 +389,62 @@ def season(season: int, data_dir: Path, params: dict | None = None, prior_fn=Non
     hist = [h for h in hist if len(h)]
     if not hist:
         raise ValueError(f"no training seasons with data for {season}")
-    coef = fit_points(pd.concat(hist, ignore_index=True), params.get("kind", DEFAULT_KIND))
+    history = pd.concat(hist, ignore_index=True)
+    coef = fit_points(history, params.get("kind", DEFAULT_KIND))
+    return {"tg_all": tg_all, "prior_fn": prior_fn, "coef": coef, "train": train, "history": history}
+
+
+def team_names(tg_all: pd.DataFrame, season: int) -> dict:
+    """FBS team id -> team name as the ratings know it, from ``season`` (else the season before)."""
+    out: dict = {}
+    for s in (season - 1, season):  # the current season's names win
+        rows = tg_all[(tg_all["season"] == s) & tg_all["team_fbs"].astype(bool) & tg_all["team_id"].notna()]
+        out.update(zip(rows["team_id"].astype(int), rows["team"]))
+    return out
+
+
+def upcoming(games: pd.DataFrame, tg_all: pd.DataFrame, prior: pd.DataFrame, coef: dict, params: dict | None,
+             season: int) -> pd.DataFrame:
+    """Predict listed games (played or not) from ratings as of each week's first kickoff.
+
+    ``games`` needs game_id, week, start_date, home_id, away_id, neutral. A team id with no FBS
+    play-by-play row in ``season`` or the season before is rated as the pooled FCS team. Returns
+    game_id, cutoff, home_team, away_team (rating names), home_pts, away_pts, margin, total."""
+    cfg = {k: v for k, v in (params or {}).items() if k in ("prior_games", "decay")}
+    names = team_names(tg_all, season)
+    cols = _rating_cols()
+    out = []
+    g = games.copy()
+    g["start_date"] = pd.to_datetime(g["start_date"], utc=True)
+    for _, week in g.groupby("week", sort=True):
+        cutoff = week["start_date"].min()
+        r = ratings.as_of(tg_all, cutoff, prior, {**cfg, "season": season})
+        for row in week.itertuples(index=False):
+            home = names.get(int(row.home_id), ratings.FCS)
+            away = names.get(int(row.away_id), ratings.FCS)
+            hr = r.loc[home, cols] if home in r.index else pd.Series(0.0, index=cols)
+            ar = r.loc[away, cols] if away in r.index else pd.Series(0.0, index=cols)
+            p = game(hr, ar, bool(row.neutral), coef, season)
+            out.append({"game_id": int(row.game_id), "cutoff": cutoff, "home_team": home, "away_team": away,
+                        "home_pts": p["home_pts"], "away_pts": p["away_pts"], "margin": p["margin"],
+                        "total": p["total"]})
+    return pd.DataFrame(out, columns=["game_id", "cutoff", "home_team", "away_team", "home_pts", "away_pts",
+                                      "margin", "total"])
+
+
+def season(season: int, data_dir: Path, params: dict | None = None, prior_fn=None) -> pd.DataFrame:
+    """Walk-forward predictions for every game of ``season`` in the play-by-play.
+
+    ``params``: ``prior_games`` and ``decay`` (for ``ratings.as_of``), ``train_seasons`` (default
+    ``default_train_seasons``), ``kind`` (``fit_points``), ``regress`` (carryover prior).
+    ``prior_fn(season) -> DataFrame`` gives a season's preseason prior (index team, off_<m>,
+    def_<m>, optional sd_mult); the default is ``carryover_prior``.
+
+    Only games in the play-by-play are predicted, so a game not yet played is not listed (see
+    ``upcoming`` for those); actual points are NaN where the source has no score."""
+    params = dict(params or {})
+    m = model(season, data_dir, params, prior_fn)
+    tg_all, prior_fn, coef = m["tg_all"], m["prior_fn"], m["coef"]
 
     rows = walk(season, tg_all, prior_fn(season), params)
     if rows.empty:

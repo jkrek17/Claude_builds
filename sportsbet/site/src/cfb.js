@@ -59,7 +59,7 @@ function marketTile(label, opts) {
   if (!line) {
     return `<div class="pick tossup cf-tile">
       <p class="eyebrow">${label}</p>
-      <p class="pick-main faint">No line yet</p>
+      <p class="pick-main faint">${final ? "No line" : "No line yet"}</p>
       <p class="num text-xs muted">Model ${model || "n/a"}</p>
       <p class="pick-tag">No pick</p>
     </div>`;
@@ -181,15 +181,15 @@ function renderRankings(data) {
   if (!rows.length) { $("rankings").innerHTML = `<div class="panel cf-empty"><p class="display">No rankings yet</p><p class="muted text-sm">Team ratings are not published yet.</p></div>`; return; }
   const top = Math.max(...rows.map((r) => (num(r.net) ? Math.abs(r.net) : 0)), 1);
   $("rankings").innerHTML = `
-    <p class="lede">The model's ratings, not a poll. Net is the predicted margin in points against an average FBS team on a neutral field. Offense and defense are points per play compared with average; on defense, below zero is better.</p>
+    <p class="lede">The model's ratings, not a poll. Net is the predicted margin in points against an average FBS team on a neutral field. Off and Def are opponent-adjusted success rate (the share of plays that keep an offense on schedule) above or below the FBS average, in percentage points; on defense, below zero is better.</p>
     <div class="panel overflow-x-auto"><table class="table table-sm num cf-rank-table">
       <thead><tr><th scope="col" class="w-10">#</th><th scope="col">Team</th><th scope="col" class="text-right">Off</th><th scope="col" class="text-right">Def</th><th scope="col" class="text-right">Net</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td class="display cf-n">${r.rank ?? ""}</td>
         <td><div class="flex items-center gap-2 min-w-0">${logo(r.team_id)}<div class="min-w-0"><p class="display cf-name">${esc(r.team)}</p><p class="text-xs muted">${esc(r.conf || "")}</p>
           ${num(r.net) ? `<span class="rk-bar cf-bar" aria-hidden="true"><i class="${r.net >= 0 ? "pos" : "neg"}" style="width:${(50 * Math.abs(r.net) / top).toFixed(1)}%"></i></span>` : ""}</div></div></td>
-        <td class="text-right">${signed(r.off, 2)}</td>
-        <td class="text-right">${signed(r.def, 2)}</td>
+        <td class="text-right">${signed(r.off, 1)}</td>
+        <td class="text-right">${signed(r.def, 1)}</td>
         <td class="text-right display cf-net ${num(r.net) && r.net < 0 ? "neg" : ""}">${signed(r.net)}</td>
       </tr>`).join("")}</tbody>
     </table></div>`;

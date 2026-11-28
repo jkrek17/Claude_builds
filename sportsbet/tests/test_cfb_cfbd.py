@@ -184,9 +184,3 @@ def test_help_exits_zero(capsys):
         cli.main(["--help"])
     assert exit_.value.code == 0
     assert "fetch" in capsys.readouterr().out
-
-
-@pytest.mark.parametrize("cmd", ["predict", "site"])
-def test_unbuilt_commands_say_so(cmd, capsys):
-    assert cli.main([cmd]) == 1
-    assert "not built yet" in capsys.readouterr().out
