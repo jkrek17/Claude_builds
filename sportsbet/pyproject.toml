@@ -10,14 +10,15 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-model = ["numpy>=1.26", "pandas>=2.1"]
-dev = ["pytest>=8", "numpy>=1.26", "pandas>=2.1"]
+model = ["numpy>=1.26", "pandas>=2.1", "pyarrow>=14"]
+dev = ["pytest>=8", "numpy>=1.26", "pandas>=2.1", "pyarrow>=14"]
 
 [project.scripts]
 sharpbet = "sharpbet.cli:main"
 nflmodel = "nflmodel.cli:main"
 nflprops = "nflmodel.props_cli:main"
 nflsim = "nflmodel.sim_cli:main"
+cfbmodel = "cfbmodel.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
