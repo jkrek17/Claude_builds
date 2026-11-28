@@ -72,8 +72,9 @@ def test_load_reads_slim_cache_without_network(tmp_path, monkeypatch):
     slim.parent.mkdir(parents=True)
     full_frame(2019)[pbp.KEEP_COLS].to_parquet(slim, index=False)
     out = pbp.load(2019, tmp_path)
-    assert list(out.columns) == pbp.KEEP_COLS
+    assert list(out.columns) == pbp.KEEP_COLS + pbp.LINE_COLS
     assert len(out) == 3
+    assert out["spread"].isna().all() and out["over_under"].isna().all()
 
 
 def test_load_downloads_keeps_only_keep_cols_and_deletes_full_file(tmp_path, monkeypatch):
@@ -86,7 +87,7 @@ def test_load_downloads_keeps_only_keep_cols_and_deletes_full_file(tmp_path, mon
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     out = pbp.load(2021, tmp_path)
     assert urls == [pbp.PBP_URL.format(season=2021)]
-    assert list(out.columns) == pbp.KEEP_COLS
+    assert list(out.columns) == pbp.KEEP_COLS + pbp.LINE_COLS
     assert sorted(p.name for p in (tmp_path / "pbp").iterdir()) == ["slim_2021.parquet"]
     assert pq.ParquetFile(tmp_path / "pbp" / "slim_2021.parquet").schema_arrow.names == pbp.KEEP_COLS
 
@@ -131,3 +132,13 @@ def test_failed_download_leaves_no_partial_file(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         pbp.load(2022, tmp_path)
     assert list((tmp_path / "pbp").iterdir()) == []
+
+
+def test_line_columns_kept_when_source_has_them(tmp_path, monkeypatch):
+    full = full_frame(2020)
+    full["spread"] = [-7.5] * 3
+    full["over_under"] = [55.0] * 3
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: FakeResponse(parquet_bytes(full)))
+    out = pbp.load(2020, tmp_path)
+    assert list(out.columns) == pbp.KEEP_COLS + pbp.LINE_COLS
+    assert out["spread"].tolist() == [-7.5] * 3 and out["over_under"].tolist() == [55.0] * 3
